@@ -1,0 +1,1142 @@
+import customtkinter as ctk
+import openpyxl
+from openpyxl import Workbook
+import os
+import win32com.client
+import datetime
+import threading
+ 
+# ============================================================
+#  TEMA SCOTIABANK
+# ============================================================
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+ 
+SCOTIA_RED        = "#EC111A"
+SCOTIA_RED_HOVER  = "#B50D13"
+SCOTIA_RED_DARK   = "#8A0A0F"
+SCOTIA_BLACK      = "#1A1A1A"
+SCOTIA_DARK       = "#111111"
+SCOTIA_SURFACE    = "#1E1E1E"
+SCOTIA_CARD       = "#252525"
+SCOTIA_CARD2      = "#2A2A2A"
+SCOTIA_BORDER     = "#333333"
+SCOTIA_TEXT       = "#F0F0F0"
+SCOTIA_SUBTEXT    = "#A0A0A0"
+SCOTIA_GREEN      = "#00C853"
+SCOTIA_GREEN_DIM  = "#1B5E20"
+SCOTIA_YELLOW     = "#FFCC00"
+SCOTIA_YELLOW_DIM = "#5C4A00"
+SCOTIA_BLUE_LINK  = "#4FC3F7"
+EXCEL_FILE        = "reglas_monitor.xlsx"
+ 
+ 
+# ============================================================
+#  UTILIDADES EXCEL
+# ============================================================
+def inicializar_excel():
+    """Crea el archivo Excel con las hojas necesarias si no existe."""
+    if os.path.exists(EXCEL_FILE):
+        return
+    wb = Workbook()
+ 
+    # Hoja 1: Reglas Diarias
+    ws1 = wb.active
+    ws1.title = "Reglas Diarias"
+    ws1.append(["nombre", "remitente", "asunto", "frecuencia", "activa"])
+    ws1.column_dimensions["A"].width = 28
+    ws1.column_dimensions["B"].width = 35
+    ws1.column_dimensions["C"].width = 35
+    ws1.column_dimensions["D"].width = 18
+    ws1.column_dimensions["E"].width = 10
+ 
+    # Hoja 2: Reglas Calendario
+    ws2 = wb.create_sheet("Reglas Calendario")
+    ws2.append(["nombre", "remitente", "asunto", "grupo", "fecha_inicio", "fecha_fin", "activa"])
+    ws2.column_dimensions["A"].width = 28
+    ws2.column_dimensions["B"].width = 35
+    ws2.column_dimensions["C"].width = 35
+    ws2.column_dimensions["D"].width = 20
+    ws2.column_dimensions["E"].width = 14
+    ws2.column_dimensions["F"].width = 14
+    ws2.column_dimensions["G"].width = 10
+ 
+    wb.save(EXCEL_FILE)
+ 
+ 
+def leer_reglas_diarias():
+    inicializar_excel()
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    ws = wb["Reglas Diarias"]
+    reglas = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0]:
+            reglas.append({
+                "nombre":     str(row[0]).strip(),
+                "remitente":  str(row[1]).strip() if row[1] else "",
+                "asunto":     str(row[2]).strip() if row[2] else "",
+                "frecuencia": str(row[3]).strip() if row[3] else "Hoy",
+                "activa":     str(row[4]).strip().lower() not in ("false", "no", "0") if row[4] else True,
+            })
+    return reglas
+ 
+ 
+def leer_reglas_calendario():
+    inicializar_excel()
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    ws = wb["Reglas Calendario"]
+    reglas = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0]:
+            reglas.append({
+                "nombre":       str(row[0]).strip(),
+                "remitente":    str(row[1]).strip() if row[1] else "",
+                "asunto":       str(row[2]).strip() if row[2] else "",
+                "grupo":        str(row[3]).strip() if row[3] else "",
+                "fecha_inicio": str(row[4]).strip() if row[4] else "",
+                "fecha_fin":    str(row[5]).strip() if row[5] else "",
+                "activa":       str(row[6]).strip().lower() not in ("false", "no", "0") if row[6] else True,
+            })
+    return reglas
+ 
+ 
+def guardar_regla_diaria(regla: dict):
+    inicializar_excel()
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    ws = wb["Reglas Diarias"]
+    ws.append([
+        regla.get("nombre", ""),
+        regla.get("remitente", ""),
+        regla.get("asunto", ""),
+        regla.get("frecuencia", "Hoy"),
+        "True",
+    ])
+    wb.save(EXCEL_FILE)
+ 
+ 
+def guardar_regla_calendario(regla: dict):
+    inicializar_excel()
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    ws = wb["Reglas Calendario"]
+    ws.append([
+        regla.get("nombre", ""),
+        regla.get("remitente", ""),
+        regla.get("asunto", ""),
+        regla.get("grupo", ""),
+        regla.get("fecha_inicio", ""),
+        regla.get("fecha_fin", ""),
+        "True",
+    ])
+    wb.save(EXCEL_FILE)
+ 
+ 
+def eliminar_regla_excel(nombre_regla: str):
+    inicializar_excel()
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    for sheet_name in ["Reglas Diarias", "Reglas Calendario"]:
+        ws = wb[sheet_name]
+        rows_to_delete = []
+        for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            if row[0] and str(row[0]).strip() == nombre_regla:
+                rows_to_delete.append(i)
+        for idx in reversed(rows_to_delete):
+            ws.delete_rows(idx)
+    wb.save(EXCEL_FILE)
+ 
+ 
+def agregar_ignorado_excel(nombre_regla: str, entry_id: str):
+    """Agrega un entry_id a la columna 'ignorados' (columna F en Diarias, H en Calendario)."""
+    inicializar_excel()
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    for sheet_name, ignorados_col in [("Reglas Diarias", 6), ("Reglas Calendario", 8)]:
+        ws = wb[sheet_name]
+        for row in ws.iter_rows(min_row=2):
+            if row[0].value and str(row[0].value).strip() == nombre_regla:
+                existing = row[ignorados_col - 1].value or ""
+                ids = [x for x in existing.split("|") if x]
+                if entry_id not in ids:
+                    ids.append(entry_id)
+                row[ignorados_col - 1].value = "|".join(ids)
+                break
+    wb.save(EXCEL_FILE)
+ 
+ 
+def leer_ignorados_excel(nombre_regla: str) -> list:
+    inicializar_excel()
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    for sheet_name, ignorados_col in [("Reglas Diarias", 6), ("Reglas Calendario", 8)]:
+        ws = wb[sheet_name]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if row[0] and str(row[0]).strip() == nombre_regla:
+                val = row[ignorados_col - 1] or ""
+                return [x for x in str(val).split("|") if x]
+    return []
+ 
+ 
+# ============================================================
+#  WIDGETS REUTILIZABLES
+# ============================================================
+def make_section_label(parent, text):
+    return ctk.CTkLabel(
+        parent, text=text,
+        font=("Georgia", 13, "bold"),
+        text_color=SCOTIA_SUBTEXT,
+        anchor="w"
+    )
+ 
+ 
+def make_card_frame(parent, **kwargs):
+    return ctk.CTkFrame(
+        parent,
+        fg_color=SCOTIA_CARD,
+        corner_radius=10,
+        border_width=1,
+        border_color=SCOTIA_BORDER,
+        **kwargs
+    )
+ 
+ 
+def make_red_button(parent, text, command, width=140, height=34):
+    return ctk.CTkButton(
+        parent, text=text, command=command,
+        fg_color=SCOTIA_RED, hover_color=SCOTIA_RED_HOVER,
+        text_color="white", font=("Trebuchet MS", 12, "bold"),
+        width=width, height=height, corner_radius=7
+    )
+ 
+ 
+def make_ghost_button(parent, text, command, width=120, height=30):
+    return ctk.CTkButton(
+        parent, text=text, command=command,
+        fg_color="transparent", hover_color=SCOTIA_BORDER,
+        text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11),
+        width=width, height=height, corner_radius=7,
+        border_width=1, border_color=SCOTIA_BORDER
+    )
+ 
+ 
+# ============================================================
+#  APLICACIÓN PRINCIPAL
+# ============================================================
+class MonitorApp(ctk.CTk):
+ 
+    def __init__(self):
+        super().__init__()
+        inicializar_excel()
+ 
+        self.title("Scotiabank — Monitor de Reportes")
+        self.geometry("1050x680")
+        self.minsize(900, 580)
+        self.configure(fg_color=SCOTIA_DARK)
+ 
+        self.timer_id          = None
+        self.automatizacion_activa = False
+        self._sync_running     = False   # bandera anti-solapamiento
+ 
+        self._build_ui()
+        self.after(600, self.sincronizar_correos)
+ 
+    # ----------------------------------------------------------
+    #  CONSTRUCCIÓN DE LA UI
+    # ----------------------------------------------------------
+    def _build_ui(self):
+        self._build_topbar()
+        self._build_main()
+        self._build_statusbar()
+ 
+    def _build_topbar(self):
+        bar = ctk.CTkFrame(self, fg_color=SCOTIA_RED, height=56, corner_radius=0)
+        bar.pack(side="top", fill="x")
+        bar.pack_propagate(False)
+ 
+        # Franja negra izquierda decorativa
+        accent = ctk.CTkFrame(bar, fg_color=SCOTIA_RED_DARK, width=6, corner_radius=0)
+        accent.pack(side="left", fill="y")
+ 
+        ctk.CTkLabel(
+            bar, text="  ●  SCOTIABANK",
+            font=("Georgia", 18, "bold"), text_color="white"
+        ).pack(side="left", padx=(16, 4), pady=10)
+ 
+        ctk.CTkLabel(
+            bar, text="Monitor de Reportes",
+            font=("Trebuchet MS", 13), text_color="#FFD0D0"
+        ).pack(side="left", padx=4, pady=10)
+ 
+        # Botones del lado derecho
+        btn_frame = ctk.CTkFrame(bar, fg_color="transparent")
+        btn_frame.pack(side="right", padx=16)
+ 
+        self.btn_alerta = ctk.CTkButton(
+            btn_frame, text="⏰  Programar Alertas",
+            fg_color=SCOTIA_RED_DARK, hover_color="#6B0609",
+            text_color="white", font=("Trebuchet MS", 12),
+            width=160, height=34, corner_radius=7,
+            command=self.abrir_config_alerta
+        )
+        self.btn_alerta.pack(side="right", padx=(8, 0))
+ 
+        ctk.CTkButton(
+            btn_frame, text="📅  Reglas Mensuales",
+            fg_color=SCOTIA_RED_DARK, hover_color="#6B0609",
+            text_color="white", font=("Trebuchet MS", 12),
+            width=160, height=34, corner_radius=7,
+            command=self.abrir_calendario
+        ).pack(side="right", padx=4)
+ 
+        ctk.CTkButton(
+            btn_frame, text="📋  Reglas Diarias",
+            fg_color=SCOTIA_RED_DARK, hover_color="#6B0609",
+            text_color="white", font=("Trebuchet MS", 12),
+            width=140, height=34, corner_radius=7,
+            command=self.abrir_configuracion
+        ).pack(side="right", padx=4)
+ 
+        self.btn_sync = ctk.CTkButton(
+            btn_frame, text="🔄  Actualizar",
+            fg_color="#FFCC00", hover_color="#E6B800",
+            text_color=SCOTIA_BLACK, font=("Trebuchet MS", 12, "bold"),
+            width=120, height=34, corner_radius=7,
+            command=self._iniciar_sync_thread
+        )
+        self.btn_sync.pack(side="right", padx=4)
+ 
+    def _build_main(self):
+        self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_frame.pack(fill="both", expand=True, padx=14, pady=(10, 4))
+        self.main_frame.grid_columnconfigure(0, weight=1)
+        self.main_frame.grid_columnconfigure(1, weight=1)
+        self.main_frame.grid_rowconfigure(0, weight=1)
+ 
+        # --- Panel Izquierdo: Faltantes ---
+        self.left_outer = ctk.CTkFrame(
+            self.main_frame, fg_color=SCOTIA_SURFACE,
+            corner_radius=12, border_width=1, border_color="#4A0000"
+        )
+        self.left_outer.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+ 
+        left_header = ctk.CTkFrame(self.left_outer, fg_color=SCOTIA_RED_DARK, corner_radius=0, height=38)
+        left_header.pack(fill="x")
+        left_header.pack_propagate(False)
+        ctk.CTkLabel(
+            left_header, text="⚠  CORREOS FALTANTES",
+            font=("Georgia", 13, "bold"), text_color="white"
+        ).pack(side="left", padx=14, pady=8)
+ 
+        self.left_panel = ctk.CTkScrollableFrame(
+            self.left_outer, fg_color="transparent", scrollbar_button_color=SCOTIA_BORDER
+        )
+        self.left_panel.pack(fill="both", expand=True, padx=8, pady=8)
+ 
+        # --- Panel Derecho: Recibidos ---
+        self.right_outer = ctk.CTkFrame(
+            self.main_frame, fg_color=SCOTIA_SURFACE,
+            corner_radius=12, border_width=1, border_color="#0A3A0A"
+        )
+        self.right_outer.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+ 
+        right_header = ctk.CTkFrame(self.right_outer, fg_color=SCOTIA_GREEN_DIM, corner_radius=0, height=38)
+        right_header.pack(fill="x")
+        right_header.pack_propagate(False)
+        ctk.CTkLabel(
+            right_header, text="✔  CORREOS RECIBIDOS",
+            font=("Georgia", 13, "bold"), text_color="white"
+        ).pack(side="left", padx=14, pady=8)
+ 
+        self.right_panel = ctk.CTkScrollableFrame(
+            self.right_outer, fg_color="transparent", scrollbar_button_color=SCOTIA_BORDER
+        )
+        self.right_panel.pack(fill="both", expand=True, padx=8, pady=8)
+ 
+    def _build_statusbar(self):
+        bar = ctk.CTkFrame(self, fg_color=SCOTIA_CARD, height=28, corner_radius=0)
+        bar.pack(side="bottom", fill="x")
+        bar.pack_propagate(False)
+ 
+        self.lbl_status = ctk.CTkLabel(
+            bar, text="Listo.",
+            font=("Trebuchet MS", 11), text_color=SCOTIA_SUBTEXT, anchor="w"
+        )
+        self.lbl_status.pack(side="left", padx=14)
+ 
+        self.lbl_hora = ctk.CTkLabel(
+            bar, text="",
+            font=("Trebuchet MS", 11), text_color=SCOTIA_SUBTEXT, anchor="e"
+        )
+        self.lbl_hora.pack(side="right", padx=14)
+ 
+    # ----------------------------------------------------------
+    #  SINCRONIZACIÓN (hilo separado)
+    # ----------------------------------------------------------
+    def _iniciar_sync_thread(self):
+        if self._sync_running:
+            return
+        self.btn_sync.configure(text="⏳  Actualizando…", state="disabled", fg_color=SCOTIA_BORDER)
+        self.lbl_status.configure(text="Conectando con Outlook…")
+        self._sync_running = True
+        t = threading.Thread(target=self._sync_worker, daemon=True)
+        t.start()
+ 
+    def _sync_worker(self):
+        """Ejecuta la lógica pesada en segundo plano."""
+        try:
+            resultado = self._obtener_resultados_outlook()
+        except Exception as e:
+            resultado = {"error": str(e)}
+        # Regresar a hilo principal para actualizar UI
+        self.after(0, lambda: self._sync_finalizado(resultado))
+ 
+    def _obtener_resultados_outlook(self) -> dict:
+        """Conecta a Outlook y cruza contra reglas. Corre en hilo secundario."""
+        reglas_diarias    = leer_reglas_diarias()
+        reglas_calendario = leer_reglas_calendario()
+        hoy = datetime.datetime.now().date()
+ 
+        # Filtrar reglas activas
+        reglas = [r for r in reglas_diarias if r.get("activa", True)]
+ 
+        # Agregar reglas de calendario que aplican hoy
+        for r in reglas_calendario:
+            if not r.get("activa", True):
+                continue
+            try:
+                fi = datetime.datetime.strptime(r["fecha_inicio"], "%d/%m/%Y").date()
+                ff = datetime.datetime.strptime(r["fecha_fin"],    "%d/%m/%Y").date()
+                if fi <= hoy <= ff:
+                    reglas.append(r)
+            except Exception:
+                pass
+ 
+        if not reglas:
+            return {"grupos": {}, "simples": [], "sin_reglas": True}
+ 
+        # Conectar a Outlook
+        outlook   = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+        bandeja   = outlook.GetDefaultFolder(6)
+        mensajes  = bandeja.Items
+        mensajes.Sort("[ReceivedTime]", True)
+ 
+        max_correos = min(2000, len(mensajes))
+ 
+        resultados_simples = []
+        resultados_grupos  = {}
+ 
+        for regla in reglas:
+            cumplida    = False
+            hora_str    = ""
+            correo_id   = ""
+            dias_margin = 0
+            grupo       = regla.get("grupo", "")
+            ignorados   = leer_ignorados_excel(regla["nombre"])
+ 
+            # Calcular ventana de tiempo
+            if "fecha_inicio" in regla:
+                fecha_limite = datetime.datetime.strptime(regla["fecha_inicio"], "%d/%m/%Y").date()
+            else:
+                freq = regla.get("frecuencia", "Hoy")
+                if freq == "Últimos 3 días":
+                    dias_margin = 3
+                elif freq == "Últimos 7 días":
+                    dias_margin = 7
+                fecha_limite = hoy - datetime.timedelta(days=dias_margin)
+ 
+            asunto_regla   = regla["asunto"].lower()
+            remitente_regla = regla["remitente"].lower()
+            palabras_clave  = asunto_regla.split()
+ 
+            for i in range(max_correos):
+                try:
+                    msg = mensajes.Item(i + 1)
+                    if getattr(msg, "Class", 0) != 43:
+                        continue
+ 
+                    if msg.SenderEmailType == "EX":
+                        remitente = msg.Sender.GetExchangeUser().PrimarySmtpAddress
+                    else:
+                        remitente = msg.SenderEmailAddress
+                    if not remitente:
+                        remitente = msg.SenderName
+ 
+                    asunto     = msg.Subject if msg.Subject else ""
+                    fecha_msg  = msg.ReceivedTime.date()
+                    entry_id   = msg.EntryID
+                    cuerpo     = msg.Body if msg.Body else ""
+ 
+                    if fecha_msg < fecha_limite:
+                        break
+ 
+                    if entry_id in ignorados:
+                        continue
+ 
+                    coincide_remitente = remitente_regla in remitente.lower()
+                    coincide_asunto    = all(p in asunto.lower() for p in palabras_clave)
+ 
+                    if coincide_remitente and coincide_asunto:
+                        hora_str  = str(msg.ReceivedTime)[:16]
+                        cumplida  = True
+                        correo_id = entry_id
+                        es_valido = self.evaluar_contenido_conforme(cuerpo)
+                        break
+                except Exception:
+                    continue
+ 
+            # Calcular días restantes si es regla de calendario
+            dias_restantes = None
+            if "fecha_fin" in regla:
+                try:
+                    ff_date = datetime.datetime.strptime(regla["fecha_fin"], "%d/%m/%Y").date()
+                    dias_restantes = (ff_date - hoy).days
+                except Exception:
+                    pass
+ 
+            valido = es_valido if cumplida and 'es_valido' in dir() else True
+            id_c   = correo_id if cumplida else ""
+ 
+            if not grupo:
+                resultados_simples.append({
+                    "nombre":         regla["nombre"],
+                    "cumplida":       cumplida,
+                    "hora":           hora_str,
+                    "dias_restantes": dias_restantes,
+                    "es_valido":      valido,
+                    "correo_id":      id_c,
+                })
+            else:
+                if grupo not in resultados_grupos:
+                    resultados_grupos[grupo] = {
+                        "total": 0, "cumplidos": 0,
+                        "faltantes": [], "recibidos": [],
+                        "dias_restantes": dias_restantes,
+                        "fecha_inicio": regla.get("fecha_inicio", ""),
+                        "fecha_fin":    regla.get("fecha_fin", ""),
+                    }
+                resultados_grupos[grupo]["total"] += 1
+                if cumplida:
+                    resultados_grupos[grupo]["cumplidos"] += 1
+                    resultados_grupos[grupo]["recibidos"].append({
+                        "nombre": regla["nombre"], "hora": hora_str,
+                        "es_valido": valido, "correo_id": id_c,
+                    })
+                else:
+                    resultados_grupos[grupo]["faltantes"].append(regla["nombre"])
+ 
+        return {
+            "grupos":    resultados_grupos,
+            "simples":   resultados_simples,
+            "sin_reglas": False,
+            "error":     None,
+        }
+ 
+    def _sync_finalizado(self, resultado: dict):
+        """Llamado en el hilo principal al terminar la sincronización."""
+        self._sync_running = False
+        self.btn_sync.configure(text="🔄  Actualizar", state="normal", fg_color=SCOTIA_YELLOW)
+ 
+        if resultado.get("error"):
+            self.lbl_status.configure(
+                text=f"⚠  Error: {resultado['error']}", text_color="#FF6B6B"
+            )
+            return
+ 
+        if resultado.get("sin_reglas"):
+            self._limpiar_paneles()
+            ctk.CTkLabel(
+                self.left_panel,
+                text="No hay reglas activas para hoy.",
+                text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 12)
+            ).pack(pady=20)
+            self._actualizar_hora()
+            return
+ 
+        self._dibujar_resultados(resultado["grupos"], resultado["simples"])
+        self._actualizar_hora()
+ 
+    def _limpiar_paneles(self):
+        for w in self.left_panel.winfo_children():
+            w.destroy()
+        for w in self.right_panel.winfo_children():
+            w.destroy()
+ 
+    def _actualizar_hora(self):
+        hora = datetime.datetime.now().strftime("%H:%M:%S")
+        self.lbl_status.configure(
+            text=f"Última actualización: {hora}", text_color=SCOTIA_SUBTEXT
+        )
+        self.lbl_hora.configure(text=hora)
+ 
+    # ----------------------------------------------------------
+    #  DIBUJAR RESULTADOS
+    # ----------------------------------------------------------
+    def _dibujar_resultados(self, grupos: dict, simples: list):
+        self._limpiar_paneles()
+ 
+        # — Grupos —
+        for nombre_grupo, datos in grupos.items():
+            self._dibujar_grupo(nombre_grupo, datos)
+ 
+        # — Reglas simples faltantes —
+        simples_faltantes = [r for r in simples if not r["cumplida"]]
+        simples_recibidos = [r for r in simples if r["cumplida"]]
+ 
+        if simples_faltantes:
+            make_section_label(self.left_panel, "▸ TAREAS INDIVIDUALES").pack(
+                anchor="w", padx=10, pady=(10, 4)
+            )
+            for res in simples_faltantes:
+                self._dibujar_faltante_simple(res)
+ 
+        if simples_recibidos:
+            make_section_label(self.right_panel, "▸ TAREAS INDIVIDUALES").pack(
+                anchor="w", padx=10, pady=(10, 4)
+            )
+            for res in simples_recibidos:
+                self._dibujar_recibido_simple(res)
+ 
+    def _dibujar_grupo(self, nombre_grupo: str, datos: dict):
+        dias_r = datos["dias_restantes"]
+        if dias_r is None:
+            texto_dias = ""
+        elif dias_r > 0:
+            texto_dias = f"  ({dias_r} días restantes)"
+        elif dias_r == 0:
+            texto_dias = "  (¡Vence HOY!)"
+        else:
+            texto_dias = f"  (Venció hace {abs(dias_r)} días)"
+ 
+        if datos["cumplidos"] == datos["total"]:
+            # Panel verde (completado)
+            card = ctk.CTkFrame(
+                self.right_panel, fg_color=SCOTIA_CARD2,
+                corner_radius=8, border_width=1, border_color=SCOTIA_GREEN_DIM
+            )
+            card.pack(anchor="w", fill="x", padx=4, pady=4)
+ 
+            header = ctk.CTkFrame(card, fg_color=SCOTIA_GREEN_DIM, corner_radius=0, height=30)
+            header.pack(fill="x")
+            header.pack_propagate(False)
+            ctk.CTkLabel(
+                header,
+                text=f"✔ COMPLETADO: {nombre_grupo}{texto_dias}",
+                font=("Trebuchet MS", 12, "bold"), text_color=SCOTIA_GREEN, anchor="w"
+            ).pack(side="left", padx=10)
+            ctk.CTkButton(
+                header, text="+", width=26, height=26,
+                fg_color="#4468A4", hover_color="#315F86",
+                font=("Trebuchet MS", 13, "bold"),
+                command=lambda g=nombre_grupo, fi=datos["fecha_inicio"], ff=datos["fecha_fin"]:
+                    self.abrir_agregar_grupo(g, fi, ff)
+            ).pack(side="right", padx=6)
+ 
+            for item in datos["recibidos"]:
+                row = ctk.CTkFrame(card, fg_color="transparent")
+                row.pack(anchor="w", fill="x", padx=8, pady=2)
+                color = SCOTIA_GREEN if item.get("es_valido", True) else "#FFA000"
+                simbolo = "✔" if item.get("es_valido", True) else "⚠"
+                ctk.CTkLabel(
+                    row,
+                    text=f"{simbolo} {item['nombre']}  ({item['hora']})",
+                    text_color=color, font=("Trebuchet MS", 11), anchor="w"
+                ).pack(side="left")
+                if not item.get("es_valido", True):
+                    ctk.CTkButton(
+                        row, text="abrir", width=44, height=20,
+                        fg_color="transparent", text_color=SCOTIA_BLUE_LINK,
+                        font=("Trebuchet MS", 10, "underline"),
+                        command=lambda cid=item["correo_id"]: self.abrir_correo_especifico(cid)
+                    ).pack(side="left", padx=4)
+                    ctk.CTkButton(
+                        row, text="Devolver", width=60, height=20,
+                        fg_color=SCOTIA_RED, hover_color=SCOTIA_RED_HOVER,
+                        text_color="white", font=("Trebuchet MS", 10, "bold"),
+                        command=lambda n=item["nombre"], cid=item["correo_id"]:
+                            self.rechazar_correo(n, cid)
+                    ).pack(side="left", padx=2)
+        else:
+            # Panel rojo (en proceso)
+            card = ctk.CTkFrame(
+                self.left_panel, fg_color=SCOTIA_CARD2,
+                corner_radius=8, border_width=1, border_color="#4A0000"
+            )
+            card.pack(anchor="w", fill="x", padx=4, pady=4)
+ 
+            header = ctk.CTkFrame(card, fg_color=SCOTIA_RED_DARK, corner_radius=0, height=30)
+            header.pack(fill="x")
+            header.pack_propagate(False)
+            ctk.CTkLabel(
+                header,
+                text=f"⏳ EN PROCESO: {nombre_grupo}{texto_dias}",
+                font=("Trebuchet MS", 12, "bold"), text_color="#FF8A80", anchor="w"
+            ).pack(side="left", padx=10)
+            ctk.CTkButton(
+                header, text="+", width=26, height=26,
+                fg_color="#4468A4", hover_color="#315F86",
+                font=("Trebuchet MS", 13, "bold"),
+                command=lambda g=nombre_grupo, fi=datos["fecha_inicio"], ff=datos["fecha_fin"]:
+                    self.abrir_agregar_grupo(g, fi, ff)
+            ).pack(side="right", padx=6)
+ 
+            for item in datos["recibidos"]:
+                row = ctk.CTkFrame(card, fg_color="transparent")
+                row.pack(anchor="w", fill="x", padx=8, pady=2)
+                color = SCOTIA_GREEN if item.get("es_valido", True) else "#FFA000"
+                simbolo = "✔" if item.get("es_valido", True) else "⚠"
+                ctk.CTkLabel(
+                    row, text=f"{simbolo} {item['nombre']}  ({item['hora']})",
+                    text_color=color, font=("Trebuchet MS", 11), anchor="w"
+                ).pack(side="left")
+                if not item.get("es_valido", True):
+                    ctk.CTkButton(
+                        row, text="abrir", width=44, height=20,
+                        fg_color="transparent", text_color=SCOTIA_BLUE_LINK,
+                        font=("Trebuchet MS", 10, "underline"),
+                        command=lambda cid=item["correo_id"]: self.abrir_correo_especifico(cid)
+                    ).pack(side="left", padx=4)
+                    ctk.CTkButton(
+                        row, text="Devolver", width=60, height=20,
+                        fg_color=SCOTIA_RED, hover_color=SCOTIA_RED_HOVER,
+                        text_color="white", font=("Trebuchet MS", 10, "bold"),
+                        command=lambda n=item["nombre"], cid=item["correo_id"]:
+                            self.rechazar_correo(n, cid)
+                    ).pack(side="left", padx=2)
+ 
+            for nombre_faltante in datos["faltantes"]:
+                row = ctk.CTkFrame(card, fg_color="transparent")
+                row.pack(anchor="w", fill="x", padx=8, pady=2)
+                ctk.CTkLabel(
+                    row, text=f"✗  Falta: {nombre_faltante}",
+                    text_color="#FF5252", font=("Trebuchet MS", 11), anchor="w"
+                ).pack(side="left")
+ 
+    def _dibujar_faltante_simple(self, res: dict):
+        card = make_card_frame(self.left_panel)
+        card.pack(anchor="w", fill="x", padx=4, pady=3)
+ 
+        dias_r = res.get("dias_restantes")
+        if dias_r is None:
+            texto_dias = ""
+        elif dias_r > 0:
+            texto_dias = f"  ({dias_r} días)"
+        elif dias_r == 0:
+            texto_dias = "  (¡Vence HOY!)"
+        else:
+            texto_dias = f"  (Venció hace {abs(dias_r)} días)"
+ 
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=10, pady=6)
+ 
+        ctk.CTkLabel(
+            row, text=f"✗  {res['nombre']}{texto_dias}",
+            text_color="#FF5252", font=("Trebuchet MS", 12), anchor="w"
+        ).pack(side="left", fill="x", expand=True)
+ 
+        ctk.CTkButton(
+            row, text="✕", width=26, height=26,
+            fg_color="transparent", hover_color="#5A0000",
+            text_color="#FF4444", font=("Trebuchet MS", 12, "bold"),
+            command=lambda n=res["nombre"]: self.eliminar_regla(n)
+        ).pack(side="right", padx=2)
+ 
+    def _dibujar_recibido_simple(self, res: dict):
+        card = make_card_frame(self.right_panel)
+        card.pack(anchor="w", fill="x", padx=4, pady=3)
+ 
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=10, pady=6)
+ 
+        color   = SCOTIA_GREEN if res.get("es_valido", True) else "#FFA000"
+        simbolo = "✔" if res.get("es_valido", True) else "⚠"
+ 
+        ctk.CTkLabel(
+            row,
+            text=f"{simbolo}  {res['nombre']}  ({res['hora']})",
+            text_color=color, font=("Trebuchet MS", 12), anchor="w"
+        ).pack(side="left", fill="x", expand=True)
+ 
+        if not res.get("es_valido", True):
+            ctk.CTkButton(
+                row, text="abrir", width=44, height=22,
+                fg_color="transparent", text_color=SCOTIA_BLUE_LINK,
+                font=("Trebuchet MS", 10, "underline"),
+                command=lambda cid=res["correo_id"]: self.abrir_correo_especifico(cid)
+            ).pack(side="left", padx=4)
+            ctk.CTkButton(
+                row, text="Devolver", width=68, height=22,
+                fg_color=SCOTIA_RED, hover_color=SCOTIA_RED_HOVER,
+                text_color="white", font=("Trebuchet MS", 10, "bold"),
+                command=lambda n=res["nombre"], cid=res["correo_id"]:
+                    self.rechazar_correo(n, cid)
+            ).pack(side="left", padx=2)
+ 
+        ctk.CTkButton(
+            row, text="✕", width=26, height=26,
+            fg_color="transparent", hover_color="#5A0000",
+            text_color="#FF4444", font=("Trebuchet MS", 12, "bold"),
+            command=lambda n=res["nombre"]: self.eliminar_regla(n)
+        ).pack(side="right", padx=2)
+ 
+    # Alias público para compatibilidad con llamadas existentes
+    def sincronizar_correos(self):
+        self._iniciar_sync_thread()
+ 
+    # ----------------------------------------------------------
+    #  VENTANA: Configurar Reglas Diarias
+    # ----------------------------------------------------------
+    def abrir_configuracion(self):
+        v = ctk.CTkToplevel(self)
+        v.title("Reglas Diarias")
+        v.geometry("480x420")
+        v.attributes("-topmost", True)
+        v.configure(fg_color=SCOTIA_SURFACE)
+ 
+        ctk.CTkLabel(
+            v, text="➕  Añadir Nueva Regla Diaria",
+            font=("Georgia", 15, "bold"), text_color=SCOTIA_TEXT
+        ).pack(pady=(18, 6))
+ 
+        ctk.CTkLabel(v, text="Nombre de la regla", text_color=SCOTIA_SUBTEXT,
+                     font=("Trebuchet MS", 11)).pack(anchor="w", padx=24)
+        entry_nombre = ctk.CTkEntry(v, placeholder_text="Ej: Reporte OffMarkets", width=420)
+        entry_nombre.pack(padx=24, pady=(0, 8))
+ 
+        ctk.CTkLabel(v, text="Remitente esperado", text_color=SCOTIA_SUBTEXT,
+                     font=("Trebuchet MS", 11)).pack(anchor="w", padx=24)
+        entry_remitente = ctk.CTkEntry(v, placeholder_text="Ej: pedro@empresa.com", width=420)
+        entry_remitente.pack(padx=24, pady=(0, 8))
+ 
+        ctk.CTkLabel(v, text="Palabras clave en el asunto", text_color=SCOTIA_SUBTEXT,
+                     font=("Trebuchet MS", 11)).pack(anchor="w", padx=24)
+        entry_asunto = ctk.CTkEntry(v, placeholder_text="Ej: Reporte Diario Marzo", width=420)
+        entry_asunto.pack(padx=24, pady=(0, 8))
+ 
+        ctk.CTkLabel(v, text="Frecuencia", text_color=SCOTIA_SUBTEXT,
+                     font=("Trebuchet MS", 11)).pack(anchor="w", padx=24)
+        combo = ctk.CTkOptionMenu(v, values=["Hoy", "Últimos 3 días", "Últimos 7 días"], width=420)
+        combo.pack(padx=24, pady=(0, 14))
+ 
+        ctk.CTkLabel(
+            v,
+            text="💡  Para carga masiva, abre directamente el archivo\n     reglas_monitor.xlsx y pega las filas en la hoja 'Reglas Diarias'.",
+            text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 10), justify="left"
+        ).pack(padx=24, pady=(0, 10))
+ 
+        def guardar():
+            regla = {
+                "nombre":     entry_nombre.get().strip(),
+                "remitente":  entry_remitente.get().strip(),
+                "asunto":     entry_asunto.get().strip(),
+                "frecuencia": combo.get(),
+            }
+            if not regla["nombre"]:
+                return
+            guardar_regla_diaria(regla)
+            v.destroy()
+            self._iniciar_sync_thread()
+ 
+        make_red_button(v, "💾  Guardar Regla", guardar, width=200).pack(pady=6)
+ 
+    # ----------------------------------------------------------
+    #  VENTANA: Calendario (Reglas Temporales)
+    # ----------------------------------------------------------
+    def abrir_calendario(self):
+        v = ctk.CTkToplevel(self)
+        v.title("Reglas por Fechas")
+        v.geometry("500x480")
+        v.attributes("-topmost", True)
+        v.configure(fg_color=SCOTIA_SURFACE)
+ 
+        ctk.CTkLabel(
+            v, text="📅  Nueva Regla Temporal",
+            font=("Georgia", 15, "bold"), text_color=SCOTIA_TEXT
+        ).pack(pady=(18, 6))
+ 
+        for label, attr, hint in [
+            ("Nombre",    "cal_nombre",    "Nombre de la regla"),
+            ("Remitente", "cal_remitente", "Remitente esperado"),
+            ("Asunto",    "cal_asunto",    "Palabras clave en el asunto"),
+            ("Grupo",     "cal_grupo",     "Grupo al que pertenece"),
+        ]:
+            ctk.CTkLabel(v, text=label, text_color=SCOTIA_SUBTEXT,
+                         font=("Trebuchet MS", 11)).pack(anchor="w", padx=24)
+            e = ctk.CTkEntry(v, placeholder_text=hint, width=440)
+            e.pack(padx=24, pady=(0, 6))
+            setattr(self, attr, e)
+ 
+        ctk.CTkLabel(
+            v, text="Rango de Fechas (DD/MM/AAAA)",
+            text_color=SCOTIA_TEXT, font=("Trebuchet MS", 12, "bold")
+        ).pack(anchor="w", padx=24, pady=(8, 0))
+ 
+        row_f = ctk.CTkFrame(v, fg_color="transparent")
+        row_f.pack(padx=24, fill="x", pady=(2, 10))
+        self.cal_inicio = ctk.CTkEntry(row_f, placeholder_text="Inicio  (Ej: 01/04/2026)", width=210)
+        self.cal_inicio.pack(side="left", padx=(0, 10))
+        self.cal_fin = ctk.CTkEntry(row_f, placeholder_text="Fin  (Ej: 30/04/2026)", width=210)
+        self.cal_fin.pack(side="left")
+ 
+        ctk.CTkLabel(
+            v,
+            text="💡  Para carga masiva, edita directamente el archivo\n     reglas_monitor.xlsx en la hoja 'Reglas Calendario'.",
+            text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 10), justify="left"
+        ).pack(padx=24, pady=(0, 10))
+ 
+        def guardar():
+            try:
+                datetime.datetime.strptime(self.cal_inicio.get().strip(), "%d/%m/%Y")
+                datetime.datetime.strptime(self.cal_fin.get().strip(),    "%d/%m/%Y")
+            except ValueError:
+                self.lbl_status.configure(
+                    text="⚠  Formato de fecha incorrecto. Use DD/MM/AAAA",
+                    text_color="#FF6B6B"
+                )
+                return
+            regla = {
+                "nombre":       self.cal_nombre.get().strip(),
+                "remitente":    self.cal_remitente.get().strip(),
+                "asunto":       self.cal_asunto.get().strip(),
+                "grupo":        self.cal_grupo.get().strip(),
+                "fecha_inicio": self.cal_inicio.get().strip(),
+                "fecha_fin":    self.cal_fin.get().strip(),
+            }
+            if not regla["nombre"]:
+                return
+            guardar_regla_calendario(regla)
+            v.destroy()
+            self._iniciar_sync_thread()
+ 
+        ctk.CTkButton(
+            v, text="💾  Guardar Regla Temporal",
+            fg_color="#4468A4", hover_color="#315F86",
+            text_color="white", font=("Trebuchet MS", 12, "bold"),
+            width=220, height=36, corner_radius=7,
+            command=guardar
+        ).pack(pady=6)
+ 
+    # ----------------------------------------------------------
+    #  VENTANA: Agregar al Grupo
+    # ----------------------------------------------------------
+    def abrir_agregar_grupo(self, nombre_grupo: str, fecha_inicio: str, fecha_fin: str):
+        v = ctk.CTkToplevel(self)
+        v.title(f"Añadir a {nombre_grupo}")
+        v.geometry("460x320")
+        v.attributes("-topmost", True)
+        v.configure(fg_color=SCOTIA_SURFACE)
+ 
+        ctk.CTkLabel(
+            v, text=f"➕  Añadir dependencia a:\n{nombre_grupo}",
+            font=("Georgia", 14, "bold"), text_color=SCOTIA_TEXT, justify="center"
+        ).pack(pady=(16, 8))
+ 
+        ctk.CTkLabel(
+            v, text=f"Fechas heredadas: {fecha_inicio} al {fecha_fin}",
+            text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)
+        ).pack(pady=(0, 10))
+ 
+        self.add_nombre    = ctk.CTkEntry(v, placeholder_text="Nombre de la nueva regla", width=400)
+        self.add_nombre.pack(padx=24, pady=(0, 6))
+        self.add_remitente = ctk.CTkEntry(v, placeholder_text="Remitente esperado", width=400)
+        self.add_remitente.pack(padx=24, pady=(0, 6))
+        self.add_asunto    = ctk.CTkEntry(v, placeholder_text="Palabras clave en asunto", width=400)
+        self.add_asunto.pack(padx=24, pady=(0, 14))
+ 
+        def guardar():
+            regla = {
+                "nombre":       self.add_nombre.get().strip(),
+                "remitente":    self.add_remitente.get().strip(),
+                "asunto":       self.add_asunto.get().strip(),
+                "grupo":        nombre_grupo,
+                "fecha_inicio": fecha_inicio,
+                "fecha_fin":    fecha_fin,
+            }
+            if not regla["nombre"]:
+                return
+            guardar_regla_calendario(regla)
+            v.destroy()
+            self._iniciar_sync_thread()
+ 
+        ctk.CTkButton(
+            v, text="✔  Agregar al Grupo",
+            fg_color="#4468A4", hover_color="#315F86",
+            text_color="white", font=("Trebuchet MS", 12, "bold"),
+            width=200, height=36, corner_radius=7,
+            command=guardar
+        ).pack(pady=4)
+ 
+    # ----------------------------------------------------------
+    #  VENTANA: Configurar Alertas Automáticas
+    # ----------------------------------------------------------
+    def abrir_config_alerta(self):
+        v = ctk.CTkToplevel(self)
+        v.title("Programar Alertas")
+        v.geometry("440x320")
+        v.attributes("-topmost", True)
+        v.configure(fg_color=SCOTIA_SURFACE)
+ 
+        ctk.CTkLabel(
+            v, text="⏰  Automatizar Envío de Faltantes",
+            font=("Georgia", 15, "bold"), text_color=SCOTIA_TEXT
+        ).pack(pady=(18, 10))
+ 
+        ctk.CTkLabel(v, text="Correo destino de la alerta", text_color=SCOTIA_SUBTEXT,
+                     font=("Trebuchet MS", 11)).pack(anchor="w", padx=24)
+        self.entry_destinatario = ctk.CTkEntry(
+            v, placeholder_text="ej: mi.jefe@empresa.com", width=390
+        )
+        self.entry_destinatario.pack(padx=24, pady=(0, 12))
+ 
+        ctk.CTkLabel(v, text="¿Cada cuántas horas revisar y avisar?",
+                     text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(anchor="w", padx=24)
+        self.combo_horas = ctk.CTkOptionMenu(
+            v, values=["1 hora", "2 horas", "4 horas", "8 horas"], width=390
+        )
+        self.combo_horas.pack(padx=24, pady=(0, 20))
+ 
+        ctk.CTkButton(
+            v, text="⚡  Activar Automatización",
+            fg_color=SCOTIA_YELLOW, hover_color="#E6B800",
+            text_color=SCOTIA_BLACK, font=("Trebuchet MS", 12, "bold"),
+            width=220, height=36, corner_radius=7,
+            command=lambda: self.iniciar_temporizador(v)
+        ).pack(pady=4)
+ 
+    def iniciar_temporizador(self, ventana):
+        destinatario  = self.entry_destinatario.get()
+        frecuencia_str = self.combo_horas.get()
+        try:
+            horas = int(frecuencia_str.split(" ")[0])
+        except Exception:
+            horas = 1
+        milisegundos = horas * 60 * 60 * 1000
+ 
+        self.automatizacion_activa = True
+        self.btn_alerta.configure(
+            text=f"🔴  Alertas Activas ({horas}h) — Clic para detener",
+            fg_color="#1B3A1B", hover_color="#0A1F0A",
+            command=self.desactivar_automatizacion
+        )
+        ventana.destroy()
+        self.ciclo_alerta(destinatario, milisegundos)
+ 
+    def ciclo_alerta(self, destinatario: str, ms_espera: int):
+        if not self.automatizacion_activa:
+            return
+        self.enviar_correo_alerta(destinatario)
+        self.timer_id = self.after(ms_espera, lambda: self.ciclo_alerta(destinatario, ms_espera))
+ 
+    def desactivar_automatizacion(self):
+        self.automatizacion_activa = False
+        if self.timer_id is not None:
+            self.after_cancel(self.timer_id)
+            self.timer_id = None
+        self.btn_alerta.configure(
+            text="⏰  Programar Alertas",
+            fg_color=SCOTIA_RED_DARK, hover_color="#6B0609",
+            command=self.abrir_config_alerta
+        )
+ 
+    # ----------------------------------------------------------
+    #  ENVIAR CORREO DE ALERTA
+    # ----------------------------------------------------------
+    def enviar_correo_alerta(self, destinatario: str):
+        self._iniciar_sync_thread()
+ 
+        faltantes = []
+        for widget in self.left_panel.winfo_children():
+            if isinstance(widget, ctk.CTkCheckBox):
+                faltantes.append(widget.cget("text"))
+            elif isinstance(widget, ctk.CTkFrame):
+                for sub in widget.winfo_children():
+                    if isinstance(sub, ctk.CTkCheckBox):
+                        faltantes.append(sub.cget("text"))
+ 
+        if not faltantes:
+            return
+ 
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            correo  = outlook.CreateItem(0)
+            correo.To      = destinatario
+            correo.Subject = "Recordatorio: Reportes y Conformidades Pendientes de Envío"
+ 
+            lista_html = ""
+            for item in faltantes:
+                nombre_limpio = item.replace("Falta: ", "")
+                lista_html   += f'<li style="margin-bottom:5px"><b>{nombre_limpio}</b></li>'
+ 
+            correo.HTMLBody = f"""
+<html><body style="font-family:'Segoe UI',Arial,sans-serif;color:#262626;line-height:1.6">
+  <h3 style="color:#ED0006;border-bottom:1px solid #ED0006;padding-bottom:5px">
+    Aviso Automático: Monitoreo de Reportes
+  </h3>
+  <p>Estimado equipo,</p>
+  <p>Por medio de la presente, les recordamos que al corte de la revisión actual,
+     el sistema registra los siguientes reportes/conformidades como
+     <b>pendientes de envío</b>:</p>
+  <ul style="color:#ED0006"><span style="color:#262626">{lista_html}</span></ul>
+  <p>Agradeceremos contactar a los encargados correspondientes para asegurar
+     que la información llegue a la brevedad posible.</p>
+  <br>
+  <p style="font-size:12px;color:#555555">
+    Atentamente,<br><br>
+    <b>Área de Riesgos de Mercado</b><br>
+    <b style="color:#ED0006">Scotiabank Perú</b><br>
+    <i>Este es un mensaje generado automáticamente por el Monitor de Reportes.</i>
+  </p>
+</body></html>"""
+            correo.Send()
+        except Exception as e:
+            print(f"Error al enviar correo de alerta: {e}")
+ 
+    # ----------------------------------------------------------
+    #  ACCIONES SOBRE CORREOS
+    # ----------------------------------------------------------
+    def abrir_correo_especifico(self, entry_id: str):
+        if not entry_id:
+            return
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+            item = outlook.GetItemFromID(entry_id)
+            item.Display()
+        except Exception as e:
+            print(f"Error al abrir correo: {e}")
+ 
+    def rechazar_correo(self, nombre_regla: str, entry_id: str):
+        if not entry_id:
+            return
+        agregar_ignorado_excel(nombre_regla, entry_id)
+        self._iniciar_sync_thread()
+ 
+    def eliminar_regla(self, nombre_regla: str):
+        eliminar_regla_excel(nombre_regla)
+        self._iniciar_sync_thread()
+ 
+    # ----------------------------------------------------------
+    #  EVALUADOR DE CONTENIDO
+    # ----------------------------------------------------------
+    def evaluar_contenido_conforme(self, cuerpo_correo: str) -> bool:
+        if not cuerpo_correo:
+            return True
+        texto_limpio = cuerpo_correo
+        for sep in ["\r\nDe:", "\nDe:", "\r\nFrom:", "\nFrom:"]:
+            if sep in texto_limpio:
+                texto_limpio = texto_limpio.split(sep)[0]
+        texto = texto_limpio.lower()
+        alertas = [
+            "error", "equivoca", "revisar", "no cuadra", "observación",
+            "observacion", "rechaz", "falta", "corrige", "incorrecto",
+            "pendiente", "diferencia", "ajustar", "volver", "modifiquemos",
+            "comentario", "cambiemos", "mejora", "no me coincide",
+            "no coincide", "cambia", "cambie",
+        ]
+        for palabra in alertas:
+            if palabra in texto:
+                return False
+        return True
+ 
+ 
+# ============================================================
+#  ENTRY POINT
+# ============================================================
+if __name__ == "__main__":
+    app = MonitorApp()
+    app.mainloop()
+ 
