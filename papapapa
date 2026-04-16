@@ -1,0 +1,75 @@
+# --- NUEVO CAMPO: SOLICITUD ---
+        ctk.CTkLabel(v, text="Palabra clave del correo de SOLICITUD (Opcional, Ej: Envío RDARR):", 
+                     text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(anchor="w", padx=24, pady=(10, 0))
+        entry_solicitud = ctk.CTkEntry(v, width=400, placeholder_text="Deja vacío si tú no envías solicitud...")
+        entry_solicitud.pack(padx=24, pady=(0, 15))
+
+
+
+# 1. Conectar a Outlook
+        outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+        
+        # --- BANDEJA DE ENTRADA (Lo que ya tienes) ---
+        bandeja = outlook.GetDefaultFolder(6)
+        mensajes = bandeja.Items
+        mensajes.Sort("[ReceivedTime]", True)
+        max_correos = min(2000, len(mensajes))
+        
+        # --- NUEVO: BANDEJA DE ENVIADOS ---
+        bandeja_enviados = outlook.GetDefaultFolder(5)
+        enviados = bandeja_enviados.Items
+        enviados.Sort("[SentOn]", True)
+        max_enviados = min(500, len(enviados)) # 500 es suficiente para el día de hoy
+
+
+
+# --- NUEVO: RADAR DE SOLICITUDES ---
+            # Asumiendo que tu función de leer el Excel ahora trae esta columna
+            palabra_solicitud = proc.get("solicitud", "").lower() 
+            solicitud_enviada = False
+            hora_sol_str = ""
+
+            if palabra_solicitud: # Solo busca si escribiste algo al crear la regla
+                for i in range(max_enviados):
+                    try:
+                        msg_env = enviados.Item(i + 1)
+                        # Si el correo enviado es más antiguo que nuestra fecha límite, dejamos de buscar
+                        if msg_env.SentOn.date() < fecha_limite: 
+                            break
+                        
+                        # Si encontramos la palabra clave en el Asunto de un correo enviado
+                        if palabra_solicitud in msg_env.Subject.lower():
+                            solicitud_enviada = True
+                            hora_sol_str = str(msg_env.SentOn)[11:16] # Extraemos solo la hora "HH:MM"
+                            break
+                    except Exception:
+                        continue
+
+
+
+datos_proc = {
+                "nombre": nombre_proc,
+                # ... tus otras variables ...
+                "req_solicitud": bool(palabra_solicitud), # True si esta regla exige enviar solicitud
+                "solicitud_enviada": solicitud_enviada,
+                "hora_solicitud": hora_sol_str,
+            }
+
+
+
+
+# --- NUEVO: CONSTRUIR EL INDICADOR VISUAL ---
+        indicador_sol = ""
+        if datos.get("req_solicitud"): # Solo aparece si configuraste palabra clave
+            if datos["solicitud_enviada"]:
+                indicador_sol = f"   [ ✅ Solicitud Enviada a las {datos['hora_solicitud']} ]"
+            else:
+                indicador_sol = "   [ ⚠️ SOLICITUD PENDIENTE DE ENVÍO ]"
+
+        # Reemplaza tu ctk.CTkLabel del header por este:
+        ctk.CTkLabel(
+            header, 
+            text=f" ⌛ {datos['nombre']} {texto_dias} [{datos['cumplidos']}/{datos['total']}]{indicador_sol}", 
+            font=("Trebuchet MS", 12, "bold"), 
+            text_color="#FF8A80" if not datos.get("solicitud_enviada") and datos.get("req_solicitud") else "white" # Se pinta de salmón si olvidaste enviarlo
+        ).pack(side="left", padx=10)
