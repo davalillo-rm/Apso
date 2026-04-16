@@ -1,0 +1,160 @@
+def leer_items_de_proceso(nombre_proceso):
+    if not os.path.exists(EXCEL_FILE): return []
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    ws = wb["Items_Esperados"] # Asegúrate de usar el nombre correcto de tu hoja
+    items = []
+    
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0] == nombre_proceso:
+            items.append({
+                "nombre": row[1],
+                "remitente": row[2],
+                "asunto": row[3],
+                # Capturamos la columna 5 (índice 4). Si está vacía, devuelve ""
+                "solicitud": row[4] if len(row) > 4 and row[4] else "" 
+            })
+    return items
+
+
+
+
+
+def guardar_item(nombre_proceso, nombre_item, remitente, asunto, solicitud_key):
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    ws = wb["Items_Esperados"]
+    ws.append([nombre_proceso, nombre_item, remitente, asunto, solicitud_key])
+    wb.save(EXCEL_FILE)
+
+
+
+
+
+# Justo debajo de tu entry_asun (Asunto)
+        ctk.CTkLabel(frame_form, text="Palabra clave de SOLICITUD enviada (Opcional, Ej: Envío RDARR Lili):", 
+                     font=("Trebuchet MS", 11), text_color=SCOTIA_SUBTEXT).pack(anchor="w")
+        entry_sol_item = ctk.CTkEntry(frame_form, width=500)
+        entry_sol_item.pack(pady=(0, 15))
+
+
+
+
+
+
+
+
+def guardar_o_actualizar():
+            nombre = entry_nombre.get().strip()
+            remi = entry_remi.get().strip()
+            asun = entry_asun.get().strip()
+            sol = entry_sol_item.get().strip() # <--- Captura la palabra clave
+
+            if not nombre or not remi or not asun:
+                messagebox.showwarning("Incompleto", "Llena los campos principales.")
+                return
+
+            if estado_edicion["nombre_viejo"]:
+                eliminar_item_excel(nombre_proceso, estado_edicion["nombre_viejo"])
+
+            # Pasamos la nueva variable 'sol' a tu función de guardado
+            guardar_item(nombre_proceso, nombre, remi, asun, sol) 
+            refrescar_lista()
+            limpiar_formulario()
+
+        def cargar_para_editar(item):
+            # ... tus otros entry.delete e insert ...
+            entry_sol_item.delete(0, 'end')
+            entry_sol_item.insert(0, item.get("solicitud", "")) # <--- Carga el dato
+            # ...
+
+        def limpiar_formulario():
+            # ... tus otros entry.delete ...
+            entry_sol_item.delete(0, 'end') # <--- Limpia la caja
+            # ...
+
+
+
+
+
+
+
+# Conectar a Outlook (Entrada)
+        outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+        bandeja = outlook.GetDefaultFolder(6)
+        mensajes = bandeja.Items
+        mensajes.Sort("[ReceivedTime]", True)
+        max_correos = min(2000, len(mensajes))
+
+        # --- NUEVO: Conectar a Enviados ---
+        bandeja_enviados = outlook.GetDefaultFolder(5)
+        enviados = bandeja_enviados.Items
+        enviados.Sort("[SentOn]", True)
+        max_enviados = min(500, len(enviados))
+
+
+
+
+
+
+
+
+
+for item in items_esperados:
+            cumplido = False
+            hora_str = ""
+            correo_id = ""
+            es_valido = True
+            
+            # --- LÓGICA DEL RADAR DE ENVIADOS ---
+            palabra_solicitud = item.get("solicitud", "").lower()
+            sol_enviada = False
+            hora_sol = ""
+            
+            if palabra_solicitud:
+                for i in range(max_enviados):
+                    try:
+                        msg_env = enviados.Item(i + 1)
+                        if msg_env.SentOn.date() < fecha_limite:
+                            break
+                        if palabra_solicitud in msg_env.Subject.lower():
+                            sol_enviada = True
+                            hora_sol = str(msg_env.SentOn)[11:16]
+                            break
+                    except Exception:
+                        continue
+            
+            # Creamos el nombre con su indicador visual pegado
+            indicador_sol = ""
+            if palabra_solicitud:
+                indicador_sol = f"  [✅ Sol. Enviada {hora_sol}]" if sol_enviada else "  [⚠️ SOL. PENDIENTE]"
+            
+            nombre_item_display = f"{item['nombre']}{indicador_sol}"
+            # ------------------------------------
+
+            # ... (Aquí sigue tu lógica normal de buscar en la bandeja de entrada) ...
+
+
+
+
+
+
+
+
+
+
+
+# Al final de evaluar el item:
+            if cumplido:
+                datos_proc["cumplidos"] += 1
+                datos_proc["recibidos"].append({
+                    "nombre": nombre_item_display, # <--- Cambio aquí
+                    "hora": hora_str,
+                    "es_valido": es_valido, "correo_id": correo_id
+                })
+            else:
+                datos_proc["faltantes"].append(nombre_item_display) # <--- Cambio aquí
+
+
+
+
+
+
