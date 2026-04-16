@@ -1,0 +1,67 @@
+# 3. Crear el Excel de Status
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Status Actual"
+            
+            # --- DISEÑO CORPORATIVO SCOTIABANK ---
+            rojo_scotia = PatternFill(start_color="ED0006", end_color="ED0006", fill_type="solid")
+            fuente_blanca = Font(color="FFFFFF", bold=True)
+            alineacion_centro = Alignment(horizontal="center", vertical="center")
+            borde_fino = Border(left=Side(style='thin'), right=Side(style='thin'), 
+                                top=Side(style='thin'), bottom=Side(style='thin'))
+
+            # Escribir y pintar encabezados
+            encabezados = ["Proceso", "Estado", "Avance", "Ítem / Correo", "Hora Recibido", "Validación"]
+            ws.append(encabezados)
+            
+            for col in range(1, 7):
+                celda = ws.cell(row=1, column=col)
+                celda.fill = rojo_scotia
+                celda.font = fuente_blanca
+                celda.alignment = alineacion_centro
+                celda.border = borde_fino
+
+            # Recorrer los resultados actuales
+            if hasattr(self, 'ultimo_resultado') and self.ultimo_resultado:
+                procesos = self.ultimo_resultado.get("procesos", []) 
+                
+                for datos in procesos: 
+                    nombre_g = datos["nombre"]
+                    estado = "COMPLETO" if datos["cumplidos"] == datos["total"] and datos["total"] > 0 else "EN PROCESO"
+                    avance = f"{datos['cumplidos']}/{datos['total']}"
+                    
+                    # Añadir filas de recibidos
+                    for rec in datos["recibidos"]:
+                        val_str = "Conforme" if rec.get("es_valido", True) else "OBSERVADO"
+                        ws.append([nombre_g, estado, avance, rec["nombre"], rec["hora"], val_str])
+                    
+                    # Añadir filas de faltantes
+                    for falt in datos["faltantes"]:
+                        ws.append([nombre_g, estado, avance, falt, "PENDIENTE", "PENDIENTE"])
+
+            # --- DAR FORMATO A LOS DATOS Y COLORES AUTOMÁTICOS ---
+            for row in ws.iter_rows(min_row=2, max_col=6, max_row=ws.max_row):
+                for celda in row:
+                    celda.alignment = alineacion_centro
+                    celda.border = borde_fino
+                    
+                    # Pintar palabras clave (Semáforo)
+                    if celda.value in ["PENDIENTE", "OBSERVADO"]:
+                        celda.font = Font(color="ED0006", bold=True) # Rojo Scotia
+                    elif celda.value in ["COMPLETO", "Conforme"]:
+                        celda.font = Font(color="008000", bold=True) # Verde
+                    elif celda.value == "EN PROCESO":
+                        celda.font = Font(color="E68800", bold=True) # Naranja/Amarillo
+
+            # --- AUTO-AJUSTAR ANCHO DE COLUMNAS ---
+            anchos = {'A': 25, 'B': 15, 'C': 12, 'D': 35, 'E': 15, 'F': 15}
+            for col_letra, ancho in anchos.items():
+                ws.column_dimensions[col_letra].width = ancho
+
+            wb.save(ruta_final)
+            
+            if not automatico:
+                messagebox.showinfo("Reporte Generado", f"Tu estado se ha actualizado en:\n{ruta_final}")
+                
+        except Exception as e:
+            print(f"Error en exportar_estado_jefe: {e}")
