@@ -1,0 +1,50 @@
+# --- NUEVA INTELIGENCIA DE CALENDARIO (SOLO DÍAS HÁBILES) ---
+            fecha_limite = hoy
+            dias_restantes = 0 
+            evaluar_proceso = True 
+
+            # Python cuenta los días así: 0=Lunes, 1=Martes ... 4=Viernes, 5=Sábado, 6=Domingo
+            dias_desde_lunes = hoy.weekday() 
+            es_fin_de_semana = dias_desde_lunes >= 5
+
+            if frecuencia == "Diario":
+                if es_fin_de_semana:
+                    # ¡Los fines de semana el monitor descansa de los diarios!
+                    evaluar_proceso = False 
+                else:
+                    fecha_limite = hoy 
+                    dias_restantes = 0
+                
+            elif frecuencia == "Semanal":
+                # Buscamos correos desde el Lunes de esta semana
+                fecha_limite = hoy - datetime.timedelta(days=dias_desde_lunes) 
+                
+                # Matemática financiera simple: El límite es el Viernes (día 4)
+                # Si hoy es Jueves (3) -> 4 - 3 = 1 día restante
+                # Si hoy es Sábado (5) -> 4 - 5 = -1 (Venció ayer)
+                dias_restantes = 4 - dias_desde_lunes 
+                
+            elif "Mensual" in frecuencia: 
+                dia_mes = hoy.day
+                if dia_mes <= 7: sem_actual = "S1"
+                elif dia_mes <= 14: sem_actual = "S2"
+                elif dia_mes <= 21: sem_actual = "S3"
+                else: sem_actual = "S4"
+
+                semanas_activas = str(proc.get("valor_tiempo", ""))
+                
+                if sem_actual in semanas_activas:
+                    evaluar_proceso = True
+                    # Toca esta semana: Busca desde el lunes y vence el viernes
+                    fecha_limite = hoy - datetime.timedelta(days=dias_desde_lunes)
+                    dias_restantes = 4 - dias_desde_lunes 
+                else:
+                    # Esta semana del mes no toca pedir este reporte
+                    evaluar_proceso = False
+
+            # --- FILTRO MAESTRO ---
+            if not evaluar_proceso:
+                continue 
+
+            # --- Leer Ítems (Correos) que pertenecen a este proceso ---
+            items_esperados = leer_items_de_proceso(nombre_proc)
