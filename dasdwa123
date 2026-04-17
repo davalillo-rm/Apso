@@ -1,0 +1,54 @@
+def eliminar_proceso_excel(nombre_proceso):
+    """Elimina el proceso y todos sus ítems del Excel."""
+    if not os.path.exists(EXCEL_FILE): return
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+
+    # 1. Eliminar de la hoja Procesos
+    if "Procesos" in wb.sheetnames:
+        ws_p = wb["Procesos"]
+        for row in range(ws_p.max_row, 1, -1):
+            if ws_p.cell(row=row, column=1).value == nombre_proceso:
+                ws_p.delete_rows(row)
+
+    # 2. Eliminar de la hoja Items_Esperados (para que no queden ítems fantasmas)
+    if "Items_Esperados" in wb.sheetnames:
+        ws_i = wb["Items_Esperados"]
+        for row in range(ws_i.max_row, 1, -1):
+            if ws_i.cell(row=row, column=1).value == nombre_proceso:
+                ws_i.delete_rows(row)
+
+    wb.save(EXCEL_FILE)
+
+
+
+
+# --- NUEVO: CONTENEDOR PARA LOS DOS BOTONES ---
+        # Creamos un frame invisible para alinear ambos botones uno al lado del otro
+        frame_botones = ctk.CTkFrame(frame_form, fg_color="transparent")
+        frame_botones.pack(pady=(15, 0))
+
+        # El botón original verde (Asegúrate de que esté apuntando a tu función guardar_o_actualizar)
+        btn_guardar = ctk.CTkButton(frame_botones, text="+ Añadir Ítem al Proceso", 
+                                    fg_color=SCOTIA_GREEN_DIM, command=guardar_o_actualizar)
+        btn_guardar.pack(side="left", padx=10)
+
+        # La lógica de eliminación
+        def confirmar_eliminacion():
+            # Recuerda el parent=v (o el nombre de tu variable Toplevel de esta ventana) para que no se oculte
+            respuesta = messagebox.askyesno(
+                "Eliminar Proceso",
+                f"¿Estás seguro de que deseas eliminar permanentemente el proceso '{nombre_proceso}'?\n\n"
+                "También se borrarán todos los correos asignados a él. Esta acción no se puede deshacer.",
+                parent=v  # <--- Cambia 'v' por el nombre de tu variable de ventana si es distinto (ej: ventana_editar)
+            )
+            
+            if respuesta:
+                eliminar_proceso_excel(nombre_proceso)
+                v.destroy() # Cerramos la ventana de edición
+                self.sincronizar_correos() # Forzamos una actualización del panel principal para que desaparezca
+
+        # El nuevo botón rojo
+        btn_eliminar_proc = ctk.CTkButton(frame_botones, text="🗑️ Eliminar Proceso", 
+                                          fg_color=SCOTIA_RED, hover_color=SCOTIA_RED_HOVER, 
+                                          command=confirmar_eliminacion)
+        btn_eliminar_proc.pack(side="left", padx=10)
