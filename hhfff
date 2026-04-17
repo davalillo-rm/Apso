@@ -1,0 +1,28 @@
+    # 2. Lógica del Bucket (Rango de 5 min, cota superior inclusiva)
+    m = now.minute
+    h = now.hour
+
+    if m % 5 == 0:
+        # Si es múltiplo exacto (ej. 12:10), cerramos el bucket anterior (12:05-12:10)
+        min_fin = m
+        hr_fin = h
+        
+        min_ini = m - 5
+        hr_ini = h
+        # Si retrocedemos desde el minuto 00, saltamos a la hora anterior (ej. 12:00 -> 11:55)
+        if min_ini < 0:  
+            min_ini = 55
+            hr_ini = (h - 1) % 24
+    else:
+        # Si no es múltiplo (ej. 12:11), calculamos el bucket actual (12:10-12:15)
+        min_ini = (m // 5) * 5
+        hr_ini = h
+        
+        min_fin = min_ini + 5
+        hr_fin = h
+        # Si avanzamos hasta el minuto 60, saltamos a la hora siguiente (ej. 12:59 -> 13:00)
+        if min_fin == 60: 
+            min_fin = 0
+            hr_fin = (h + 1) % 24
+
+    rango = f"{hr_ini:02d}:{min_ini:02d}-{hr_fin:02d}:{min_fin:02d}"
