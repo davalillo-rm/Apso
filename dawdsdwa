@@ -1,0 +1,106 @@
+# --- NUEVAS VARIABLES PARA CHECKBOXES ---
+        var_s1 = ctk.StringVar(value="")
+        var_s2 = ctk.StringVar(value="")
+        var_s3 = ctk.StringVar(value="")
+        var_s4 = ctk.StringVar(value="")
+
+        def cambiar_frecuencia(seleccion):
+            # Limpiamos el contenedor
+            for widget in frame_dinamico.winfo_children():
+                widget.destroy()
+
+            if seleccion == "Mensual (Elegir Semanas)":
+                ctk.CTkLabel(frame_dinamico, text="Selecciona en qué semanas del mes se activará:", 
+                             text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(anchor="w", pady=(0, 5))
+                
+                # Creamos un frame horizontal para que los checkboxes se vean ordenados
+                chk_frame = ctk.CTkFrame(frame_dinamico, fg_color="transparent")
+                chk_frame.pack(fill="x")
+                
+                ctk.CTkCheckBox(chk_frame, text="Semana 1", variable=var_s1, onvalue="S1", offvalue="", 
+                                font=("Trebuchet MS", 11), checkbox_width=18, checkbox_height=18).pack(side="left", padx=(0, 10))
+                ctk.CTkCheckBox(chk_frame, text="Semana 2", variable=var_s2, onvalue="S2", offvalue="", 
+                                font=("Trebuchet MS", 11), checkbox_width=18, checkbox_height=18).pack(side="left", padx=10)
+                ctk.CTkCheckBox(chk_frame, text="Semana 3", variable=var_s3, onvalue="S3", offvalue="", 
+                                font=("Trebuchet MS", 11), checkbox_width=18, checkbox_height=18).pack(side="left", padx=10)
+                ctk.CTkCheckBox(chk_frame, text="Semana 4", variable=var_s4, onvalue="S4", offvalue="", 
+                                font=("Trebuchet MS", 11), checkbox_width=18, checkbox_height=18).pack(side="left", padx=10)
+            
+            elif seleccion == "Diario":
+                ctk.CTkLabel(frame_dinamico, text="⚡ El reporte se exigirá todos los días laborables.", 
+                             text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(anchor="w")
+                
+            elif seleccion == "Semanal":
+                ctk.CTkLabel(frame_dinamico, text="📅 El reporte se exigirá 1 vez por semana.", 
+                             text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(anchor="w")
+
+        # --- EL NUEVO MENÚ DESPLEGABLE ---
+        combo_frecuencia = ctk.CTkOptionMenu(v, values=["Diario", "Semanal", "Mensual (Elegir Semanas)"], 
+                                             width=400, command=cambiar_frecuencia)
+        combo_frecuencia.pack(padx=24, pady=(0, 15))
+        
+        # Contenedor dinámico
+        frame_dinamico = ctk.CTkFrame(v, fg_color="transparent")
+        frame_dinamico.pack(padx=24, fill="x", pady=(0, 15))
+        
+        # Forzamos la carga inicial
+        cambiar_frecuencia("Diario")
+
+
+
+
+
+
+
+
+
+
+
+
+
+def guardar():
+            nombre = entry_nombre.get().strip()
+            frecuencia = combo_frecuencia.get()
+
+            if not nombre:
+                messagebox.showwarning("Falta nombre", "Debes ingresar un nombre para el proceso.")
+                return
+
+            # --- NUEVA LÓGICA DE CAPTURA DE TIEMPO ---
+            if frecuencia == "Mensual (Elegir Semanas)":
+                # Recolectamos solo los checkboxes que están marcados
+                semanas_marcadas = [s for s in [var_s1.get(), var_s2.get(), var_s3.get(), var_s4.get()] if s != ""]
+                
+                if not semanas_marcadas:
+                    messagebox.showwarning("Selección Vacía", "Debes seleccionar al menos una semana del mes.")
+                    return
+                
+                # Unimos las selecciones. Ej: Si marcas 1 y 3, guardará "S1-S3"
+                valor_tiempo = "-".join(semanas_marcadas) 
+                
+            else:
+                # Si es Diario o Semanal, no necesitamos guardar variables extra de tiempo
+                valor_tiempo = "N/A" 
+
+            # Guardamos en Excel usando la función de la versión 6.0 limpia (3 columnas)
+            guardar_nuevo_proceso(nombre, frecuencia, valor_tiempo)
+            
+            respuesta = messagebox.askyesno(
+                "Proceso Creado",
+                f"El proceso '{nombre}' se creó exitosamente.\n\n¿Deseas añadirle los correos (ítems) en este momento?"
+            )
+            
+            if respuesta:
+                self.abrir_editar_proceso(nombre)
+                
+            v.destroy()
+
+
+
+
+
+
+
+
+
+
