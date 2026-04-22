@@ -1,0 +1,47 @@
+import pandas as pd
+import os
+
+FILE_PAIRS = [
+    ("A/RTK_A.xlsx", "B/RTK_B.xlsx", "codigo_rtk"),  # ← (archivo_A, archivo_B, columna_id)
+    ("A/FOO_A.xlsx", "B/FOO_B.xlsx", "order_id"),
+]
+
+def compare_excels(path_a, path_b, key_col):
+    df_a = pd.read_excel(path_a).set_index(key_col)
+    df_b = pd.read_excel(path_b).set_index(key_col)
+
+    cols_only_a = set(df_a.columns) - set(df_b.columns)
+    cols_only_b = set(df_b.columns) - set(df_a.columns)
+    common_cols = list(set(df_a.columns) & set(df_b.columns))
+
+    diff_mask = df_a[common_cols].ne(df_b[common_cols])
+
+    diffs = []
+    for col in common_cols:
+        for idx in df_a[diff_mask[col]].index:
+            diffs.append({
+                "id":       idx,
+                "columna":  col,
+                "valor_A":  df_a.at[idx, col],
+                "valor_B":  df_b.at[idx, col],
+            })
+
+    if cols_only_a:
+        print(f"  ⚠ Columnas solo en A: {cols_only_a}")
+    if cols_only_b:
+        print(f"  ⚠ Columnas solo en B: {cols_only_b}")
+
+    return pd.DataFrame(diffs)
+
+for path_a, path_b, key_col in FILE_PAIRS:  # ← ahora desempaqueta 3 valores
+    name = os.path.basename(path_a).replace("_A.xlsx", "")
+    print(f"\n📄 Comparando: {name} (ID: '{key_col}')")
+
+    report = compare_excels(path_a, path_b, key_col)
+
+    if report.empty:
+        print("  ✅ Sin diferencias")
+    else:
+        out = f"diff_{name}.xlsx"
+        report.to_excel(out, index=False)
+        print(f"  ❌ {len(report)} diferencias → guardado en {out}")
