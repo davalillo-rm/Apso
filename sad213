@@ -1,0 +1,77 @@
+import pandas as pd
+import os
+
+# ─── CONFIGURA AQUÍ TUS ARCHIVOS ───────────────────────────────────────────────
+# Formato: ("ruta_A", "ruta_B", "columna_id_en_A", "columna_id_en_B")
+# Si el ID tiene el mismo nombre en ambos, repite el nombre dos veces
+
+FILE_PAIRS = [
+    ("A/RTK_A.xlsx", "B/RTK_B.xlsx", "codigo_rtk", "codigo_rtk"),
+    ("A/FOO_A.xlsx", "B/FOO_B.xlsx", "order_id",   "orden_id"),
+    ("A/BAR_A.xlsx", "B/BAR_B.xlsx", "RUC",        "RUC"),
+]
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+def compare_excels(path_a, path_b, key_col_a, key_col_b):
+    df_a = pd.read_excel(path_a).set_index(key_col_a)
+    df_b = pd.read_excel(path_b).set_index(key_col_b)
+
+    # Columnas exclusivas de cada archivo
+    cols_only_a = set(df_a.columns) - set(df_b.columns)
+    cols_only_b = set(df_b.columns) - set(df_a.columns)
+    common_cols = list(set(df_a.columns) & set(df_b.columns))
+
+    if cols_only_a:
+        print(f"  ⚠  Columnas solo en A: {cols_only_a}")
+    if cols_only_b:
+        print(f"  ⚠  Columnas solo en B: {cols_only_b}")
+
+    # Filas exclusivas de cada archivo
+    ids_only_a = set(df_a.index) - set(df_b.index)
+    ids_only_b = set(df_b.index) - set(df_a.index)
+
+    if ids_only_a:
+        print(f"  ⚠  Filas solo en A ({len(ids_only_a)} filas): {list(ids_only_a)[:5]}{'...' if len(ids_only_a) > 5 else ''}")
+    if ids_only_b:
+        print(f"  ⚠  Filas solo en B ({len(ids_only_b)} filas): {list(ids_only_b)[:5]}{'...' if len(ids_only_b) > 5 else ''}")
+
+    # Comparar solo filas y columnas comunes
+    common_ids = df_a.index.intersection(df_b.index)
+    df_a_common = df_a.loc[common_ids, common_cols]
+    df_b_common = df_b.loc[common_ids, common_cols]
+
+    diff_mask = df_a_common.ne(df_b_common)
+
+    diffs = []
+    for col in common_cols:
+        for idx in df_a_common[diff_mask[col]].index:
+            diffs.append({
+                "id":      idx,
+                "columna": col,
+                "valor_A": df_a_common.at[idx, col],
+                "valor_B": df_b_common.at[idx, col],
+            })
+
+    return pd.DataFrame(diffs)
+
+
+# ─── EJECUCIÓN ─────────────────────────────────────────────────────────────────
+for path_a, path_b, key_col_a, key_col_b in FILE_PAIRS:
+    name = os.path.basename(path_a).replace("_A.xlsx", "")
+    print(f"\n📄 Comparando: {name}  (ID en A: '{key_col_a}' | ID en B: '{key_col_b}')")
+
+    try:
+        report = compare_excels(path_a, path_b, key_col_a, key_col_b)
+
+        if report.empty:
+            print("  ✅ Sin diferencias")
+        else:
+            out = f"diff_{name}.xlsx"
+            report.to_excel(out, index=False)
+            print(f"  ❌ {len(report)} diferencias encontradas → guardado en {out}")
+
+    except FileNotFoundError as e:
+        print(f"  🚫 Archivo no encontrado: {e}")
+    except KeyError as e:
+        print(f"  🚫 Columna ID no encontrada: {e} — revisa el nombre exacto en FILE_PAIRS")
