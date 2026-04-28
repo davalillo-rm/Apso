@@ -1,0 +1,87 @@
+Sub CargarDatosSQL()
+    Dim conn As Object, rs As Object
+    Dim wsDatos As Worksheet, wsFecha As Worksheet
+    Dim strConn As String, strFechaSQL As String
+    Dim i As Long, ultimaFila As Long
+    Dim fechaProceso As Variant
+    Dim registrosCargados As Long
+    
+    ' 1. Definir hojas
+    Set wsDatos = ThisWorkbook.Sheets("RF2")     ' Donde está la tabla
+    Set wsFecha = ThisWorkbook.Sheets("Posturas") ' Donde está la fecha Q1
+    
+    fechaProceso = wsFecha.Range("Q1").Value
+    
+    ' Validar fecha
+    If Not IsDate(fechaProceso) Then
+        MsgBox "No hay una fecha válida en Posturas!Q1", vbCritical
+        Exit Sub
+    End If
+    
+    ' Formatear fecha para SQL
+    strFechaSQL = Format(fechaProceso, "yyyy-mm-dd")
+
+    Set conn = CreateObject("ADODB.Connection")
+    Set rs = CreateObject("ADODB.Recordset")
+    
+    ' CONFIGURACIÓN (Cambia TU_SERVIDOR)
+    strConn = "Provider=SQLOLEDB;Data Source=TU_SERVIDOR;Initial Catalog=SBP_RGTRABAJO;Integrated Security=SSPI;"
+    
+    On Error GoTo ErrorHandler
+    conn.Open strConn
+    
+    ' ========================================================================
+    ' 2. PASO CRÍTICO: Borrar datos existentes para evitar duplicados
+    ' ========================================================================
+    conn.Execute "DELETE FROM dbo.RF2 WHERE Fecha_Carga = '" & strFechaSQL & "'"
+    
+    ' 3. Abrir el Recordset para insertar los nuevos datos
+    rs.Open "SELECT * FROM dbo.RF2 WHERE 1=0", conn, 1, 3
+    
+    ' 4. Encontrar la última fila con datos en la columna A
+    ultimaFila = wsDatos.Cells(wsDatos.Rows.Count, 1).End(xlUp).Row
+    registrosCargados = 0
+    
+    ' 5. Bucle para recorrer la hoja saltando espacios vacíos
+    For i = 2 To ultimaFila
+        
+        ' Si la columna A (Hora) no está vacía, procedemos
+        If Trim(wsDatos.Cells(i, 1).Value) <> "" Then
+            
+            rs.AddNew
+            rs.Fields("Hora").Value = Format(wsDatos.Cells(i, 1).Value, "hh:mm:ss")
+            rs.Fields("Tit").Value = wsDatos.Cells(i, 2).Value
+            rs.Fields("Emis").Value = wsDatos.Cells(i, 3).Value
+            rs.Fields("M").Value = wsDatos.Cells(i, 4).Value
+            
+            ' Validar fechas de emisión y vencimiento
+            If IsDate(wsDatos.Cells(i, 5).Value) Then rs.Fields("Emision").Value = Format(wsDatos.Cells(i, 5).Value, "yyyy-mm-dd")
+            If IsDate(wsDatos.Cells(i, 6).Value) Then rs.Fields("Vence").Value = Format(wsDatos.Cells(i, 6).Value, "yyyy-mm-dd")
+            
+            rs.Fields("FV").Value = wsDatos.Cells(i, 7).Value
+            rs.Fields("Pl").Value = wsDatos.Cells(i, 8).Value
+            rs.Fields("Porc_T").Value = wsDatos.Cells(i, 9).Value
+            rs.Fields("Porc_Pre").Value = wsDatos.Cells(i, 10).Value
+            rs.Fields("Mo").Value = wsDatos.Cells(i, 11).Value
+            rs.Fields("Columna_L").Value = wsDatos.Cells(i, 12).Value
+            
+            ' Guardar la fecha de proceso (la que acabamos de limpiar arriba)
+            rs.Fields("Fecha_Carga").Value = strFechaSQL
+            
+            rs.Update
+            registrosCargados = registrosCargados + 1
+        End If
+    Next i
+    
+    MsgBox "Proceso Terminado:" & vbCrLf & _
+           "- Datos anteriores del día " & Format(fechaProceso, "dd/mm/yyyy") & " eliminados." & vbCrLf & _
+           "- Se cargaron " & registrosCargados & " registros nuevos.", vbInformation
+    
+    rs.Close: conn.Close
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error en fila " & i & ": " & Err.Description, vbCritical
+    If Not rs Is Nothing Then If rs.State = 1 Then rs.Close
+    If Not conn Is Nothing Then If conn.State = 1 Then conn.Close
+End Sub
