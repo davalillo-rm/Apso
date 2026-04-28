@@ -1,0 +1,79 @@
+Sub CargarDatosSQL()
+    Dim conn As Object, rs As Object
+    Dim wsDatos As Worksheet, wsFecha As Worksheet
+    Dim strConn As String
+    Dim i As Long, ultimaFila As Long
+    Dim fechaProceso As Variant
+    Dim registrosCargados As Long
+    
+    ' Definir hojas
+    Set wsDatos = ThisWorkbook.Sheets("RF2")     ' Donde está la tabla
+    Set wsFecha = ThisWorkbook.Sheets("Posturas") ' Donde está la fecha Q1
+    
+    fechaProceso = wsFecha.Range("Q1").Value
+    
+    ' Validar fecha
+    If Not IsDate(fechaProceso) Then
+        MsgBox "No hay una fecha válida en Posturas!Q1", vbCritical
+        Exit Sub
+    End If
+
+    Set conn = CreateObject("ADODB.Connection")
+    Set rs = CreateObject("ADODB.Recordset")
+    
+    ' CONFIGURACIÓN (Cambia TU_SERVIDOR)
+    strConn = "Provider=SQLOLEDB;Data Source=TU_SERVIDOR;Initial Catalog=SBP_RGTRABAJO;Integrated Security=SSPI;"
+    
+    On Error GoTo ErrorHandler
+    conn.Open strConn
+    rs.Open "SELECT * FROM dbo.RF2 WHERE 1=0", conn, 1, 3
+    
+    ' 1. Encontrar la última fila con datos en la columna A
+    ultimaFila = wsDatos.Cells(wsDatos.Rows.Count, 1).End(xlUp).Row
+    registrosCargados = 0
+    
+    ' 2. Bucle For para recorrer desde la fila 2 hasta el final real de los datos
+    For i = 2 To ultimaFila
+        
+        ' 3. Condición para saltar las filas vacías (Si la columna A no está vacía, procede)
+        If Trim(wsDatos.Cells(i, 1).Value) <> "" Then
+            
+            rs.AddNew
+            rs.Fields("Hora").Value = Format(wsDatos.Cells(i, 1).Value, "hh:mm:ss")
+            rs.Fields("Tit").Value = wsDatos.Cells(i, 2).Value
+            rs.Fields("Emis").Value = wsDatos.Cells(i, 3).Value
+            rs.Fields("M").Value = wsDatos.Cells(i, 4).Value
+            
+            ' Validación extra para fechas por si acaso
+            If IsDate(wsDatos.Cells(i, 5).Value) Then rs.Fields("Emision").Value = Format(wsDatos.Cells(i, 5).Value, "yyyy-mm-dd")
+            If IsDate(wsDatos.Cells(i, 6).Value) Then rs.Fields("Vence").Value = Format(wsDatos.Cells(i, 6).Value, "yyyy-mm-dd")
+            
+            rs.Fields("FV").Value = wsDatos.Cells(i, 7).Value
+            rs.Fields("Pl").Value = wsDatos.Cells(i, 8).Value
+            rs.Fields("Porc_T").Value = wsDatos.Cells(i, 9).Value
+            rs.Fields("Porc_Pre").Value = wsDatos.Cells(i, 10).Value
+            rs.Fields("Mo").Value = wsDatos.Cells(i, 11).Value
+            rs.Fields("Columna_L").Value = wsDatos.Cells(i, 12).Value
+            
+            ' Cargar la fecha desde Posturas Q1
+            rs.Fields("Fecha_Carga").Value = Format(fechaProceso, "yyyy-mm-dd")
+            
+            rs.Update
+            
+            ' Sumar 1 al contador de registros realmente cargados
+            registrosCargados = registrosCargados + 1
+            
+        End If
+        
+    Next i
+    
+    MsgBox "Se cargaron " & registrosCargados & " filas con la fecha de proceso: " & Format(fechaProceso, "dd/mm/yyyy"), vbInformation
+    
+    rs.Close: conn.Close
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error en fila " & i & ": " & Err.Description, vbCritical
+    If Not rs Is Nothing Then If rs.State = 1 Then rs.Close
+    If Not conn Is Nothing Then If conn.State = 1 Then conn.Close
+End Sub
