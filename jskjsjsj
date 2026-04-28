@@ -1,0 +1,43 @@
+    ' ========================================================
+    ' 5) EXPORTAR XLSX (DASHBOARD Y BIDASK SIN EL GRÁFICO GENERAL)
+    ' ========================================================
+    Dim wbNuevo As Workbook
+    Dim wsTemp As Worksheet
+    Dim shp As Shape
+    
+    ' Copiamos las dos hojas al nuevo libro
+    ThisWorkbook.Sheets(Array(HOJA_DASHBOARD, "BidAsk")).Copy
+    Set wbNuevo = ActiveWorkbook
+    
+    wbNuevo.Sheets(1).Name = "Tasas"
+    
+    ' Recorremos las hojas para limpiar objetos
+    For Each wsTemp In wbNuevo.Sheets
+        For Each shp In wsTemp.Shapes
+            
+            ' 1. Si NO es un gráfico (botones de Bob, imágenes, etc.), se borra
+            If shp.Type <> msoChart Then
+                On Error Resume Next
+                shp.Delete
+                On Error GoTo 0
+            
+            ' 2. Si ES un gráfico, verificamos si es el de "Volumen de negociación"
+            Else
+                On Error Resume Next
+                ' Si el título del gráfico contiene "Volumen de negociación", lo borramos
+                If InStr(1, shp.Chart.ChartTitle.Text, "Volumen de negociación", vbTextCompare) > 0 Then
+                    shp.Delete
+                End If
+                On Error GoTo 0
+            End If
+            
+        Next shp
+    Next wsTemp
+    
+    ' Guardar y cerrar el libro nuevo
+    Application.DisplayAlerts = False
+    wbNuevo.SaveAs Filename:=fileXLSX, FileFormat:=xlOpenXMLWorkbook
+    wbNuevo.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    
+    MsgBox "Archivos generados con éxito en:" & vbCrLf & ruta, vbInformation, "Proceso Terminado"
