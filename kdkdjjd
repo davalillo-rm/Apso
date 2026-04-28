@@ -1,0 +1,96 @@
+USE [SBP_RGTRABAJO];
+GO
+
+CREATE TABLE dbo.RF2 (
+    [Hora] TIME,
+    [Tit] VARCHAR(10),
+    [Emis] VARCHAR(10),
+    [M] VARCHAR(5),
+    [Emision] DATE,
+    [Vence] DATE,
+    [FV] INT,
+    [Pl] INT,
+    [Porc_T] DECIMAL(10, 4),
+    [Porc_Pre] DECIMAL(10, 4),
+    [Mo] DECIMAL(18, 2),
+    [Columna_L] VARCHAR(5)
+);
+GO
+
+
+
+Sub CargarDatosSQL()
+    Dim conn As Object
+    Dim rs As Object
+    Dim strConn As String
+    Dim ws As Worksheet
+    Dim i As Long
+    
+    ' Definir la hoja activa (asegúrate de estar en la hoja "RF2")
+    Set ws = ActiveSheet
+    
+    ' Crear los objetos de conexión
+    Set conn = CreateObject("ADODB.Connection")
+    Set rs = CreateObject("ADODB.Recordset")
+    
+    ' ========================================================================
+    ' CONFIGURACIÓN DE CONEXIÓN (Modifica "TU_SERVIDOR" por el nombre de tu PC/Servidor)
+    ' Si usas usuario y contraseña cambia Integrated Security=SSPI; por:
+    ' User ID=tu_usuario;Password=tu_clave;
+    ' ========================================================================
+    strConn = "Provider=SQLOLEDB;Data Source=TU_SERVIDOR;Initial Catalog=SBP_RGTRABAJO;Integrated Security=SSPI;"
+    
+    ' Abrir conexión
+    On Error GoTo ErrorHandler
+    conn.Open strConn
+    
+    ' Abrir el Recordset apuntando a la tabla vacía para hacer INSERTS
+    rs.Open "SELECT * FROM dbo.RF2 WHERE 1=0", conn, 1, 3 ' adOpenKeyset, adLockOptimistic
+    
+    ' Empezar a leer desde la fila 2
+    i = 2
+    
+    ' Bucle hasta que la columna A (Hora) esté vacía
+    Do While ws.Cells(i, 1).Value <> ""
+        rs.AddNew
+        
+        ' Mapear las columnas de Excel (A=1 hasta L=12) a los campos de SQL
+        rs.Fields("Hora").Value = ws.Cells(i, 1).Text ' Usamos .Text para capturar el formato de hora HH:MM:SS
+        rs.Fields("Tit").Value = ws.Cells(i, 2).Value
+        rs.Fields("Emis").Value = ws.Cells(i, 3).Value
+        rs.Fields("M").Value = ws.Cells(i, 4).Value
+        rs.Fields("Emision").Value = ws.Cells(i, 5).Value
+        rs.Fields("Vence").Value = ws.Cells(i, 6).Value
+        rs.Fields("FV").Value = ws.Cells(i, 7).Value
+        rs.Fields("Pl").Value = ws.Cells(i, 8).Value
+        rs.Fields("Porc_T").Value = ws.Cells(i, 9).Value
+        rs.Fields("Porc_Pre").Value = ws.Cells(i, 10).Value
+        rs.Fields("Mo").Value = ws.Cells(i, 11).Value
+        rs.Fields("Columna_L").Value = ws.Cells(i, 12).Value
+        
+        rs.Update
+        
+        i = i + 1
+    Loop
+    
+    ' Cerrar conexiones
+    rs.Close
+    conn.Close
+    
+    ' Limpiar memoria
+    Set rs = Nothing
+    Set conn = Nothing
+    
+    MsgBox "Se han cargado " & (i - 2) & " registros exitosamente.", vbInformation, "Proceso Terminado"
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Ha ocurrido un error: " & Err.Description, vbCritical, "Error"
+    If Not rs Is Nothing Then
+        If rs.State = 1 Then rs.Close
+    End If
+    If Not conn Is Nothing Then
+        If conn.State = 1 Then conn.Close
+    End If
+End Sub
+
