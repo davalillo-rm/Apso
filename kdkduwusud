@@ -1,0 +1,72 @@
+Sub ImportarDesdeSQL()
+    Dim conn As Object
+    Dim rs As Object
+    Dim strConn As String
+    Dim strSQL As String
+    Dim ws As Worksheet
+    
+    ' 1. Configurar la hoja de destino
+    ' Asegúrate de que tu hoja se llame exactamente "RF2"
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("RF2")
+    On Error GoTo 0
+    
+    If ws Is Nothing Then
+        MsgBox "No se encontró la hoja llamada 'RF2'.", vbCritical
+        Exit Sub
+    End If
+    
+    ' 2. Limpiar datos anteriores (desde la fila 2 hasta la L para mantener encabezados)
+    ws.Range("A2:L" & ws.Rows.Count).ClearContents
+    
+    ' 3. Configuración de los objetos de conexión
+    Set conn = CreateObject("ADODB.Connection")
+    Set rs = CreateObject("ADODB.Recordset")
+    
+    ' ========================================================================
+    ' IMPORTANTE: Reemplaza TU_SERVIDOR por el nombre de tu instancia de SQL
+    ' ========================================================================
+    strConn = "Provider=SQLOLEDB;Data Source=TU_SERVIDOR;Initial Catalog=SBP_RGTRABAJO;Integrated Security=SSPI;"
+    
+    ' Consulta SQL con el filtro para P y T
+    strSQL = "SELECT [Hora], [Tit], [Emis], [M], [Emision], [Vence], [FV], " & _
+             "[Pl], [Porc_T], [Porc_Pre], [Mo], [Columna_L] " & _
+             "FROM dbo.RF2 " & _
+             "WHERE Columna_L IN ('P', 'T')"
+    
+    On Error GoTo ErrorHandler
+    
+    ' 4. Abrir conexión y ejecutar la consulta
+    conn.Open strConn
+    rs.Open strSQL, conn
+    
+    ' 5. Volcar los datos en la hoja
+    If Not rs.EOF Then
+        ' Pegamos los datos a partir de A2
+        ws.Range("A2").CopyFromRecordset rs
+        
+        ' 6. Aplicar formatos para que se vea igual que tu original
+        ws.Columns("A:A").NumberFormat = "hh:mm:ss"      ' Formato de Hora
+        ws.Columns("E:F").NumberFormat = "dd/mm/yyyy"    ' Formato de Fecha
+        ws.Columns("I:J").NumberFormat = "0.0000"        ' Formato de Porcentajes/Decimales
+        ws.Columns("K:K").NumberFormat = "#,##0.00"      ' Formato de Moneda/Monto
+        
+        MsgBox "Importación completada con éxito.", vbInformation, "Proceso Terminado"
+    Else
+        MsgBox "La consulta no devolvió ningún registro con 'P' o 'T'.", vbExclamation, "Sin Datos"
+    End If
+    
+    ' 7. Cerrar y limpiar objetos
+    rs.Close
+    conn.Close
+    Set rs = Nothing
+    Set conn = Nothing
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error crítico durante la importación: " & vbCrLf & Err.Description, vbCritical, "Error de Conexión"
+    If Not rs Is Nothing Then If rs.State = 1 Then rs.Close
+    If Not conn Is Nothing Then If conn.State = 1 Then conn.Close
+    Set rs = Nothing
+    Set conn = Nothing
+End Sub
