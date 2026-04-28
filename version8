@@ -1,0 +1,248 @@
+def inicializar_excel():
+    if os.path.exists(EXCEL_FILE): return
+    wb = Workbook()
+    
+    ws1 = wb.active
+    ws1.title = "Procesos"
+    ws1.append(["Nombre Proceso", "Frecuencia", "Valor_Tiempo", "Activa"])
+    ws1.column_dimensions["A"].width, ws1.column_dimensions["B"].width, ws1.column_dimensions["C"].width = 30, 20, 35
+    
+    ws2 = wb.create_sheet("Items_Esperados")
+    # --- NUEVA ESTRUCTURA DE 8 COLUMNAS ---
+    ws2.append(["Proceso_Padre", "Nombre_Item", "Remitente", "Remitente_Alterno", "Asunto", "Validar_Solicitud", "Forzado_Fecha", "Ignorados"])
+    for col in ["A", "B", "C", "D", "E"]: ws2.column_dimensions[col].width = 35
+    
+    wb.save(EXCEL_FILE)
+
+def leer_items_de_proceso(nombre_proceso):
+    if not os.path.exists(EXCEL_FILE): return []
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    if "Items_Esperados" not in wb.sheetnames: return []
+    ws = wb["Items_Esperados"]
+    items = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0] == nombre_proceso:
+            items.append({
+                "nombre": row[1],
+                "remitente": row[2] if row[2] else "",
+                "remitente_alterno": row[3] if len(row) > 3 and row[3] else "",
+                "asunto": row[4] if len(row) > 4 and row[4] else "",
+                "validar_sol": str(row[5]).lower() == "true" if len(row) > 5 else False,
+                "forzado_fecha": row[6] if len(row) > 6 and row[6] else ""
+            })
+    return items
+
+def guardar_item(nombre_proceso, nombre_item, remitente, remitente_alt, asunto, validar_sol, forzado=""):
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    ws = wb["Items_Esperados"]
+    ws.append([nombre_proceso, nombre_item, remitente, remitente_alt, asunto, str(validar_sol), forzado, ""])
+    wb.save(EXCEL_FILE)
+
+def forzar_item_excel(proceso, nombre_item, fecha_str):
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    ws = wb["Items_Esperados"]
+    for row in ws.iter_rows(min_row=2):
+        if row[0].value == proceso and row[1].value == nombre_item:
+            row[6].value = fecha_str # Columna G (Forzado_Fecha)
+            break
+    wb.save(EXCEL_FILE)
+
+
+
+
+
+
+
+
+
+
+
+
+def guardar():
+            nombre = entry_nombre.get().strip()
+            if not nombre:
+                messagebox.showwarning("Falta nombre", "Ingresa un nombre.", parent=v)
+                return
+            
+            # --- ESCUDO ANTI-DUPLICADOS (PROCESOS) ---
+            procesos_existentes = [p["nombre"].lower() for p in leer_procesos()]
+            if nombre.lower() in procesos_existentes:
+                messagebox.showerror("Duplicado", f"Ya existe un proceso llamado '{nombre}'.\nPor favor, elige otro nombre.", parent=v)
+                return
+            # ... (el resto del def guardar sigue igual) ...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Formulario
+        f_form = ctk.CTkFrame(v, fg_color="transparent")
+        f_form.pack(fill="x", padx=24)
+        
+        entry_nombre = ctk.CTkEntry(f_form, width=500, placeholder_text="Nombre del Reporte (Ej: Conforme RDARR)...")
+        entry_nombre.pack(pady=5)
+        entry_remi = ctk.CTkEntry(f_form, width=500, placeholder_text="Remitente esperado (@scotiabank.com.pe)...")
+        entry_remi.pack(pady=5)
+        # --- NUEVO: REMITENTE ALTERNO ---
+        entry_remi_alt = ctk.CTkEntry(f_form, width=500, placeholder_text="Remitente Alterno / Backup (Opcional)...")
+        entry_remi_alt.pack(pady=5)
+        entry_asun = ctk.CTkEntry(f_form, width=500, placeholder_text="Palabras clave en el asunto (Ej: Envío RDARR)...")
+        entry_asun.pack(pady=5)
+        
+        # --- NUEVO: CHECKBOX DE SOLICITUD ---
+        var_sol = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(f_form, text="¿Validar en 'Enviados' si enviaste la solicitud?", variable=var_sol, 
+                        font=("Trebuchet MS", 12), text_color=SCOTIA_SUBTEXT).pack(pady=(5, 10), anchor="w", padx=5)
+
+        estado_edit = {"viejo": None, "forzado_viejo": ""}
+
+        def cargar_edicion(it):
+            entry_nombre.delete(0, 'end'); entry_nombre.insert(0, it['nombre'])
+            entry_remi.delete(0, 'end'); entry_remi.insert(0, it['remitente'])
+            entry_remi_alt.delete(0, 'end'); entry_remi_alt.insert(0, it['remitente_alterno'])
+            entry_asun.delete(0, 'end'); entry_asun.insert(0, it['asunto'])
+            var_sol.set(it['validar_sol'])
+            estado_edit["viejo"] = it['nombre']
+            estado_edit["forzado_viejo"] = it.get('forzado_fecha', "")
+            btn_add.configure(text="Actualizar Ítem", fg_color=SCOTIA_YELLOW, text_color=SCOTIA_BLACK)
+
+        def guardar_item_ui():
+            n, r = entry_nombre.get().strip(), entry_remi.get().strip()
+            ra, a = entry_remi_alt.get().strip(), entry_asun.get().strip()
+            v_sol = var_sol.get()
+            if not n or not r or not a: 
+                messagebox.showwarning("Incompleto", "Llena el Nombre, Remitente Principal y Asunto.", parent=v)
+                return
+            
+            # --- ESCUDO ANTI-DUPLICADOS (ÍTEMS) ---
+            items_actuales = [it["nombre"].lower() for it in leer_items_de_proceso(nombre_proceso)]
+            if n.lower() in items_actuales and (estado_edit["viejo"] is None or estado_edit["viejo"].lower() != n.lower()):
+                messagebox.showerror("Duplicado", "Ya existe una regla con ese nombre en este proceso.", parent=v)
+                return
+
+            if estado_edit["viejo"]: eliminar_item_excel(nombre_proceso, estado_edit["viejo"])
+            guardar_item(nombre_proceso, n, r, ra, a, v_sol, estado_edit["forzado_viejo"])
+            
+            entry_nombre.delete(0, 'end'); entry_remi.delete(0, 'end'); entry_remi_alt.delete(0, 'end'); entry_asun.delete(0, 'end')
+            var_sol.set(False)
+            estado_edit["viejo"], estado_edit["forzado_viejo"] = None, ""
+            btn_add.configure(text="+ Añadir Ítem al Proceso", fg_color=SCOTIA_GREEN_DIM, text_color="white")
+            refrescar_lista()
+
+
+
+
+
+
+
+for itm in items_esperados:
+                cumplido, hora_str, correo_id, es_valido = False, "", "", True
+                
+                # 1. --- VALIDAR OVERRIDE MANUAL ---
+                if str(itm.get("forzado_fecha")) == str(hoy):
+                    cumplido, hora_str, es_valido = True, "(Manual)", True
+                    datos_proc["cumplidos"] += 1
+                    datos_proc["recibidos"].append({"nombre": itm['nombre'], "hora": hora_str, "es_valido": es_valido, "correo_id": ""})
+                    continue # Salta a evaluar el siguiente ítem, ¡este ya está salvado!
+
+                # 2. --- RADAR DE SOLICITUDES INTELIGENTE ---
+                validar_solicitud = itm.get("validar_sol", False)
+                sol_enviada, hora_sol = False, ""
+                
+                # Extraemos datos de la regla
+                palabras_clave = itm["asunto"].lower().split()
+                remi_ppal = itm["remitente"].lower()
+                remi_alt = itm.get("remitente_alterno", "").lower()
+
+                if validar_solicitud:
+                    for i in range(max_enviados):
+                        try:
+                            m = enviados.Item(i + 1)
+                            if m.SentOn.date() < fecha_limite: break
+                            
+                            destinatario = str(m.To).lower()
+                            asunto_env = m.Subject.lower() if m.Subject else ""
+                            
+                            # ¿Se lo enviaste al principal O al alterno? Y ¿el asunto cuadra?
+                            if (remi_ppal in destinatario or (remi_alt and remi_alt in destinatario)) and all(p in asunto_env for p in palabras_clave):
+                                sol_enviada, hora_sol = True, str(m.SentOn)[11:16]
+                                break
+                        except: continue
+                
+                ind_sol = f"  [✅ Sol. Enviada {hora_sol}]" if sol_enviada else f"  [⚠️ PENDIENTE SOLICITAR]" if validar_solicitud else ""
+                nombre_display = f"{itm['nombre']}{ind_sol}"
+
+                # 3. --- BÚSQUEDA EN BANDEJA DE ENTRADA (BACKUP INCLUIDO) ---
+                ignorados = leer_ignorados_excel(itm["nombre"])
+
+                for i in range(max_correos):
+                    try:
+                        msg = mensajes.Item(i + 1)
+                        if getattr(msg, "Class", 0) != 43: continue
+                        if msg.ReceivedTime.date() < fecha_limite: break
+                        if msg.EntryID in ignorados: continue
+
+                        remi_msg = msg.SenderEmailAddress.lower()
+                        if msg.SenderEmailType == "EX":
+                            try: remi_msg = msg.Sender.GetExchangeUser().PrimarySmtpAddress.lower()
+                            except: pass
+                        
+                        asun_msg = msg.Subject.lower() if msg.Subject else ""
+                        
+                        # ¿El remitente es el Principal O el Alterno?
+                        es_remitente_correcto = (remi_ppal in remi_msg) or (remi_alt != "" and remi_alt in remi_msg)
+                        
+                        if es_remitente_correcto and all(p in asun_msg for p in palabras_clave):
+                            cumplido, hora_str, correo_id = True, str(msg.ReceivedTime)[11:16], msg.EntryID
+                            es_valido = self.evaluar_contenido_conforme(msg.Body if msg.Body else "")
+                            break
+                    except: continue
+
+                if cumplido:
+                    datos_proc["cumplidos"] += 1
+                    datos_proc["recibidos"].append({"nombre": nombre_display, "hora": hora_str, "es_valido": es_valido, "correo_id": correo_id})
+                else:
+                    datos_proc["faltantes"].append(nombre_display)
+
+
+
+
+
+
+
+def forzar_manual(self, nombre_proceso, nombre_item_completo):
+        # Limpiamos el texto por si tiene indicadores de "[✅ Sol...]" pegados
+        nombre_puro = nombre_item_completo.split("  [")[0]
+        
+        if messagebox.askyesno("Forzar Recibido", f"¿Estás seguro de marcar manualmente como recibido:\n'{nombre_puro}'?"):
+            fecha_hoy_str = str(datetime.datetime.now().date())
+            forzar_item_excel(nombre_proceso, nombre_puro, fecha_hoy_str)
+            self._iniciar_sync_thread() # Refrescamos pantalla
+
+
+
+
+
+
+
+
+
+
+for f in d["faltantes"]:
+                    row = ctk.CTkFrame(card, fg_color="transparent")
+                    row.pack(fill="x", padx=10, pady=2)
+                    ctk.CTkLabel(row, text=f"✗ Falta: {f}", text_color="#FF5252", font=("Trebuchet MS", 11)).pack(side="left")
+                    # --- NUEVO: BOTÓN FORZAR MANUAL ---
+                    ctk.CTkButton(row, text="✓ Forzar", width=50, height=18, fg_color="transparent", 
+                                  text_color=SCOTIA_YELLOW, font=("Trebuchet MS", 10, "bold"),
+                                  command=lambda np=d['nombre'], ni=f: self.forzar_manual(np, ni)).pack(side="right")
+
