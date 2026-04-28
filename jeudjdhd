@@ -1,0 +1,52 @@
+Sub Ajustar_Ejes_BidAsk()
+    Dim ws As Worksheet
+    Dim chtObj As ChartObject
+    Dim srs As Series
+    Dim vVals As Variant
+    Dim maxVal As Double, minVal As Double
+    Dim i As Long
+    
+    Dim margenArriba As Double
+    Dim margenAbajo As Double
+    margenArriba = 0.3  
+    margenAbajo = 0.4   
+    
+    Set ws = ThisWorkbook.Sheets("BidAsk")
+    Application.ScreenUpdating = False
+    
+    For Each chtObj In ws.ChartObjects
+        maxVal = -999999
+        minVal = 999999
+        
+        ' 1. Buscar el valor más alto y más bajo
+        For Each srs In chtObj.Chart.SeriesCollection
+            ' Condición para saltar las barras de Volumen dentro de los gráficos de tasas
+            If UCase(srs.Name) <> "VOLUMEN" Then
+                vVals = srs.Values
+                For i = LBound(vVals) To UBound(vVals)
+                    If IsNumeric(vVals(i)) And vVals(i) > 0.5 Then
+                        If vVals(i) > maxVal Then maxVal = vVals(i)
+                        If vVals(i) < minVal Then minVal = vVals(i)
+                    End If
+                Next i
+            End If
+        Next srs
+        
+        ' 2. Aplicar la nueva escala al eje Y principal (Tasas)
+        If maxVal <> -999999 And minVal <> 999999 Then
+            
+            ' --- EL SEGURO PARA PROTEGER TU GRÁFICO GENERAL ---
+            ' Las tasas rondan el 5.00. Si el gráfico tiene millones, lo ignora y no lo daña.
+            If maxVal < 100 Then
+                With chtObj.Chart.Axes(xlValue, xlPrimary)
+                    .MinimumScale = WorksheetFunction.Floor(minVal - margenAbajo, 0.1)
+                    .MaximumScale = WorksheetFunction.Ceiling(maxVal + margenArriba, 0.1)
+                    .MajorUnit = 0.1 
+                End With
+            End If
+            
+        End If
+    Next chtObj
+    
+    Application.ScreenUpdating = True
+End Sub
