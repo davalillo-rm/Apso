@@ -1,0 +1,49 @@
+Sub ImportarDesdeSQL()
+    Dim conn As Object, rs As Object, ws As Worksheet
+    Dim strConn As String, strSQL As String, fechaFiltro As String
+    
+    Set ws = ThisWorkbook.Sheets("RF2")
+    
+    If Not IsDate(ws.Range("Q40").Value) Then
+        MsgBox "Ingrese una fecha en Q40 para filtrar la importación.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Formato para SQL
+    fechaFiltro = Format(ws.Range("Q40").Value, "yyyy-mm-dd")
+    
+    ' Limpiar área de datos
+    ws.Range("A2:L" & ws.Rows.Count).ClearContents
+    
+    Set conn = CreateObject("ADODB.Connection")
+    Set rs = CreateObject("ADODB.Recordset")
+    
+    strConn = "Provider=SQLOLEDB;Data Source=TU_SERVIDOR;Initial Catalog=SBP_RGTRABAJO;Integrated Security=SSPI;"
+    
+    ' FILTRAR POR LA FECHA DE CARGA (Snapshot del día)
+    strSQL = "SELECT [Hora], [Tit], [Emis], [M], [Emision], [Vence], [FV], " & _
+             "[Pl], [Porc_T], [Porc_Pre], [Mo], [Columna_L] " & _
+             "FROM dbo.RF2 " & _
+             "WHERE Columna_L IN ('P', 'T') " & _
+             "AND Fecha_Carga = '" & fechaFiltro & "'"
+    
+    On Error GoTo ErrorHandler
+    conn.Open strConn
+    rs.Open strSQL, conn
+    
+    If Not rs.EOF Then
+        ws.Range("A2").CopyFromRecordset rs
+        ' Formatos
+        ws.Columns("A:A").NumberFormat = "hh:mm:ss"
+        ws.Columns("E:F").NumberFormat = "dd/mm/yyyy"
+        ws.Columns("K:K").NumberFormat = "#,##0.00"
+        MsgBox "Importación exitosa para el día: " & fechaFiltro
+    Else
+        MsgBox "No hay datos en SQL cargados con la fecha: " & fechaFiltro, vbExclamation
+    End If
+    
+    rs.Close: conn.Close
+    Exit Sub
+ErrorHandler:
+    MsgBox "Error: " & Err.Description, vbCritical
+End Sub
