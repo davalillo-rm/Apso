@@ -1,0 +1,122 @@
+Sub CargarDatosSQL()
+    Dim conn As Object, rs As Object
+    Dim wsDatos As Worksheet, wsFecha As Worksheet
+    Dim strConn As String, i As Long, fechaProceso As Variant
+    
+    ' Definir hojas
+    Set wsDatos = ThisWorkbook.Sheets("RF2")     ' Donde está la tabla
+    Set wsFecha = ThisWorkbook.Sheets("Posturas") ' Donde está la fecha Q1
+    
+    fechaProceso = wsFecha.Range("Q1").Value
+    
+    ' Validar fecha
+    If Not IsDate(fechaProceso) Then
+        MsgBox "No hay una fecha válida en Posturas!Q1", vbCritical
+        Exit Sub
+    End If
+
+    Set conn = CreateObject("ADODB.Connection")
+    Set rs = CreateObject("ADODB.Recordset")
+    
+    ' CONFIGURACIÓN (Cambia TU_SERVIDOR)
+    strConn = "Provider=SQLOLEDB;Data Source=TU_SERVIDOR;Initial Catalog=SBP_RGTRABAJO;Integrated Security=SSPI;"
+    
+    On Error GoTo ErrorHandler
+    conn.Open strConn
+    rs.Open "SELECT * FROM dbo.RF2 WHERE 1=0", conn, 1, 3
+    
+    i = 2 ' Empezar en fila 2 de la hoja RF2
+    Do While wsDatos.Cells(i, 1).Value <> ""
+        rs.AddNew
+        rs.Fields("Hora").Value = Format(wsDatos.Cells(i, 1).Value, "hh:mm:ss")
+        rs.Fields("Tit").Value = wsDatos.Cells(i, 2).Value
+        rs.Fields("Emis").Value = wsDatos.Cells(i, 3).Value
+        rs.Fields("M").Value = wsDatos.Cells(i, 4).Value
+        rs.Fields("Emision").Value = Format(wsDatos.Cells(i, 5).Value, "yyyy-mm-dd")
+        rs.Fields("Vence").Value = Format(wsDatos.Cells(i, 6).Value, "yyyy-mm-dd")
+        rs.Fields("FV").Value = wsDatos.Cells(i, 7).Value
+        rs.Fields("Pl").Value = wsDatos.Cells(i, 8).Value
+        rs.Fields("Porc_T").Value = wsDatos.Cells(i, 9).Value
+        rs.Fields("Porc_Pre").Value = wsDatos.Cells(i, 10).Value
+        rs.Fields("Mo").Value = wsDatos.Cells(i, 11).Value
+        rs.Fields("Columna_L").Value = wsDatos.Cells(i, 12).Value
+        
+        ' Cargar la fecha desde Posturas Q1
+        rs.Fields("Fecha_Carga").Value = Format(fechaProceso, "yyyy-mm-dd")
+        
+        rs.Update
+        i = i + 1
+    Loop
+    
+    MsgBox "Se cargaron " & (i - 2) & " filas con la fecha de proceso: " & Format(fechaProceso, "dd/mm/yyyy")
+    
+    rs.Close: conn.Close
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error en fila " & i & ": " & Err.Description, vbCritical
+End Sub
+
+
+
+
+
+
+
+
+
+Sub ImportarDesdeSQL()
+    Dim conn As Object, rs As Object
+    Dim ws As Worksheet
+    Dim strConn As String, strSQL As String, fechaFiltro As String
+    
+    Set ws = ThisWorkbook.Sheets("RF2")
+    
+    ' Validar fecha en Q40 de la misma hoja RF2
+    If Not IsDate(ws.Range("Q40").Value) Then
+        MsgBox "Por favor, ingrese una fecha de filtro en RF2!Q40", vbExclamation
+        Exit Sub
+    End If
+    
+    fechaFiltro = Format(ws.Range("Q40").Value, "yyyy-mm-dd")
+    
+    ' Limpiar datos antiguos (A2 hasta L)
+    ws.Range("A2:L" & ws.Rows.Count).ClearContents
+    
+    Set conn = CreateObject("ADODB.Connection")
+    Set rs = CreateObject("ADODB.Recordset")
+    
+    ' CONFIGURACIÓN (Cambia TU_SERVIDOR)
+    strConn = "Provider=SQLOLEDB;Data Source=TU_SERVIDOR;Initial Catalog=SBP_RGTRABAJO;Integrated Security=SSPI;"
+    
+    ' Consulta filtrando por la columna Fecha_Carga y los tipos P o T
+    strSQL = "SELECT [Hora], [Tit], [Emis], [M], [Emision], [Vence], [FV], " & _
+             "[Pl], [Porc_T], [Porc_Pre], [Mo], [Columna_L] " & _
+             "FROM dbo.RF2 " & _
+             "WHERE Columna_L IN ('P', 'T') " & _
+             "AND Fecha_Carga = '" & fechaFiltro & "'"
+    
+    On Error GoTo ErrorHandler
+    conn.Open strConn
+    rs.Open strSQL, conn
+    
+    If Not rs.EOF Then
+        ws.Range("A2").CopyFromRecordset rs
+        
+        ' Aplicar formatos automáticos
+        ws.Columns("A:A").NumberFormat = "hh:mm:ss"
+        ws.Columns("E:F").NumberFormat = "dd/mm/yyyy"
+        ws.Columns("I:J").NumberFormat = "0.0000"
+        ws.Columns("K:K").NumberFormat = "#,##0.00"
+        
+        MsgBox "Importación finalizada para el día: " & ws.Range("Q40").Value
+    Else
+        MsgBox "No se encontró información en SQL para la fecha: " & ws.Range("Q40").Value, vbExclamation
+    End If
+    
+    rs.Close: conn.Close
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error: " & Err.Description, vbCritical
+End Sub
