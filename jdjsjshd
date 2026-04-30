@@ -1,0 +1,17 @@
+def procesar_segundo_nivel():
+    print("Leyendo y preparando reporte segundo_nivel...")
+    # 1. Leemos el archivo
+    df = pd.read_excel(r"C:\temp_excel\segundo_nivel.xlsx")
+    
+    # 2. Limpieza de filas vacías
+    df = df.dropna(how='all') 
+    
+    # 3. TRADUCCIÓN DE COLUMNAS (EXCEL -> SQL)
+    # Sobreescribimos todos los encabezados del Excel por los de tu base de datos en el mismo orden exacto.
+    # Así ignoramos las tildes, los '%' y bautizamos la columna L vacía.
+    df.columns = [
+        'Hora', 'Tit', 'Emis', 'M', 'Emision', 'Vence', 'FV', 
+        'Pl1', 'Porc_T', 'Porc_Pre', 'Mo', 'Columna_L'
+    ]
+    
+    return df
