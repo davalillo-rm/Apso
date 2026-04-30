@@ -1,0 +1,38 @@
+def procesar_segundo_nivel():
+    print("Leyendo y preparando reporte segundo_nivel...")
+    # Leemos el archivo que acabamos de guardar
+    df = pd.read_excel(r"C:\temp_excel\segundo_nivel.xlsx")
+    
+    # Limpieza rápida: quitar filas totalmente vacías y asegurar formatos
+    df = df.dropna(how='all') 
+    
+    # Aquí puedes añadir cualquier limpieza extra si el reporte lo requiere
+    return df
+
+
+
+        if datetime.now().strftime('%H:%M') >= '13:30':
+            print("Iniciando cierre de jornada y carga de RF2...")
+            
+            # --- Tus pasos actuales de clics y guardado ---
+            # (Aquí van los clics, el F12, el Enter y el Alt+F4 que ya tienes)
+            # ...
+            
+            time.sleep(5) # Pausa crucial para que Excel libere el archivo después de cerrarse
+            
+            try:
+                # 1. Procesar la data del nuevo archivo
+                df_rf2 = procesar_segundo_nivel()
+                
+                # 2. Subir a la nueva tabla RF2
+                print("Subiendo datos a la tabla dbo.RF2...")
+                subir_a_sql_directo(df_rf2, 'SBP_RGTRABAJO.dbo.RF2')
+                print("Carga en RF2 completada con éxito.")
+                
+            except Exception as e:
+                print(f"Error al cargar RF2: {e}")
+            
+            print("Robot desconectado. ¡Hasta mañana!")
+            break 
+
+
