@@ -1,0 +1,118 @@
+elif "Mensual" in frecuencia:
+                semanas_marcadas = str(proc.get("valor_tiempo", ""))
+                
+                # 1. Averiguar cuál es la semana tope (Ej: Si es S1-S2, el tope es 2)
+                max_sem = 1
+                if "S4" in semanas_marcadas: max_sem = 4
+                elif "S3" in semanas_marcadas: max_sem = 3
+                elif "S2" in semanas_marcadas: max_sem = 2
+                
+                # 2. Averiguar en qué semana estamos hoy
+                dia_mes = hoy.day
+                sem_actual_num = 1 if dia_mes <= 7 else 2 if dia_mes <= 14 else 3 if dia_mes <= 21 else 4
+                sem_actual = f"S{sem_actual_num}"
+                
+                # 3. Validar y calcular
+                if sem_actual in semanas_marcadas or sem_actual_num <= max_sem:
+                    # Magia: (Semanas de diferencia * 7) + (Días hasta el viernes de la semana actual)
+                    dias_restantes = ((max_sem - sem_actual_num) * 7) + (4 - dias_desde_lunes)
+                    if dias_restantes < 0: dias_restantes = 0
+                    
+                    # La fecha límite para buscar hacia atrás
+                    fecha_limite = hoy - datetime.timedelta(days=dias_desde_lunes + ((sem_actual_num - 1)*7)) 
+                else: 
+                    evaluar_proceso = False
+
+
+
+
+
+
+
+self._iniciar_sync_thread() # <--- NUEVO: Refresca el fondo
+
+
+
+ctk.CTkButton(f, text="X", width=25, height=25, fg_color="transparent", text_color="#FF5252", 
+                              command=lambda n=itm['nombre']: [eliminar_item_excel(nombre_proceso, n), refrescar_lista(), self._iniciar_sync_thread()]).pack(side="right", padx=5)
+
+
+
+
+
+if cumplido:
+                    datos_proc["cumplidos"] += 1
+                    datos_proc["recibidos"].append({"nombre": nombre_display, "hora": hora_str, "es_valido": es_valido, "correo_id": correo_id})
+                else:
+                    # NUEVO: Guardamos toda la data para armar el Súper Correo
+                    datos_proc["faltantes"].append({
+                        "nombre_regla": itm['nombre'],
+                        "remitente": remi_ppal,
+                        "falta_solicitar": validar_solicitud and not sol_enviada
+                    })
+
+
+
+ctk.CTkLabel(row, text=f"✗ Falta: {f['nombre_regla']}", text_color="#FF5252", font=("Trebuchet MS", 11)).pack(side="left")
+
+
+
+
+ws.append([p["nombre"], st, av, f["nombre_regla"], "PENDIENTE", "PENDIENTE"])
+
+
+
+def enviar_correo_alerta(self, destinatario: str):
+        if not self.ultimo_resultado or "procesos" not in self.ultimo_resultado:
+            print("Aún no hay datos sincronizados para enviar alerta.")
+            return
+
+        procesos = self.ultimo_resultado["procesos"]
+        
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            correo = outlook.CreateItem(0)
+            correo.To = destinatario
+            correo.Subject = "Recordatorio: Estado de Reportes y Conformidades"
+
+            # 1. Cabecera del correo
+            html = """
+            <html><body style="font-family: 'Segoe UI', Arial, sans-serif; color: #262626; line-height: 1.6;">
+            <h2 style="color: #ED0006; border-bottom: 2px solid #ED0006; padding-bottom: 5px;">
+                Aviso Automático: Monitor de Reportes
+            </h2>
+            <p>Se comunica que...</p>
+            """
+
+            # 2. Analizar cada proceso
+            for p in procesos:
+                # Si el proceso está incompleto
+                if p["cumplidos"] < p["total"]:
+                    html += f"<h3 style='color: #ED0006; margin-top: 20px; margin-bottom: 5px;'>{p['nombre']}: Proceso Incompleto</h3>"
+                    html += "<ol style='margin-top: 5px;'>"
+                    for f in p["faltantes"]:
+                        if f["falta_solicitar"]:
+                            html += f"<li>Te falta <b>solicitar</b> a <i>{f['remitente']}</i> el reporte <b>{f['nombre_regla']}</b>.</li>"
+                        else:
+                            html += f"<li>Te falta <b>{f['nombre_regla']}</b> por parte de <i>{f['remitente']}</i>.</li>"
+                    html += "</ol>"
+
+                # Si el proceso está completado
+                elif p["cumplidos"] == p["total"] and p["total"] > 0:
+                    html += f"<h3 style='color: #008000; margin-top: 20px; margin-bottom: 5px;'>{p['nombre']}: Proceso Completado</h3>"
+                    html += "<p style='margin-top: 5px;'>Ya fueron recibidos todos los correos que esperabas recibir relacionados a este reporte. Accede a ellos en tu bandeja.</p>"
+
+            # 3. Firma del correo
+            html += """
+            <br><p style="font-size: 11px; color: #555555; border-top: 1px solid #ccc; padding-top: 10px;">
+            Atentamente,<br><b>Área de Riesgos de Mercado</b><br>Scotiabank Perú<br>
+            <i>*Este es un mensaje generado automáticamente por el Monitor de Reportes.*</i>
+            </p></body></html>
+            """
+
+            correo.HTMLBody = html
+            correo.Send()
+            print("Súper Correo de Alerta enviado exitosamente.")
+
+        except Exception as e:
+            print(f"Error al enviar correo de alerta: {e}")
