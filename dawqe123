@@ -1,0 +1,74 @@
+ctk.CTkButton(row, text="✓ Forzar", width=50, height=18, fg_color="transparent", 
+                                  text_color=SCOTIA_YELLOW, font=("Trebuchet MS", 10, "bold"),
+                                  command=lambda np=d['nombre'], ni=f["nombre_regla"]: self.forzar_manual(np, ni)).pack(side="right")
+
+
+
+
+def forzar_item_excel(proceso, nombre_item, fecha_str):
+    wb = openpyxl.load_workbook(EXCEL_FILE)
+    ws = wb["Items_Esperados"]
+    for row in ws.iter_rows(min_row=2):
+        if str(row[0].value).strip() == str(proceso).strip() and str(row[1].value).strip() == str(nombre_item).strip():
+            row[6].value = str(fecha_str) # Escribe en la columna de Forzado
+            break
+    wb.save(EXCEL_FILE)
+
+# Dentro de tu clase MonitorApp:
+    def forzar_manual(self, nombre_proceso, nombre_item):
+        if messagebox.askyesno("Forzar Recibido", f"¿Marcar manualmente como recibido:\n'{nombre_item}'?"):
+            fecha_hoy_str = str(datetime.datetime.now().date())
+            forzar_item_excel(nombre_proceso, nombre_item, fecha_hoy_str)
+            self._iniciar_sync_thread()
+
+
+
+
+# 1. --- VALIDAR OVERRIDE MANUAL ---
+                if str(itm.get("forzado_fecha")).strip()[:10] == str(hoy):
+                    cumplido, hora_str, es_valido = True, "(Manual)", True
+                    datos_proc["cumplidos"] += 1
+                    datos_proc["recibidos"].append({"nombre": itm['nombre'], "hora": hora_str, "es_valido": es_valido, "correo_id": ""})
+                    continue
+
+
+
+
+
+
+
+
+def abrir_config_alerta(self):
+        v = ctk.CTkToplevel(self)
+        v.title("Alertas")
+        v.geometry("440x320")
+        v.attributes("-topmost", True)
+        v.configure(fg_color=SCOTIA_SURFACE)
+        
+        ctk.CTkLabel(v, text="Automatizar Recordatorios", font=("Georgia", 15, "bold"), text_color=SCOTIA_TEXT).pack(pady=20)
+        
+        ctk.CTkLabel(v, text="Correo destino de la alerta:", text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(anchor="w", padx=45)
+        e_dest = ctk.CTkEntry(v, width=350, placeholder_text="ejemplo@scotiabank.com.pe")
+        e_dest.pack(pady=5)
+        
+        ctk.CTkLabel(v, text="Cada cuántas horas revisar y avisar:", text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(anchor="w", padx=45, pady=(10,0))
+        c_h = ctk.CTkOptionMenu(v, values=["1 hora", "2 horas", "4 horas", "8 horas"], width=350)
+        c_h.pack(pady=5)
+        
+        def activar():
+            dest = e_dest.get().strip()
+            if not dest:
+                messagebox.showwarning("Destinatario vacío", "Por favor, ingresa el correo al que se enviará la alerta.", parent=v)
+                return
+            if "@scotiabank.com.pe" not in dest.lower():
+                messagebox.showwarning("Dominio no permitido", "Solo puedes programar alertas hacia correos @scotiabank.com.pe", parent=v)
+                return
+            
+            self.automatizacion_activa = True
+            h = int(c_h.get().split()[0])
+            
+            self.btn_alerta.configure(text=f"Alertas Activas ({h}h) - Clic para detener", fg_color="#1B3A1B", command=self.desactivar_automatizacion)
+            v.destroy()
+            self.ciclo_alerta(dest, h * 3600000) # Se convierte a milisegundos
+
+        ctk.CTkButton(v, text="Activar Automatización", fg_color=SCOTIA_YELLOW, text_color=SCOTIA_BLACK, font=("Trebuchet MS", 12, "bold"), width=200, command=activar).pack(pady=25)
