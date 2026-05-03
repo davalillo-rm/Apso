@@ -1,0 +1,53 @@
+# Solo mostramos los botones de acción si ES UN CORREO REAL (no forzado manualmente)
+                    if not r["es_valido"] and r.get("correo_id") != "":
+                        ctk.CTkButton(row, text="abrir", width=40, height=18, fg_color="transparent", text_color=SCOTIA_BLUE_LINK, font=("Trebuchet MS", 10, "underline"),
+                                      command=lambda cid=r['correo_id']: self.abrir_correo_especifico(cid)).pack(side="left", padx=5)
+                        ctk.CTkButton(row, text="Devolver", width=60, height=18, fg_color=SCOTIA_RED, text_color="white", font=("Trebuchet MS", 10, "bold"),
+                                      command=lambda n=d['nombre'], cid=r['correo_id']: self.rechazar_correo(n, cid)).pack(side="left")
+
+
+
+
+
+
+if __name__ == "__main__":
+    # ==========================================
+    # PANTALLA DE CARGA (SPLASH SCREEN)
+    # ==========================================
+    splash = ctk.CTk()
+    splash.overrideredirect(True) # Quita los bordes de la ventana (estilo nativo de carga)
+    splash.attributes("-topmost", True) # La mantiene al frente de todo
+    splash.configure(fg_color=SCOTIA_SURFACE)
+    
+    try:
+        # Cargamos la imagen headline.png
+        img = Image.open("headline.png")
+        ancho, alto = img.size
+        
+        # Matemática para encontrar el centro exacto de tu monitor
+        pos_x = int((splash.winfo_screenwidth() - ancho) / 2)
+        pos_y = int((splash.winfo_screenheight() - alto) / 2)
+        splash.geometry(f"{ancho}x{alto}+{pos_x}+{pos_y}")
+        
+        # Mostramos la imagen ocupando toda la mini-ventana
+        splash_img = ctk.CTkImage(light_image=img, dark_image=img, size=(ancho, alto))
+        ctk.CTkLabel(splash, text="", image=splash_img).pack()
+        
+    except Exception as e:
+        # Plan B en caso de que borres la imagen "headline.png" por accidente
+        ancho, alto = 400, 150
+        pos_x = int((splash.winfo_screenwidth() - ancho) / 2)
+        pos_y = int((splash.winfo_screenheight() - alto) / 2)
+        splash.geometry(f"{ancho}x{alto}+{pos_x}+{pos_y}")
+        ctk.CTkLabel(splash, text="Iniciando Monitor de Reportes...", font=("Georgia", 18, "bold"), text_color=SCOTIA_TEXT).pack(expand=True)
+
+    # El splash se destruirá a sí mismo después de 2500 milisegundos (2.5 segundos)
+    splash.after(2500, splash.destroy)
+    splash.mainloop() # Mantiene el splash abierto
+
+    # ==========================================
+    # ARRANQUE DE LA APLICACIÓN PRINCIPAL
+    # ==========================================
+    # Una vez que el splash muere, arranca la maquinaria pesada
+    app = MonitorApp()
+    app.mainloop()
