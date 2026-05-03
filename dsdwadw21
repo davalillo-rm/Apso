@@ -1,0 +1,18 @@
+try:
+        # Cargamos la imagen headline.png
+        img = Image.open("headline.png")
+        ancho_original, alto_original = img.size
+        
+        # --- NUEVO: REDIMENSIONAR PROPORCIONALMENTE ---
+        ancho_deseado = 500  # <--- Cambia este número si la quieres más grande o más chica
+        proporcion = ancho_deseado / ancho_original
+        alto_deseado = int(alto_original * proporcion)
+        
+        # Matemática para encontrar el centro exacto con el nuevo tamaño
+        pos_x = int((splash.winfo_screenwidth() - ancho_deseado) / 2)
+        pos_y = int((splash.winfo_screenheight() - alto_deseado) / 2)
+        splash.geometry(f"{ancho_deseado}x{alto_deseado}+{pos_x}+{pos_y}")
+        
+        # Mostramos la imagen ocupando toda la mini-ventana con el tamaño ajustado
+        splash_img = ctk.CTkImage(light_image=img, dark_image=img, size=(ancho_deseado, alto_deseado))
+        ctk.CTkLabel(splash, text="", image=splash_img).pack()
