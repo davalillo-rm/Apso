@@ -1,0 +1,35 @@
+import time
+import pyautogui
+from pynput.mouse import Listener as MouseListener
+from pynput.keyboard import Listener as KeyboardListener
+
+def probar_bloqueo():
+    print("Iniciando prueba...")
+    
+    # 1. Activamos los bloqueadores
+    mouse_listener = MouseListener(suppress=True)
+    keyboard_listener = KeyboardListener(suppress=True)
+    
+    mouse_listener.start()
+    keyboard_listener.start()
+    
+    try:
+        print("¡Mouse y teclado físicos bloqueados por 5 segundos!")
+        print("Intenta mover el mouse, no deberías poder...")
+        
+        time.sleep(2)
+        
+        # 2. LA PRUEBA DE FUEGO: ¿Puede pyautogui mover el mouse internamente?
+        print("Intentando que el BOT mueva el mouse...")
+        pyautogui.move(100, 100, duration=1) # El bot intenta mover el cursor
+        
+        time.sleep(2)
+        
+    finally:
+        # 3. EL SALVAVIDAS: Pase lo que pase, devuelve el control
+        mouse_listener.stop()
+        keyboard_listener.stop()
+        print("¡Control devuelto! Uff...")
+
+# Ejecutamos la prueba
+probar_bloqueo()
