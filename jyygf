@@ -1,0 +1,16 @@
+    # ... tu código anterior ...
+    df.columns = ['Hora', 'Tit', 'Emis', 'M', 'Emision', 'Vence', 'FV', 'Pl1', 'Porc_T', 'Porc_Pre', 'Mo', 'Columna_L']
+    
+    # --- NUEVO: Agregar Fecha_Carga y vacunar contra el error HYC00 ---
+    from datetime import datetime
+    
+    # 1. Agregamos la nueva columna con la fecha de hoy
+    df['Fecha_Carga'] = datetime.now().strftime('%Y-%m-%d')
+    
+    # 2. Truco Anti-HYC00: Convertimos las fechas/horas a texto puro 
+    # para que el driver ODBC de SQL no colapse al leerlas.
+    df['Hora'] = df['Hora'].astype(str)
+    df['Emision'] = df['Emision'].astype(str)
+    df['Vence'] = df['Vence'].astype(str)
+    
+    return df
