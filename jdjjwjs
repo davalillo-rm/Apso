@@ -1,0 +1,40 @@
+Debug_1_LectorTextos = 
+VAR _MedidaTexto = SELECTEDVALUE(Estructura_Vencimientos[Medida])
+
+RETURN
+    SWITCH(
+        _MedidaTexto,
+        "%", 1111,
+        "Importe (MM)", 2222,
+        -7777 -- ¡ALARMA! Si sale -7777, Power BI no está leyendo ni "%" ni "Importe (MM)". Hay un carácter fantasma en tu tabla manual.
+    )
+
+
+Debug_2_Aislamiento_CRE = 
+VAR _MedidaTexto = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Medida]))
+VAR _MedidaAInyectar = IF( _MedidaTexto = "%" || _MedidaTexto = "RCL", "RCL", "Importe (MM)" )
+
+RETURN 
+    IF(
+        SELECTEDVALUE(Estructura_Vencimientos[Segmento]) = "Créditos",
+        CALCULATE(
+            [MedidaSeleccionada_CRE],
+            TREATAS( {_MedidaAInyectar}, DIM_TablaMedidas[Medida] )
+            -- Deliberadamente NO inyectamos Moneda ni Fecha aquí
+        ),
+        BLANK()
+    )
+
+
+
+Debug_3_EspiaVacios = 
+VAR _Segmento = SELECTEDVALUE(Estructura_Vencimientos[Segmento])
+VAR _ValorOriginal = [MedidaSeleccionada_CRE] -- Llamamos a tu medida "desnuda"
+
+RETURN
+    IF(
+        _Segmento = "Créditos",
+        IF( ISBLANK(_ValorOriginal), -8888, _ValorOriginal ),
+        BLANK()
+    )
+
