@@ -1,0 +1,37 @@
+Total_Vencimientos_Corregido = 
+VAR _Segmento = SELECTEDVALUE(Estructura_Vencimientos[Segmento])
+VAR _MedidaTexto = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Medida]))
+VAR _Moneda = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Moneda]))
+
+-- Captura la fecha exacta de las columnas
+VAR _Fecha = SELECTEDVALUE(TablaUnificada_Final[FechaFormateada])
+
+-- EL TRUCO DEL %: Si dice "%", le mandamos "RCL" a tu medida original para que funcione
+VAR _MedidaAInyectar = 
+    IF( _MedidaTexto = "%" || _MedidaTexto = "RCL", "RCL", "Importe (MM)" )
+
+VAR _Creditos = 
+    CALCULATE(
+        [MedidaSeleccionada_CRE],
+        TREATAS( {_MedidaAInyectar}, DIM_TablaMedidas[Medida] ),
+        TREATAS( {_Moneda}, DIM_MonedaFiltro[Moneda] ),
+        -- OJO AQUÍ: Revisa si tu tabla de créditos tiene esta columna exacta
+        TREATAS( {_Fecha}, FACT_CREDITOS[FechaFormateada_CRE] ), 
+        NOT(ISBLANK(FACT_CREDITOS[Segmento])) -- Evita sumar "basura" oculta
+    )
+
+VAR _Depositos = 
+    CALCULATE(
+        [MedidaSeleccionada_DEP],
+        TREATAS( {_MedidaAInyectar}, DIM_TablaMedidas[Medida] ),
+        TREATAS( {_Moneda}, DIM_MonedaFiltro[Moneda] ),
+        TREATAS( {_Fecha}, FACT_DEPOSITOS[FechaFormateada_DEP] ),
+        NOT(ISBLANK(FACT_DEPOSITOS[Segmento])) -- Evita sumar "basura" oculta
+    )
+
+RETURN 
+    SWITCH(
+        _Segmento,
+        "Créditos", _Creditos,
+        "Depósitos", _Depositos
+    )
