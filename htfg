@@ -1,0 +1,32 @@
+Total_Vencimientos_Matriz = 
+VAR _SegmentoActual = SELECTEDVALUE(Estructura_Vencimientos[Segmento])
+VAR _MedidaActual = SELECTEDVALUE(Estructura_Vencimientos[Medida])
+VAR _MonedaActual = SELECTEDVALUE(Estructura_Vencimientos[Moneda])
+
+-- Capturamos la fecha exacta de la columna que está mirando la matriz
+VAR _FechaActual = SELECTEDVALUE(TablaUnificada_Final[FechaFormateada])
+
+VAR _ValorCreditos = 
+    CALCULATE(
+        [MedidaSeleccionada_CRE],
+        KEEPFILTERS( TREATAS( {_MedidaActual}, DIM_TablaMedidas[Medida] ) ),
+        KEEPFILTERS( TREATAS( {_MonedaActual}, DIM_MonedaFiltro[Moneda] ) ),
+        -- Inyectamos la fecha a la tabla de Créditos
+        KEEPFILTERS( TREATAS( {_FechaActual}, FACT_CREDITOS[FechaFormateada_CRE] ) ) 
+    )
+
+VAR _ValorDepositos = 
+    CALCULATE(
+        [MedidaSeleccionada_DEP],
+        KEEPFILTERS( TREATAS( {_MedidaActual}, DIM_TablaMedidas[Medida] ) ),
+        KEEPFILTERS( TREATAS( {_MonedaActual}, DIM_MonedaFiltro[Moneda] ) ),
+        -- Inyectamos la fecha a la tabla de Depósitos
+        KEEPFILTERS( TREATAS( {_FechaActual}, FACT_DEPOSITOS[FechaFormateada_DEP] ) )
+    )
+
+RETURN
+    SWITCH(
+        _SegmentoActual,
+        "Créditos", _ValorCreditos,
+        "Depósitos", _ValorDepositos
+    )
