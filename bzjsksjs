@@ -1,0 +1,27 @@
+Sub EnviarCorreoMajorPC()
+    Dim OutlookApp As Object
+    Dim Mail As Object
+    Dim cuerpoCorreo As String ' <-- 1. Le cambiamos el nombre a la variable
+
+    Set OutlookApp = CreateObject("Outlook.Application")
+    Set Mail = OutlookApp.CreateItem(0)
+
+    ' Armamos el cuerpo del correo en HTML e insertamos la tabla
+    cuerpoCorreo = "<p>Hola,</p><br>" & _
+    RangoAHTML(Sheets("Fwd Calculation").Range("J77:N98"))
+
+    With Mail
+        '.To = "ariana.chamochumbi@scotiabank.com.pe; valeria.anaya@scotiabank.com.pe; kevin.monteza@scotiabank.com.pe"
+        '.CC = "TFRMPeruTrading@scotiabank.com"
+        .To = "ramon.davalillo@scotiabank.com.pe"
+        .Subject = "Major PEN - Kondor"
+        
+        .Display ' <-- 2. Mostramos el correo PRIMERO para que Outlook inicialice el motor HTML
+        
+        .HTMLBody = cuerpoCorreo ' <-- 3. Usamos la propiedad con mayúsculas y la nueva variable
+    End With
+
+    ' Limpiamos memoria
+    Set Mail = Nothing
+    Set OutlookApp = Nothing
+End Sub
