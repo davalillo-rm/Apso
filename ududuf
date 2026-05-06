@@ -1,0 +1,48 @@
+Matriz_Unificada = 
+-- 1. Leemos exactamente qué fila y columna de tu nueva tabla unificada estamos mirando
+VAR _FactorActual = SELECTEDVALUE(Estructura_Unificada[Factor])
+VAR _EscenarioActual = SELECTEDVALUE(Estructura_Unificada[Escenario])
+VAR _MonedaActual = SELECTEDVALUE(Estructura_Unificada[Moneda])
+
+-- 2. EL SECRETO: Inyectamos AMBOS datos a la tabla original para que tus medidas base puedan calcular
+VAR _ValorImpacto = 
+    CALCULATE(
+        [Impacto_RCL_Consolidado],
+        TREATAS( {_EscenarioActual}, EscenarioMoneda[Escenario] ),
+        TREATAS( {_MonedaActual}, EscenarioMoneda[Moneda] )
+    )
+
+VAR _ValorCompra = 
+    CALCULATE(
+        [Impacto_RCL_Derivados_C], -- O usa _Compra si es la que tiene datos en esta página
+        TREATAS( {_EscenarioActual}, EscenarioMoneda[Escenario] ),
+        TREATAS( {_MonedaActual}, EscenarioMoneda[Moneda] )
+    )
+
+VAR _ValorVenta = 
+    CALCULATE(
+        [Impacto_RCL_Derivados_V],
+        TREATAS( {_EscenarioActual}, EscenarioMoneda[Escenario] ),
+        TREATAS( {_MonedaActual}, EscenarioMoneda[Moneda] )
+    )
+
+-- 3. Asignamos la medida correspondiente según el factor
+VAR _ValorSeleccionado = 
+    SWITCH(
+        _FactorActual,
+        "Impacto RCL", _ValorImpacto,
+        "Deri. Compra", _ValorCompra,
+        "Deri. Venta", _ValorVenta
+    )
+
+-- 4. Ponemos el comportamiento de los ceros
+RETURN
+    IF(
+        _MonedaActual = "CONS",
+        IF(
+            _FactorActual = "Impacto RCL", 
+            0.00, 
+            COALESCE(_ValorSeleccionado, 0.00)
+        ),
+        _ValorSeleccionado 
+    )
