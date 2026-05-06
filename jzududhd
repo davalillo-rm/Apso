@@ -1,0 +1,45 @@
+Crossover_Vencimientos = 
+CROSSJOIN(
+    Estructura_Vencimientos,
+    SELECTCOLUMNS(
+        VALUES(TablaUnificada_Final[FechaFormateada]),
+        "Fecha_Columna", [FechaFormateada]
+    )
+)
+
+
+
+
+
+Medida_Crossover_Final = 
+-- 1. Capturamos las coordenadas de la celda donde estamos parados
+VAR _Segmento = SELECTEDVALUE(Crossover_Vencimientos[Segmento])
+VAR _Medida = SELECTEDVALUE(Crossover_Vencimientos[Medida])
+VAR _Moneda = SELECTEDVALUE(Crossover_Vencimientos[Moneda])
+VAR _Fecha = SELECTEDVALUE(Crossover_Vencimientos[Fecha_Columna])
+
+-- 2. Inyectamos los filtros a las medidas base
+VAR _ValorCreditos = 
+    CALCULATE(
+        [MedidaSeleccionada_CRE],
+        TREATAS({_Medida}, DIM_TablaMedidas[Medida]),
+        TREATAS({_Moneda}, DIM_MonedaFiltro[Moneda]),
+        TREATAS({_Fecha}, FACT_CREDITOS[FechaFormateada_CRE])
+    )
+
+VAR _ValorDepositos = 
+    CALCULATE(
+        [MedidaSeleccionada_DEP],
+        TREATAS({_Medida}, DIM_TablaMedidas[Medida]),
+        TREATAS({_Moneda}, DIM_MonedaFiltro[Moneda]),
+        TREATAS({_Fecha}, FACT_DEPOSITOS[FechaFormateada_DEP])
+    )
+
+-- 3. Entregamos el resultado según el segmento
+RETURN
+    SWITCH(
+        _Segmento,
+        "Créditos", _ValorCreditos,
+        "Depósitos", _ValorDepositos
+    )
+
