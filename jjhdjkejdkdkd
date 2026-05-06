@@ -1,0 +1,36 @@
+Total_Vencimientos_V3 = 
+VAR _Segmento = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Segmento]))
+VAR _MedidaTexto = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Medida]))
+VAR _Moneda = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Moneda]))
+VAR _Fecha = SELECTEDVALUE(TablaUnificada_Final[FechaFormateada])
+
+-- 1. PORCENTAJES (Para Créditos y Depósitos)
+-- Usamos REMOVEFILTERS para que los segmentadores de arriba no pongan la tabla en blanco
+VAR _Porcentaje = 
+    CALCULATE(
+        SUM(TablaUnificada_Final[ValorRCL]),
+        TablaUnificada_Final[Moneda] = _Moneda,
+        TablaUnificada_Final[TipoProducto] = _Segmento,
+        REMOVEFILTERS(DIM_MonedaFiltro),
+        REMOVEFILTERS(DIM_TablaMedidas)
+    )
+
+-- 2. IMPORTE MM (Solo para Depósitos)
+VAR _DepositosImporte = 
+    CALCULATE(
+        [MedidaSeleccionada_DEP],
+        REMOVEFILTERS(DIM_MonedaFiltro),
+        REMOVEFILTERS(DIM_TablaMedidas),
+        TREATAS( {"Importe (MM)"}, DIM_TablaMedidas[Medida] ),
+        TREATAS( {_Moneda}, DIM_MonedaFiltro[Moneda] ),
+        TREATAS( {_Fecha}, FACT_DEPOSITOS[FechaFormateada_DEP] ),
+        -- Filtro de limpieza para ignorar basura contable y cuadrar los montos
+        NOT(ISBLANK(FACT_DEPOSITOS[Segmento])) 
+    )
+
+RETURN 
+    SWITCH( TRUE(),
+        _MedidaTexto = "%" || _MedidaTexto = "RCL", _Porcentaje,
+        _Segmento = "Depósitos" && _MedidaTexto = "Importe (MM)", _DepositosImporte,
+        BLANK() 
+    )
