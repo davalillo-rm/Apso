@@ -1,0 +1,44 @@
+Matriz_Unificada = 
+VAR _FactorActual = SELECTEDVALUE(Estructura_RCL[Factor])
+VAR _EscenarioActual = SELECTEDVALUE(Estructura_RCL[Escenario])
+
+-- La columna que está en la matriz
+VAR _MonedaActual = SELECTEDVALUE(EscenarioMoneda[Moneda]) 
+
+-- TREATAS empuja el escenario actual dentro de tus medidas base
+VAR _ValorImpacto = 
+    CALCULATE(
+        [Impacto_RCL_Consolidado],
+        TREATAS( {_EscenarioActual}, EscenarioMoneda[Escenario] )
+    )
+
+VAR _ValorCompra = 
+    CALCULATE(
+        [Impacto_RCL_Derivados_C], -- ¡Aquí estaba el detalle! Usar _C
+        TREATAS( {_EscenarioActual}, EscenarioMoneda[Escenario] )
+    )
+
+VAR _ValorVenta = 
+    CALCULATE(
+        [Impacto_RCL_Derivados_V],
+        TREATAS( {_EscenarioActual}, EscenarioMoneda[Escenario] )
+    )
+
+VAR _ValorSeleccionado = 
+    SWITCH(
+        _FactorActual,
+        "Impacto RCL", _ValorImpacto,
+        "Deri. Compra", _ValorCompra,
+        "Deri. Venta", _ValorVenta
+    )
+
+RETURN
+    IF(
+        _MonedaActual = "CONS",
+        IF(
+            _FactorActual = "Impacto RCL", 
+            0.00, 
+            COALESCE(_ValorSeleccionado, 0.00)
+        ),
+        _ValorSeleccionado 
+    )
