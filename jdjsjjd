@@ -1,0 +1,50 @@
+Total_Vencimientos_Maestro = 
+VAR _Segmento = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Segmento]))
+VAR _MedidaTexto = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Medida]))
+VAR _Moneda = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Moneda]))
+VAR _Fecha = SELECTEDVALUE(TablaUnificada_Final[FechaFormateada])
+
+-- 1. EL PORCENTAJE (Con REMOVEFILTERS para ignorar los segmentadores de la página)
+VAR _Porcentaje = 
+    CALCULATE(
+        SUM(TablaUnificada_Final[ValorRCL]),
+        TablaUnificada_Final[Moneda] = _Moneda,
+        TablaUnificada_Final[TipoProducto] = _Segmento,
+        REMOVEFILTERS(DIM_MonedaFiltro), -- Ignora el filtro dropdown de Moneda
+        REMOVEFILTERS(DIM_TablaMedidas)  -- Ignora el filtro dropdown de Medida
+    )
+
+-- 2. LOS IMPORTES (Con REMOVEFILTERS y Filtro de limpieza de Segmentos)
+VAR _CreditosImporte = 
+    CALCULATE(
+        [MedidaSeleccionada_CRE],
+        REMOVEFILTERS(DIM_MonedaFiltro),
+        REMOVEFILTERS(DIM_TablaMedidas),
+        TREATAS( {"Importe (MM)"}, DIM_TablaMedidas[Medida] ),
+        TREATAS( {_Moneda}, DIM_MonedaFiltro[Moneda] ),
+        TREATAS( {_Fecha}, FACT_CREDITOS[FechaFormateada_CRE] ),
+        NOT(ISBLANK(FACT_CREDITOS[Segmento])) -- Limpia la basura contable
+    )
+
+VAR _DepositosImporte = 
+    CALCULATE(
+        [MedidaSeleccionada_DEP],
+        REMOVEFILTERS(DIM_MonedaFiltro),
+        REMOVEFILTERS(DIM_TablaMedidas),
+        TREATAS( {"Importe (MM)"}, DIM_TablaMedidas[Medida] ),
+        TREATAS( {_Moneda}, DIM_MonedaFiltro[Moneda] ),
+        TREATAS( {_Fecha}, FACT_DEPOSITOS[FechaFormateada_DEP] ),
+        NOT(ISBLANK(FACT_DEPOSITOS[Segmento])) -- Limpia la basura contable
+    )
+
+-- 3. EL SWITCH FINAL
+RETURN 
+    IF(
+        _MedidaTexto = "%" || _MedidaTexto = "RCL", 
+        _Porcentaje,
+        SWITCH(
+            _Segmento,
+            "Créditos", _CreditosImporte,
+            "Depósitos", _DepositosImporte
+        )
+    )
