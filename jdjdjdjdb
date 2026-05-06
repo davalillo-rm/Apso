@@ -1,0 +1,22 @@
+Estructura_Unificada = 
+CROSSJOIN(
+    SELECTCOLUMNS(
+        Estructura_RCL,
+        "Factor", Estructura_RCL[Factor],
+        "Escenario", Estructura_RCL[Escenario],
+        "Orden_Factor", Estructura_RCL[Orden_Factor],
+        "Orden", Estructura_RCL[Orden]
+    ),
+    -- Aquí creamos las monedas con su orden fijo desde el nacimiento
+    DATATABLE(
+        "Moneda", STRING,
+        "Orden_Moneda", INTEGER,
+        {
+            {"PEN", 1},
+            {"PEN CONS", 2},
+            {"USD", 3},
+            {"USD CONS", 4},
+            {"CONS", 5}
+        }
+    )
+)
