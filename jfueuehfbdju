@@ -1,0 +1,58 @@
+Matriz_Unificada = 
+VAR _FactorActual = SELECTEDVALUE(Estructura_RCL[Factor])
+VAR _EscenarioActual = SELECTEDVALUE(Estructura_RCL[Escenario])
+
+-- OJO AQUÍ: Asegúrate de que esta variable tenga EXACTAMENTE la tabla y columna 
+-- que arrastraste a la cajita de "Columnas" en tu matriz visual.
+VAR _MonedaActual = SELECTEDVALUE(EscenarioMoneda[Moneda]) 
+
+-- Usamos FILTER, ALL y TRIM para forzar el cruce exacto ignorando cualquier espacio extra
+VAR _ValorImpacto = 
+    CALCULATE(
+        [Impacto_RCL_Consolidado],
+        FILTER(
+            ALL(EscenarioMoneda[Escenario]),
+            TRIM(EscenarioMoneda[Escenario]) = TRIM(_EscenarioActual)
+        )
+    )
+
+VAR _ValorCompra = 
+    CALCULATE(
+        [Impacto_RCL_Derivados_Compra],
+        FILTER(
+            ALL(EscenarioMoneda[Escenario]),
+            TRIM(EscenarioMoneda[Escenario]) = TRIM(_EscenarioActual)
+        )
+    )
+
+VAR _ValorVenta = 
+    CALCULATE(
+        [Impacto_RCL_Derivados_V],
+        FILTER(
+            ALL(EscenarioMoneda[Escenario]),
+            TRIM(EscenarioMoneda[Escenario]) = TRIM(_EscenarioActual)
+        )
+    )
+
+VAR _ValorSeleccionado = 
+    SWITCH(
+        _FactorActual,
+        "Impacto RCL", _ValorImpacto,
+        "Deri. Compra", _ValorCompra,
+        "Deri. Venta", _ValorVenta
+    )
+
+-- Lógica final
+VAR _ResultadoFinal = 
+    IF(
+        _MonedaActual = "CONS",
+        IF(
+            _FactorActual = "Impacto RCL", 
+            0.00, 
+            COALESCE(_ValorSeleccionado, 0.00)
+        ),
+        _ValorSeleccionado 
+    )
+
+RETURN
+    _ResultadoFinal
