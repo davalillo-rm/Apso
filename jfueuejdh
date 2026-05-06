@@ -1,0 +1,45 @@
+Matriz_Unificada = 
+VAR _FactorActual = SELECTEDVALUE(Estructura_RCL[Factor])
+VAR _EscenarioActual = SELECTEDVALUE(Estructura_RCL[Escenario])
+VAR _MonedaActual = SELECTEDVALUE(EscenarioMoneda[Moneda]) 
+
+-- Usamos TREATAS con VALUES para pasar el filtro exactamente como si fuera nativo
+VAR _ValorImpacto = 
+    CALCULATE(
+        [Impacto_RCL_Consolidado],
+        TREATAS( VALUES(Estructura_RCL[Escenario]), EscenarioMoneda[Escenario] )
+    )
+
+VAR _ValorCompra = 
+    CALCULATE(
+        [Impacto_RCL_Derivados_Compra],
+        TREATAS( VALUES(Estructura_RCL[Escenario]), EscenarioMoneda[Escenario] )
+    )
+
+VAR _ValorVenta = 
+    CALCULATE(
+        [Impacto_RCL_Derivados_V],
+        TREATAS( VALUES(Estructura_RCL[Escenario]), EscenarioMoneda[Escenario] )
+    )
+
+VAR _ValorSeleccionado = 
+    SWITCH(
+        _FactorActual,
+        "Impacto RCL", _ValorImpacto,
+        "Deri. Compra", _ValorCompra,
+        "Deri. Venta", _ValorVenta
+    )
+
+VAR _ResultadoFinal = 
+    IF(
+        _MonedaActual = "CONS",
+        IF(
+            _FactorActual = "Impacto RCL", 
+            0.00, 
+            COALESCE(_ValorSeleccionado, 0.00)
+        ),
+        _ValorSeleccionado 
+    )
+
+RETURN
+    _ResultadoFinal
