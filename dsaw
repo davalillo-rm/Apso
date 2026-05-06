@@ -1,0 +1,7 @@
+Debug_Matriz =
+VAR _Factor    = SELECTEDVALUE(Estructura_RCL[Factor])
+VAR _Escenario = SELECTEDVALUE(Estructura_RCL[Escenario])
+VAR _Moneda    = SELECTEDVALUE(EscenarioMoneda[Moneda])
+
+RETURN
+_Factor & " | " & _Escenario & " | " & _Moneda
