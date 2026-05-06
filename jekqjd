@@ -1,0 +1,39 @@
+Total_Vencimientos_Definitivo = 
+VAR _Segmento = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Segmento]))
+VAR _MedidaTexto = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Medida]))
+VAR _Moneda = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Moneda]))
+VAR _FechaMatriz = SELECTEDVALUE(TablaUnificada_Final[FechaFormateada])
+
+-- RESCATE DEL TIPO DE CAMBIO: Capturamos la fecha del segmentador de la página
+VAR _FechaReporte = MAX(TablaUnificada_Final[FEC_PROCESO])
+
+-- 1. EL PORCENTAJE (Directo de la Tabla Unificada)
+VAR _Porcentaje = 
+    CALCULATE(
+        SUM(TablaUnificada_Final[ValorRCL]),
+        TablaUnificada_Final[Moneda] = _Moneda,
+        TablaUnificada_Final[TipoProducto] = _Segmento
+    )
+
+-- 2. EL IMPORTE (Solo para Depósitos)
+VAR _DepositosImporte = 
+    CALCULATE(
+        [Importe_MonedasEnMillones],
+        DIM_TablaMedidas[Medida] = "Importe (MM)",
+        DIM_MonedaFiltro[Moneda] = _Moneda,
+        FACT_DEPOSITOS[FechaFormateada_DEP] = _FechaMatriz,
+        -- INYECTAMOS EL FEC_PROCESO PARA QUE EL TIPO DE CAMBIO (TC) RESUCITE
+        FACT_DEPOSITOS[FEC_PROCESO] = _FechaReporte,
+        NOT(ISBLANK(FACT_DEPOSITOS[Segmento]))
+    )
+
+RETURN 
+    IF(
+        _MedidaTexto = "%" || _MedidaTexto = "RCL", 
+        _Porcentaje,
+        IF(
+            _Segmento = "Depósitos" && _MedidaTexto = "Importe (MM)", 
+            _DepositosImporte,
+            BLANK()
+        )
+    )
