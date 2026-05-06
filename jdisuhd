@@ -1,0 +1,25 @@
+Matriz_Unificada = 
+VAR _FactorActual = SELECTEDVALUE(Estructura_RCL[Factor])
+VAR _MonedaActual = SELECTEDVALUE(EscenarioMoneda[Moneda]) 
+
+VAR _ValorSeleccionado = 
+    SWITCH(
+        _FactorActual,
+        "Impacto RCL", [Impacto_RCL_Consolidado],
+        "Deri. Compra", [Impacto_RCL_Derivados_Compra],
+        "Deri. Venta", [Impacto_RCL_Derivados_V]
+    )
+
+VAR _ResultadoFinal = 
+    IF(
+        _MonedaActual = "CONS",
+        IF(
+            _FactorActual = "Impacto RCL", 
+            0.00, 
+            COALESCE(_ValorSeleccionado, 0.00)
+        ),
+        _ValorSeleccionado 
+    )
+
+RETURN
+    _ResultadoFinal
