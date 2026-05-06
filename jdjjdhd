@@ -1,0 +1,35 @@
+Total_Vencimientos_Matriz = 
+VAR _SegmentoActual = SELECTEDVALUE(Estructura_Vencimientos[Segmento])
+
+-- Usamos TRIM para fulminar cualquier espacio en blanco que hayas tecleado por error
+VAR _MedidaLimpia = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Medida]))
+VAR _MonedaLimpia = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Moneda]))
+
+VAR _FechaActual = SELECTEDVALUE(TablaUnificada_Final[FechaFormateada])
+
+VAR _ValorCreditos = 
+    CALCULATE(
+        [MedidaSeleccionada_CRE],
+        KEEPFILTERS( TREATAS( {_MedidaLimpia}, DIM_TablaMedidas[Medida] ) ),
+        KEEPFILTERS( TREATAS( {_MonedaLimpia}, DIM_MonedaFiltro[Moneda] ) ),
+        KEEPFILTERS( TREATAS( {_FechaActual}, FACT_CREDITOS[FechaFormateada_CRE] ) ),
+        -- Forzamos a que ignore los ajustes o segmentos vacíos que inflan el total
+        NOT(ISBLANK(FACT_CREDITOS[Segmento])) 
+    )
+
+VAR _ValorDepositos = 
+    CALCULATE(
+        [MedidaSeleccionada_DEP],
+        KEEPFILTERS( TREATAS( {_MedidaLimpia}, DIM_TablaMedidas[Medida] ) ),
+        KEEPFILTERS( TREATAS( {_MonedaLimpia}, DIM_MonedaFiltro[Moneda] ) ),
+        KEEPFILTERS( TREATAS( {_FechaActual}, FACT_DEPOSITOS[FechaFormateada_DEP] ) ),
+        -- Forzamos a que ignore los ajustes o segmentos vacíos que inflan el total
+        NOT(ISBLANK(FACT_DEPOSITOS[Segmento]))
+    )
+
+RETURN
+    SWITCH(
+        _SegmentoActual,
+        "Créditos", _ValorCreditos,
+        "Depósitos", _ValorDepositos
+    )
