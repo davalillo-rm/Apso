@@ -1,0 +1,34 @@
+Matriz_Unificada =
+VAR _Factor    = SELECTEDVALUE(Estructura_RCL[Factor])
+VAR _Escenario = SELECTEDVALUE(Estructura_RCL[Escenario])
+VAR _Moneda    = SELECTEDVALUE(EscenarioMoneda[Moneda])
+
+VAR _Valor =
+    SWITCH(
+        _Factor,
+        "Impacto RCL",
+            CALCULATE(
+                [Impacto_RCL_Consolidado],
+                TREATAS({_Escenario}, EscenarioMoneda[Escenario]),
+                TREATAS({_Moneda},    EscenarioMoneda[Moneda])
+            ),
+        "Deri. Compra",
+            CALCULATE(
+                [Impacto_RCL_Derivados_C],
+                TREATAS({_Escenario}, EscenarioMoneda[Escenario]),
+                TREATAS({_Moneda},    EscenarioMoneda[Moneda])
+            ),
+        "Deri. Venta",
+            CALCULATE(
+                [Impacto_RCL_Derivados_V],
+                TREATAS({_Escenario}, EscenarioMoneda[Escenario]),
+                TREATAS({_Moneda},    EscenarioMoneda[Moneda])
+            )
+    )
+
+RETURN
+IF(
+    _Moneda = "CONS" && _Factor = "Impacto RCL",
+    0.00,
+    COALESCE(_Valor, 0.00)
+)
