@@ -1,0 +1,14 @@
+Matriz_Unificada =
+VAR _Factor = SELECTEDVALUE(EscenarioMoneda[Factor])
+RETURN
+IF(
+    ISBLANK(_Factor),
+    -9999,
+    SWITCH(
+        _Factor,
+        "Impacto RCL",  [Impacto_RCL_Consolidado],
+        "Deri. Compra", [Impacto_RCL_Derivados_C],
+        "Deri. Venta",  [Impacto_RCL_Derivados_V],
+        -8888
+    )
+)
