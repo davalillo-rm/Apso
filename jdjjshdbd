@@ -1,0 +1,38 @@
+Total_Vencimientos_Definitivo = 
+VAR _Segmento = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Segmento]))
+VAR _MedidaTexto = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Medida]))
+VAR _Moneda = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Moneda]))
+VAR _Fecha = SELECTEDVALUE(TablaUnificada_Final[FechaFormateada])
+
+-- 1. EL PORCENTAJE (Tomado de la Tabla Unificada. Aquí ya cuadra todo perfecto)
+VAR _Porcentaje = 
+    CALCULATE(
+        SUM(TablaUnificada_Final[ValorRCL]),
+        TablaUnificada_Final[Moneda] = _Moneda,
+        TablaUnificada_Final[TipoProducto] = _Segmento
+    )
+
+-- 2. EL IMPORTE (Solo Depósitos. Usamos la técnica ALL para forzar la moneda y destrabar el CONS)
+VAR _DepositosImporte = 
+    CALCULATE(
+        [MedidaSeleccionada_DEP],
+        -- El "Sledgehammer": Borra filtros e inyecta Medida y Moneda obligatoriamente
+        FILTER(ALL(DIM_TablaMedidas), DIM_TablaMedidas[Medida] = "Importe (MM)"),
+        FILTER(ALL(DIM_MonedaFiltro), DIM_MonedaFiltro[Moneda] = _Moneda),
+        -- Inyectamos la fecha para que el acumulado no explote
+        TREATAS( {_Fecha}, FACT_DEPOSITOS[FechaFormateada_DEP] ),
+        -- Limpieza de basura contable
+        NOT(ISBLANK(FACT_DEPOSITOS[Segmento]))
+    )
+
+-- 3. ASIGNACIÓN FINAL
+RETURN 
+    IF(
+        _MedidaTexto = "%" || _MedidaTexto = "RCL", 
+        _Porcentaje,
+        IF(
+            _Segmento = "Depósitos" && _MedidaTexto = "Importe (MM)", 
+            _DepositosImporte,
+            BLANK() -- Oculta Créditos y Derivados para Importe (MM)
+        )
+    )
