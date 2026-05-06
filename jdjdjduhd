@@ -1,0 +1,35 @@
+Total_Vencimientos_Matriz = 
+VAR _SegmentoActual = SELECTEDVALUE(Estructura_Vencimientos[Segmento])
+VAR _MedidaActual = SELECTEDVALUE(Estructura_Vencimientos[Medida])
+VAR _MonedaActual = SELECTEDVALUE(Estructura_Vencimientos[Moneda])
+
+-- 1. Inyectamos la medida y la moneda a la fórmula de Créditos
+VAR _ValorCreditos = 
+    CALCULATE(
+        [MedidaSeleccionada_CRE],
+        TREATAS( {_MedidaActual}, DIM_TablaMedidas[Medida] ),
+        TREATAS( {_MonedaActual}, DIM_MonedaFiltro[Moneda] )
+    )
+
+-- 2. Inyectamos la medida y la moneda a la fórmula de Depósitos
+VAR _ValorDepositos = 
+    CALCULATE(
+        [MedidaSeleccionada_DEP],
+        TREATAS( {_MedidaActual}, DIM_TablaMedidas[Medida] ),
+        TREATAS( {_MonedaActual}, DIM_MonedaFiltro[Moneda] )
+    )
+
+-- Nota: Si tienes una medida para Derivados (ej. [MedidaSeleccionada_DER]), 
+-- puedes agregar su variable aquí siguiendo la misma lógica de arriba.
+
+-- 3. Asignamos el resultado según la fila del Segmento
+VAR _ResultadoFinal = 
+    SWITCH(
+        _SegmentoActual,
+        "Créditos", _ValorCreditos,
+        "Depósitos", _ValorDepositos
+        -- ,"Derivados", _ValorDerivados
+    )
+
+RETURN
+    _ResultadoFinal
