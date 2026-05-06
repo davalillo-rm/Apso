@@ -1,0 +1,48 @@
+Matriz_Unificada = 
+VAR _FactorActual = SELECTEDVALUE(Estructura_RCL[Factor])
+VAR _EscenarioActual = SELECTEDVALUE(Estructura_RCL[Escenario])
+-- Reemplaza 'Monedas'[Moneda] por el nombre exacto de la columna que pones en las "Columnas" de tu matriz
+VAR _MonedaActual = SELECTEDVALUE('Monedas'[Moneda]) 
+
+-- 1. Evaluamos qué medida calcular pasando el filtro del escenario al modelo base
+VAR _ValorImpacto = 
+    CALCULATE(
+        [Impacto_RCL_Consolidado], -- Asegúrate que este sea el nombre de la medida de tu 1ra tabla
+        EscenarioMoneda[Escenario] = _EscenarioActual
+    )
+
+VAR _ValorCompra = 
+    CALCULATE(
+        [Impacto_RCL_Derivados_Compra],
+        EscenarioMoneda[Escenario] = _EscenarioActual
+    )
+
+VAR _ValorVenta = 
+    CALCULATE(
+        [Impacto_RCL_Derivados_V],
+        EscenarioMoneda[Escenario] = _EscenarioActual
+    )
+
+-- 2. Asignamos el valor según el bloque (Factor) en el que estemos
+VAR _ValorSeleccionado = 
+    SWITCH(
+        _FactorActual,
+        "Impacto RCL", _ValorImpacto,
+        "Derivados Compra", _ValorCompra,
+        "Derivados Venta", _ValorVenta
+    )
+
+-- 3. Lógica para la columna CONS (Ceros para Impacto RCL, y ceros en celdas vacías de derivados)
+VAR _ResultadoFinal = 
+    IF(
+        _MonedaActual = "CONS",
+        IF(
+            _FactorActual = "Impacto RCL", 
+            0.00, 
+            COALESCE(_ValorSeleccionado, 0.00) -- COALESCE reemplaza los vacíos por 0
+        ),
+        _ValorSeleccionado -- Para PEN, USD, etc., deja el valor normal
+    )
+
+RETURN
+    _ResultadoFinal
