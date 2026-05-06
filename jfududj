@@ -1,0 +1,43 @@
+Total_Vencimientos_Maestro = 
+VAR _Segmento = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Segmento]))
+VAR _MedidaTexto = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Medida]))
+VAR _Moneda = TRIM(SELECTEDVALUE(Estructura_Vencimientos[Moneda]))
+VAR _Fecha = SELECTEDVALUE(TablaUnificada_Final[FechaFormateada])
+
+-- 1. LA MAGIA DEL %: Lo sumamos directamente de la Tabla Unificada (Donde ya existe)
+VAR _Porcentaje = 
+    CALCULATE(
+        SUM(TablaUnificada_Final[ValorRCL]),
+        TablaUnificada_Final[Moneda] = _Moneda,
+        -- Ojo: Asegúrate de que "Créditos" esté escrito con/sin tilde igual en ambas tablas
+        TablaUnificada_Final[TipoProducto] = _Segmento 
+    )
+
+-- 2. LOS IMPORTES: Los leemos desde tus medidas base inyectando los filtros
+VAR _CreditosImporte = 
+    CALCULATE(
+        [MedidaSeleccionada_CRE],
+        TREATAS( {"Importe (MM)"}, DIM_TablaMedidas[Medida] ),
+        TREATAS( {_Moneda}, DIM_MonedaFiltro[Moneda] ),
+        TREATAS( {_Fecha}, FACT_CREDITOS[FechaFormateada_CRE] )
+    )
+
+VAR _DepositosImporte = 
+    CALCULATE(
+        [MedidaSeleccionada_DEP],
+        TREATAS( {"Importe (MM)"}, DIM_TablaMedidas[Medida] ),
+        TREATAS( {_Moneda}, DIM_MonedaFiltro[Moneda] ),
+        TREATAS( {_Fecha}, FACT_DEPOSITOS[FechaFormateada_DEP] )
+    )
+
+-- 3. EL SWITCH QUE DECIDE QUÉ MOSTRAR
+RETURN 
+    IF(
+        _MedidaTexto = "%" || _MedidaTexto = "RCL", 
+        _Porcentaje,
+        SWITCH(
+            _Segmento,
+            "Créditos", _CreditosImporte,
+            "Depósitos", _DepositosImporte
+        )
+    )
