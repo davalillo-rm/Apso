@@ -1,0 +1,13 @@
+SELECT 
+    [Fecha de env],
+    [Plazo_Sin_Espacio], -- (O como le hayas puesto a la columna que uniste)
+    
+    -- Aquí empieza la magia del CAST:
+    CAST([Plazo] AS INT) AS [Plazo],
+    CAST([CURVA SOFR] AS FLOAT) AS [CURVA SOFR],
+    CAST([PEN PASIVO] AS FLOAT) AS [PEN PASIVO],
+    CAST([PEN ACTIVO] AS FLOAT) AS [PEN ACTIVO],
+    CAST([USD PASIVO] AS FLOAT) AS [USD PASIVO],
+    CAST([USD ACTIVO] AS FLOAT) AS [USD ACTIVO]
+
+FROM [RMERCADO].[Informacion_Historica_TTs];
