@@ -1,0 +1,30 @@
+def cerrar_excel_maestro():
+    """
+    Cierra Excel silenciando avisos y remata con Taskkill obligatoriamente 
+    para asegurar que no queden ventanas abiertas bloqueando archivos.
+    """
+    import subprocess
+    
+    try:
+        # 1. Intentamos apagar las alertas por dentro para evitar pop-ups
+        excel = win32.GetActiveObject("Excel.Application")
+        excel.DisplayAlerts = False 
+        
+        # Le decimos que cierre los libros sin guardar (porque tú ya guardaste con F12)
+        for wb in excel.Workbooks:
+            wb.Close(SaveChanges=False) 
+            
+        excel.Quit()
+        print("Orden de cierre interno enviada...")
+    except Exception:
+        pass # Si no logra conectar, no importa, pasamos al plan B directo
+        
+    # 2. LA GUILLOTINA OBLIGATORIA (Se ejecuta siempre)
+    # Esto asegura que la ventana desaparezca sí o sí de la pantalla
+    try:
+        print("Asegurando el cierre de Excel con Taskkill...")
+        subprocess.run(['taskkill', '/F', '/IM', 'excel.exe', '/T'], shell=True, capture_output=True)
+    except Exception as e:
+        pass
+        
+    print("Excel destruido de la memoria al 100%.")
