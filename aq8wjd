@@ -1,0 +1,19 @@
+def cerrar_excel_sin_avisos():
+    try:
+        # Nos conectamos a la aplicación Excel que ya está abierta
+        excel = win32.GetActiveObject("Excel.Application")
+        
+        # EL TRUCO: Apagamos todas las alertas, errores y avisos de Add-ins
+        excel.DisplayAlerts = False 
+        
+        # Si hay libros abiertos, los cerramos guardando cambios por si acaso
+        for wb in excel.Workbooks:
+            wb.Close(SaveChanges=True)
+            
+        # Cerramos la aplicación por completo
+        excel.Quit()
+        print("Excel cerrado internamente sin mostrar alertas.")
+        
+    except Exception as e:
+        # Si no hay ningún Excel abierto para conectar, simplemente ignoramos
+        print(f"No se detectó Excel activo o hubo un error: {e}")
