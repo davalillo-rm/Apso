@@ -1,0 +1,11 @@
+SELECT 
+    [Fecha de env],
+    [Plazo_2],
+    -- Aquí hacemos el cast a numéricos tal como te pidieron:
+    TRY_CAST([Plazo] AS INT) AS [Plazo],
+    TRY_CAST([CURVA SOFR] AS FLOAT) AS [CURVA SOFR],
+    TRY_CAST([PEN PASIVO] AS FLOAT) AS [PEN PASIVO],
+    TRY_CAST([PEN ACTIVO] AS FLOAT) AS [PEN ACTIVO],
+    TRY_CAST([USD PASIVO] AS FLOAT) AS [USD PASIVO],
+    TRY_CAST([USD ACTIVO] AS FLOAT) AS [USD ACTIVO]
+FROM [RMERCADO].[Informacion_Historica_TTs];
