@@ -1,0 +1,28 @@
+import time
+import os
+
+def eliminar_temporal_seguro(ruta_archivo):
+    """
+    Intenta borrar un archivo repetidamente hasta que Windows 
+    termine de liberar el candado de Excel.
+    """
+    if not os.path.exists(ruta_archivo):
+        return # Si no existe, no hacemos nada
+        
+    intentos = 0
+    max_intentos = 10 # Lo intentará durante 10 segundos máximo
+    
+    while intentos < max_intentos:
+        try:
+            os.remove(ruta_archivo)
+            print(f"Archivo {ruta_archivo} borrado con éxito y liberado.")
+            break # Si funciona, rompemos el bucle y seguimos
+            
+        except PermissionError:
+            # Si Windows lanza el WinError 32, atrapamos el error, esperamos 1 segundo y reintentamos
+            print(f"Windows aún bloquea el archivo. Reintentando en 1 seg... ({intentos + 1}/{max_intentos})")
+            time.sleep(1)
+            intentos += 1
+            
+    if intentos == max_intentos:
+        print("CRÍTICO: No se pudo liberar el archivo después de 10 intentos.")
