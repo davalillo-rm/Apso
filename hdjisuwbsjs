@@ -1,0 +1,21 @@
+def cerrar_excel_maestro():
+    """
+    Cierra cualquier instancia de Excel abierta, apagando alertas de Add-ins
+    y forzando el cierre de todos los libros.
+    """
+    try:
+        # Intentamos la vía elegante: Conexión interna
+        excel = win32.GetActiveObject("Excel.Application")
+        excel.DisplayAlerts = False # Apaga errores de Add-ins y avisos
+        
+        for wb in excel.Workbooks:
+            wb.Close(SaveChanges=True) # Guarda y cierra cada libro abierto
+            
+        excel.Quit()
+        print("Excel cerrado internamente (Alertas desactivadas).")
+        
+    except Exception:
+        # Si la vía elegante falla o no hay Excel abierto, usamos la guillotina
+        print("Cerrando Excel por proceso (Taskkill)...")
+        import os
+        os.system('taskkill /F /IM excel.exe /T')
