@@ -1,0 +1,119 @@
+Option Explicit
+
+Sub Descargar_Desde_SQL_y_Pegar()
+
+    '========================
+    ' 0) CONFIGURACIÓN (AJUSTA SOLO ESTO)
+    '========================
+    Const HOJA_FECHA            As String = "Posturas"
+    Const CELDA_FECHA           As String = "Q1"
+    Const HOJA_DESTINO          As String = "Posturas"
+    Const CELDA_INICIO          As String = "A2"
+    Const ULTIMA_COLUMNA_LIMPIA As String = "K"
+
+    Const SQL_SERVER    As String = "PEPGVIPR1DS9672.PER.BNS\SQL1,275"
+    Const SQL_DB        As String = "SBP_RGTRABAJO"
+    Const SQL_SCHEMA    As String = "dbo"
+    Const SQL_TABLE     As String = "DATATEC_SOBERANOS"
+    Const SQL_COL_FECHA As String = "Fecha"
+
+    ' --- Apagar lo que hace lento a Excel ---
+    Dim calcMode As Long
+    calcMode = Application.Calculation
+    Application.ScreenUpdating = False
+    Application.Calculation    = xlCalculationManual
+    Application.EnableEvents   = False
+
+    ' 1) LEER / VALIDAR FECHA
+    Dim wsFecha As Worksheet, wsDest As Worksheet
+    Dim fechaBase As Variant, fechaSQL As String
+
+    Set wsFecha = ThisWorkbook.Sheets(HOJA_FECHA)
+    Set wsDest  = ThisWorkbook.Sheets(HOJA_DESTINO)
+
+    fechaBase = wsFecha.Range(CELDA_FECHA).Value
+
+    If Not IsDate(fechaBase) Then
+        MsgBox "Q1 no contiene una fecha válida en la hoja '" & HOJA_FECHA & "'.", vbExclamation
+        GoTo Limpiar
+    End If
+
+    fechaSQL = Format(CDate(fechaBase), "yyyyMMdd")
+
+    ' 2) LIMPIAR DATA ANTERIOR
+    Dim ultimaFila As Long
+    ultimaFila = wsDest.Cells(wsDest.Rows.Count, "A").End(xlUp).Row
+    If ultimaFila >= 2 Then
+        wsDest.Range("A2:" & ULTIMA_COLUMNA_LIMPIA & ultimaFila).ClearContents
+    End If
+
+    ' 3) ARMAR SQL
+    Dim sql As String
+    sql = "SELECT " & _
+          "[Fecha], [Hora], [Rango_Hora], [Vence], " & _
+          "CONVERT(DATE,[Vencimiento FV],103) AS [Vencimiento FV], " & _
+          "[FV], [Días], [Notional], [Yield], [Cód.1], [Tipo] " & _
+          "FROM [" & SQL_SCHEMA & "].[" & SQL_TABLE & "] " & _
+          "WHERE [" & SQL_COL_FECHA & "] = '" & fechaSQL & "' " & _
+          "ORDER BY [Hora], [Vence];"
+
+    ' 4) CONEXIÓN + EJECUCIÓN
+    Dim conn As Object, rs As Object
+    Set conn = CreateObject("ADODB.Connection")
+    Set rs   = CreateObject("ADODB.Recordset")
+
+    On Error GoTo EH
+
+    conn.ConnectionTimeout = 30
+    conn.CommandTimeout    = 120
+
+    conn.Open "Provider=SQLOLEDB;" & _
+              "Data Source=" & SQL_SERVER & ";" & _
+              "Initial Catalog=" & SQL_DB & ";" & _
+              "Integrated Security=SSPI;"
+
+    ' adOpenForwardOnly=0 en lugar de adOpenStatic=3 --> MUCHO más rápido
+    rs.Open sql, conn, 0, 1
+
+    ' 5) PEGAR RESULTADO
+    If Not rs.EOF Then
+        wsDest.Range(CELDA_INICIO).CopyFromRecordset rs
+    End If
+
+    ' --- MULTIPLICAR COLUMNA E POR 1 (sin cambios) ---
+    Dim ultimaFilaa As Long
+    Dim rngColE As Range
+
+    ultimaFilaa = wsDest.Cells(wsDest.Rows.Count, "A").End(xlUp).Row
+    Set rngColE = wsDest.Range("E2:E" & ultimaFilaa)
+
+    wsDest.Range("ZZ1").Value = 1
+    wsDest.Range("ZZ1").Copy
+    rngColE.PasteSpecial Paste:=xlPasteValues, Operation:=xlMultiply
+    wsDest.Range("ZZ1").ClearContents
+    Application.CutCopyMode = False
+
+    ' 6) CIERRE
+    rs.Close:   Set rs   = Nothing
+    conn.Close: Set conn = Nothing
+
+    MsgBox "Listo", vbInformation, "Proceso terminado"
+    GoTo Limpiar
+
+EH:
+    Dim errNum As Long, errDesc As String
+    errNum  = Err.Number
+    errDesc = Err.Description
+    On Error Resume Next
+    If Not rs   Is Nothing Then If rs.State   = 1 Then rs.Close
+    If Not conn Is Nothing Then If conn.State = 1 Then conn.Close
+    Set rs = Nothing: Set conn = Nothing
+    MsgBox "Error SQL/VBA: " & errNum & " - " & errDesc, vbCritical, "Fallo"
+
+Limpiar:
+    Application.ScreenUpdating = True
+    Application.Calculation    = calcMode
+    Application.EnableEvents   = True
+    Application.CutCopyMode    = False
+
+End Sub
