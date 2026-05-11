@@ -1,0 +1,80 @@
+' 5) EXPORTAR XLSX (DASHBOARD + BIDASK A1:W235)
+Dim wbNuevo       As Workbook
+Dim wsOrigen      As Worksheet
+Dim wsNuevo       As Worksheet
+Dim wsBidAskNuevo As Worksheet
+Dim shp           As Shape
+Dim shpNames()    As String
+Dim nDel          As Integer
+Dim i             As Integer
+
+' -- Hoja 1: Tasas (igual que antes) --
+Set wsOrigen = ThisWorkbook.Sheets(HOJA_DASHBOARD)
+wsOrigen.Copy
+Set wbNuevo = ActiveWorkbook
+Set wsNuevo = wbNuevo.Sheets(1)
+wsNuevo.Name = "Tasas"
+
+For Each shp In wsNuevo.Shapes
+    If shp.Type <> msoChart Then shp.Delete
+Next shp
+
+' -- Hoja 2: BidAsk (solo rango A1:W235) --
+ThisWorkbook.Sheets("BidAsk").Copy After:=wbNuevo.Sheets(wbNuevo.Sheets.Count)
+Set wsBidAskNuevo = wbNuevo.Sheets(wbNuevo.Sheets.Count)
+wsBidAskNuevo.Name = "BidAsk"
+
+' a) Eliminar shapes/gráficos que estén FUERA de A1:W235
+'    Recogemos nombres primero para no romper la colección al borrar
+Dim limRight  As Double
+Dim limBottom As Double
+With wsBidAskNuevo.Range("A1:W235")
+    limRight  = .Left + .Width
+    limBottom = .Top  + .Height
+End With
+
+nDel = 0
+If wsBidAskNuevo.Shapes.Count > 0 Then
+    ReDim shpNames(wsBidAskNuevo.Shapes.Count - 1)
+    For Each shp In wsBidAskNuevo.Shapes
+        If shp.Left >= limRight Or shp.Top >= limBottom Then
+            shpNames(nDel) = shp.Name
+            nDel = nDel + 1
+        End If
+    Next shp
+    For i = 0 To nDel - 1
+        wsBidAskNuevo.Shapes(shpNames(i)).Delete
+    Next i
+End If
+
+' b) Eliminar columnas más allá de W (col 24 en adelante)
+'    Lo hacemos ANTES de borrar filas para no desfasar rangos
+Dim lastCol As Long
+Dim lastRow As Long
+Dim foundCell As Range
+
+Set foundCell = wsBidAskNuevo.Cells.Find("*", SearchOrder:=xlByColumns, SearchDirection:=xlPrevious)
+If Not foundCell Is Nothing Then
+    lastCol = foundCell.Column
+    If lastCol > 23 Then
+        wsBidAskNuevo.Range( _
+            wsBidAskNuevo.Columns(24), _
+            wsBidAskNuevo.Columns(lastCol) _
+        ).Delete
+    End If
+End If
+
+' c) Eliminar filas más allá de 235
+Set foundCell = wsBidAskNuevo.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
+If Not foundCell Is Nothing Then
+    lastRow = foundCell.Row
+    If lastRow > 235 Then
+        wsBidAskNuevo.Rows("236:" & lastRow).Delete
+    End If
+End If
+
+' -- Guardar y cerrar (igual que antes) --
+Application.DisplayAlerts = False
+wbNuevo.SaveAs Filename:=fileXLSX, FileFormat:=xlOpenXMLWorkbook
+wbNuevo.Close SaveChanges:=False
+Application.DisplayAlerts = True
