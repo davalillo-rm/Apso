@@ -1,0 +1,26 @@
+def archivar_excel_temporal(ruta_origen, prefijo_nombre):
+    """
+    Mueve el archivo temporal a una carpeta de histórico con la hora exacta
+    en lugar de borrarlo. Así podemos auditar si el Add-in falló.
+    """
+    if not os.path.exists(ruta_origen):
+        return # Si el archivo no existe, no hacemos nada
+        
+    # 1. Creamos la carpeta Histórico si no existe
+    carpeta_historico = r"C:\temp_excel\Historico"
+    if not os.path.exists(carpeta_historico):
+        os.makedirs(carpeta_historico)
+        
+    # 2. Generamos la marca de tiempo (Ej: 12h_30m_15s)
+    marca_tiempo = datetime.now().strftime("%Hh_%Mm_%Ss")
+    
+    # 3. Armamos la nueva ruta final
+    nuevo_nombre = f"{prefijo_nombre}_{marca_tiempo}.xlsx"
+    ruta_destino = os.path.join(carpeta_historico, nuevo_nombre)
+    
+    # 4. Movemos el archivo (esto lo quita de temp_excel y lo pone en Histórico)
+    try:
+        shutil.move(ruta_origen, ruta_destino)
+        print(f"📁 Archivo conservado para auditoría: {nuevo_nombre}")
+    except Exception as e:
+        print(f"No se pudo archivar el Excel: {e}")
