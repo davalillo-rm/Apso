@@ -1,0 +1,153 @@
+for f in d["faltantes"]:
+                    row = ctk.CTkFrame(card, fg_color="transparent")
+                    row.pack(fill="x", padx=10, pady=2)
+                    
+                    # AQUÍ ESTÁ EL CAMBIO: Volvemos a usar 'nombre_display' para la etiqueta de texto
+                    ctk.CTkLabel(row, text=f"✗ Falta: {f['nombre_display']}", text_color="#FF5252", font=("Trebuchet MS", 11)).pack(side="left")
+                    
+                    # Y el botón sigue usando el nombre limpio para que no falle al guardar
+                    ctk.CTkButton(row, text="✓ Forzar", width=50, height=18, fg_color="transparent", text_color=SCOTIA_YELLOW, font=("Trebuchet MS", 10, "bold"),
+                                  command=lambda np=d['nombre'], ni=f['nombre_regla']: self.forzar_manual(np, ni)).pack(side="right")
+
+
+
+
+try:
+            outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+            
+            # --- 1. SÚPER CACHÉ DE ENTRADA (Memoria Ultrarrápida) ---
+            mensajes = outlook.GetDefaultFolder(6).Items
+            mensajes.Sort("[ReceivedTime]", True)
+            max_correos = min(1500, len(mensajes))
+            
+            cache_entrada = []
+            for i in range(max_correos):
+                try:
+                    msg = mensajes.Item(i + 1)
+                    if getattr(msg, "Class", 0) != 43: continue
+                    
+                    remi = msg.SenderEmailAddress.lower() if msg.SenderEmailAddress else ""
+                    if msg.SenderEmailType == "EX":
+                        try: remi = msg.Sender.GetExchangeUser().PrimarySmtpAddress.lower()
+                        except: pass
+                        
+                    cache_entrada.append({
+                        "fecha": msg.ReceivedTime.date(),
+                        "entry_id": msg.EntryID,
+                        "remitente": remi,
+                        "asunto": msg.Subject.lower() if msg.Subject else "",
+                        "hora_str": str(msg.ReceivedTime)[11:16],
+                        "obj": msg # Guardamos la referencia por si ocupamos leer el cuerpo del correo luego
+                    })
+                except: continue
+
+            # --- 2. SÚPER CACHÉ DE ENVIADOS ---
+            enviados = outlook.GetDefaultFolder(5).Items
+            enviados.Sort("[SentOn]", True)
+            max_enviados = min(400, len(enviados))
+            
+            cache_enviados = []
+            for i in range(max_enviados):
+                try:
+                    m = enviados.Item(i + 1)
+                    cache_enviados.append({
+                        "fecha": m.SentOn.date(),
+                        "destinatario": str(m.To).lower() if m.To else "",
+                        "asunto": m.Subject.lower() if m.Subject else "",
+                        "hora_str": str(m.SentOn)[11:16]
+                    })
+                except: continue
+                
+        except Exception:
+            return {"procesos": [], "sin_reglas": True, "error": "No se pudo conectar a Outlook."}
+
+        resultados_finales = []
+        for proc in procesos:
+            nombre_proc = proc["nombre"]
+            frecuencia = proc["frecuencia"]
+            
+            fecha_limite = hoy
+            dias_restantes = 0
+            evaluar_proceso = True
+            dias_desde_lunes = hoy.weekday() 
+            es_fin_de_semana = dias_desde_lunes >= 5
+
+            if frecuencia == "Diario":
+                if es_fin_de_semana: evaluar_proceso = False
+                else: fecha_limite, dias_restantes = hoy, 0
+            elif frecuencia == "Semanal":
+                fecha_limite = hoy - datetime.timedelta(days=dias_desde_lunes)
+                dias_restantes = 4 - dias_desde_lunes
+            elif "Mensual" in frecuencia:
+                dia_mes = hoy.day
+                sem_actual = "S1" if dia_mes <= 7 else "S2" if dia_mes <= 14 else "S3" if dia_mes <= 21 else "S4"
+                semanas_elegidas = [s for s in ["S1", "S2", "S3", "S4"] if s in str(proc.get("valor_tiempo", ""))]
+                
+                if sem_actual in semanas_elegidas:
+                    ultima_sem = int(semanas_elegidas[-1][1])
+                    sem_actual_int = int(sem_actual[1])
+                    weeks_diff = ultima_sem - sem_actual_int
+                    viernes_actual = hoy + datetime.timedelta(days=(4 - dias_desde_lunes))
+                    fecha_limite_real = viernes_actual + datetime.timedelta(weeks=weeks_diff)
+                    
+                    fecha_limite = hoy - datetime.timedelta(days=dias_desde_lunes)
+                    dias_restantes = (fecha_limite_real - hoy).days
+                else: 
+                    evaluar_proceso = False
+
+            if not evaluar_proceso: continue
+
+            items_esperados = leer_items_de_proceso(nombre_proc)
+            datos_proc = {
+                "nombre": nombre_proc, "dias_restantes": dias_restantes,
+                "total": len(items_esperados), "cumplidos": 0,
+                "recibidos": [], "faltantes": []
+            }
+
+            for itm in items_esperados:
+                cumplido, hora_str, correo_id, es_valido = False, "", "", True
+                forzado_hoy = str(itm.get("forzado_fecha")).strip()[:10] == str(hoy)
+                
+                # 1. VALIDAR OVERRIDE MANUAL
+                if forzado_hoy:
+                    cumplido, hora_str, es_valido = True, "(Manual)", True
+                    datos_proc["cumplidos"] += 1
+                    datos_proc["recibidos"].append({"nombre": itm['nombre'], "hora": hora_str, "es_valido": es_valido, "correo_id": "", "manual": True})
+                    continue 
+
+                # 2. RADAR DE SOLICITUDES EN LA MEMORIA CACHÉ
+                validar_solicitud = itm.get("validar_sol", False)
+                sol_enviada, hora_sol = False, ""
+                
+                palabras_clave = itm["asunto"].lower().split()
+                remi_ppal = itm["remitente"].lower()
+                remi_alt = itm.get("remitente_alterno", "").lower()
+
+                if validar_solicitud:
+                    for env in cache_enviados:
+                        if env["fecha"] < fecha_limite: break
+                        if (remi_ppal in env["destinatario"] or (remi_alt and remi_alt in env["destinatario"])) and all(p in env["asunto"] for p in palabras_clave):
+                            sol_enviada, hora_sol = True, env["hora_str"]
+                            break
+                
+                ind_sol = f"  [✅ Sol. Enviada {hora_sol}]" if sol_enviada else f"  [⚠️ PENDIENTE SOLICITAR]" if validar_solicitud else ""
+                nombre_display = f"{itm['nombre']}{ind_sol}"
+
+                # 3. BÚSQUEDA EN BANDEJA DE ENTRADA (MEMORIA CACHÉ)
+                ignorados = leer_ignorados_excel(itm["nombre"])
+
+                for rec in cache_entrada:
+                    if rec["fecha"] < fecha_limite: break
+                    if rec["entry_id"] in ignorados: continue
+                    
+                    es_remitente_correcto = (remi_ppal in rec["remitente"]) or (remi_alt != "" and remi_alt in rec["remitente"])
+                    
+                    if es_remitente_correcto and all(p in rec["asunto"] for p in palabras_clave):
+                        cumplido, hora_str, correo_id = True, rec["hora_str"], rec["entry_id"]
+                        
+                        # Extraemos el cuerpo del correo SOLO del que hizo match (Súper eficiente)
+                        try: cuerpo = rec["obj"].Body if rec["obj"].Body else ""
+                        except: cuerpo = ""
+                        
+                        es_valido = self.evaluar_contenido_conforme(cuerpo)
+                        break
