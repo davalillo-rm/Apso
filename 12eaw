@@ -1,0 +1,100 @@
+Sub EnviarGraficosCorreo()
+
+    Dim oOutlook    As Object
+    Dim oMail       As Object
+    Dim oWS         As Worksheet
+    Dim sRuta       As String
+    Dim sHTMLBody   As String
+
+    ' ---- CONFIGURACIÓN ----
+    Dim sHoja    As String : sHoja   = "Reporte"   ' Nombre de tu hoja
+    Dim sDest    As String : sDest   = ""          ' Correo destinatario
+    Dim sAsunto  As String : sAsunto = "Reporte Diario de Riesgo - " & Format(Date, "DD/MM/YYYY")
+
+    ' Índices de posición de cada gráfico en la hoja (ajusta si es necesario)
+    Dim idxBonos   As Integer : idxBonos   = 1
+    Dim idxCurva   As Integer : idxCurva   = 2
+    Dim idxFXExch  As Integer : idxFXExch  = 3
+    Dim idxFXPos   As Integer : idxFXPos   = 4
+    Dim idxDV01    As Integer : idxDV01    = 5
+
+    ' Rutas temporales para las imágenes
+    sRuta = Environ("TEMP") & "\"
+    Dim imgBonos  As String : imgBonos  = sRuta & "chart_bonos.png"
+    Dim imgCurva  As String : imgCurva  = sRuta & "chart_curva.png"
+    Dim imgFXExch As String : imgFXExch = sRuta & "chart_fxexchange.png"
+    Dim imgFXPos  As String : imgFXPos  = sRuta & "chart_fxposition.png"
+    Dim imgDV01   As String : imgDV01   = sRuta & "chart_dv01.png"
+
+    On Error GoTo ErrorHandler
+
+    Set oWS = ThisWorkbook.Sheets(sHoja)
+
+    ' ---- EXPORTAR GRÁFICOS ----
+    oWS.ChartObjects(idxBonos).Chart.Export  Filename:=imgBonos,  FilterName:="PNG"
+    oWS.ChartObjects(idxCurva).Chart.Export  Filename:=imgCurva,  FilterName:="PNG"
+    oWS.ChartObjects(idxFXExch).Chart.Export Filename:=imgFXExch, FilterName:="PNG"
+    oWS.ChartObjects(idxFXPos).Chart.Export  Filename:=imgFXPos,  FilterName:="PNG"
+    oWS.ChartObjects(idxDV01).Chart.Export   Filename:=imgDV01,   FilterName:="PNG"
+
+    ' ---- CUERPO HTML ----
+    sHTMLBody = "<html><body style='font-family:Calibri,sans-serif;font-size:11pt;'>"
+
+    sHTMLBody = sHTMLBody & "<p><b>Bonos - DVO1 USD K</b></p>"
+    sHTMLBody = sHTMLBody & "<p><img src='cid:imgBonos' width='700'></p>"
+
+    sHTMLBody = sHTMLBody & "<p><b>Movimientos Curva Soberana</b></p>"
+    sHTMLBody = sHTMLBody & "<p><img src='cid:imgCurva' width='500'></p>"
+
+    sHTMLBody = sHTMLBody & "<br><p>XXXXXX</p><br>"
+
+    sHTMLBody = sHTMLBody & "<p><b>FX Exchange USDPEN</b></p>"
+    sHTMLBody = sHTMLBody & "<p><img src='cid:imgFXExch' width='450'></p>"
+
+    sHTMLBody = sHTMLBody & "<br><p>XXXXXX</p><br>"
+
+    sHTMLBody = sHTMLBody & "<p><b>FX Position USDPEN M &nbsp;&nbsp;&nbsp; DV01 in USD - K</b></p>"
+    sHTMLBody = sHTMLBody & "<table cellspacing='10' border='0'><tr>"
+    sHTMLBody = sHTMLBody & "<td><img src='cid:imgFXPos' width='420'></td>"
+    sHTMLBody = sHTMLBody & "<td><img src='cid:imgDV01'  width='420'></td>"
+    sHTMLBody = sHTMLBody & "</tr></table>"
+
+    sHTMLBody = sHTMLBody & "</body></html>"
+
+    ' ---- CREAR CORREO EN OUTLOOK ----
+    Set oOutlook = CreateObject("Outlook.Application")
+    Set oMail    = oOutlook.CreateItem(0)
+
+    With oMail
+        .To       = sDest
+        .Subject  = sAsunto
+        .HTMLBody = sHTMLBody
+
+        Dim att As Object
+
+        Set att = .Attachments.Add(imgBonos, 1, , "imgBonos")
+        att.PropertyAccessor.SetProperty "http://schemas.microsoft.com/mapi/proptag/0x3712001E", "imgBonos"
+
+        Set att = .Attachments.Add(imgCurva, 1, , "imgCurva")
+        att.PropertyAccessor.SetProperty "http://schemas.microsoft.com/mapi/proptag/0x3712001E", "imgCurva"
+
+        Set att = .Attachments.Add(imgFXExch, 1, , "imgFXExch")
+        att.PropertyAccessor.SetProperty "http://schemas.microsoft.com/mapi/proptag/0x3712001E", "imgFXExch"
+
+        Set att = .Attachments.Add(imgFXPos, 1, , "imgFXPos")
+        att.PropertyAccessor.SetProperty "http://schemas.microsoft.com/mapi/proptag/0x3712001E", "imgFXPos"
+
+        Set att = .Attachments.Add(imgDV01, 1, , "imgDV01")
+        att.PropertyAccessor.SetProperty "http://schemas.microsoft.com/mapi/proptag/0x3712001E", "imgDV01"
+
+        .Display  ' Cambia a .Send para envío automático sin confirmación
+    End With
+
+    MsgBox "Correo listo en Outlook. Revísalo y haz clic en Enviar.", vbInformation
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error " & Err.Number & ": " & Err.Description & Chr(13) & _
+           "Verifica los índices de los gráficos con: Debug.Print en ventana inmediata.", vbCritical
+
+End Sub
