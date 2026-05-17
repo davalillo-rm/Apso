@@ -1,0 +1,214 @@
+"""
+monitor.py — Monitor en vivo de carga de bonos soberanos
+Refresca automáticamente y muestra qué bonos tienen BID / ASK
+en el rango de 5 minutos actual (misma lógica de bucket que el bot).
+"""
+
+import pyodbc
+import time
+import os
+from datetime import datetime
+
+# ── Configuración ──────────────────────────────────────────────────────────────
+NOMBRE_SERVIDOR = r"PEPGVIPRIDS9672.PER.BNS\SQL1,275"
+NOMBRE_BD       = "SBP_RGTRABAJO"
+TABLA           = "SBP_RGTRABAJO.dbo.DATATEC_USDPEN"
+REFRESCO_SEG    = 30          # cada cuántos segundos refresca
+HORA_INICIO     = "08:00"     # no muestra nada antes de esta hora
+HORA_FIN        = "18:00"     # para de monitorear después de esta hora
+
+# ── Colores ANSI ───────────────────────────────────────────────────────────────
+VERDE    = "\033[92m"
+AMARILLO = "\033[93m"
+ROJO     = "\033[91m"
+CYAN     = "\033[96m"
+GRIS     = "\033[90m"
+BOLD     = "\033[1m"
+RESET    = "\033[0m"
+
+
+def calcular_rango_actual() -> tuple[str, str]:
+    """
+    Devuelve (fecha_str, rango_str) siguiendo la MISMA lógica de bucket
+    del script principal (cota superior inclusiva, ventanas de 5 min).
+    """
+    now = datetime.now()
+    fecha = now.strftime("%Y-%m-%d")
+    m = now.minute
+    h = now.hour
+
+    if m % 5 == 0:
+        # Múltiplo exacto → cerramos el bucket anterior
+        min_fin = m
+        hr_fin  = h
+        min_ini = m - 5
+        hr_ini  = h
+        if min_ini < 0:
+            min_ini = 55
+            hr_ini  = (h - 1) % 24
+    else:
+        # Bucket actual
+        min_ini = (m // 5) * 5
+        hr_ini  = h
+        min_fin = min_ini + 5
+        hr_fin  = h
+        if min_fin == 60:
+            min_fin = 0
+            hr_fin  = (h + 1) % 24
+
+    rango = f"{hr_ini:02d}:{min_ini:02d}-{hr_fin:02d}:{min_fin:02d}"
+    return fecha, rango
+
+
+def conectar() -> pyodbc.Connection:
+    conn_str = (
+        f"DRIVER={{SQL Server}};"
+        f"SERVER={NOMBRE_SERVIDOR};"
+        f"DATABASE={NOMBRE_BD};"
+        f"Trusted_Connection=yes"
+    )
+    return pyodbc.connect(conn_str)
+
+
+def consultar_bonos(fecha: str, rango: str) -> list[dict]:
+    """
+    Devuelve lista de dicts con el estado BID/ASK por bono (Vence).
+    """
+    query = f"""
+        SELECT
+            Vence,
+            MAX(CASE WHEN Tipo = 'BID' THEN Porc_T END)        AS Tasa_BID,
+            MAX(CASE WHEN Tipo = 'ASK' THEN Porc_T END)        AS Tasa_ASK,
+            MAX(CASE WHEN Tipo = 'BID' THEN 1 ELSE 0 END)      AS tiene_BID,
+            MAX(CASE WHEN Tipo = 'ASK' THEN 1 ELSE 0 END)      AS tiene_ASK,
+            COUNT(*)                                             AS registros
+        FROM {TABLA}
+        WHERE Fecha      = '{fecha}'
+          AND Rango_Hora = '{rango}'
+        GROUP BY Vence
+        ORDER BY Vence
+    """
+    try:
+        conn   = conectar()
+        cursor = conn.cursor()
+        cursor.execute(query)
+        cols = [c[0] for c in cursor.description]
+        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        cursor.close()
+        conn.close()
+        return rows
+    except Exception as e:
+        return [{"_error": str(e)}]
+
+
+def estado_color(tiene_bid: int, tiene_ask: int) -> tuple[str, str]:
+    """Devuelve (símbolo_coloreado, etiqueta)."""
+    if tiene_bid and tiene_ask:
+        return f"{VERDE}●{RESET}", f"{VERDE}BID + ASK{RESET}"
+    elif tiene_bid:
+        return f"{AMARILLO}◐{RESET}", f"{AMARILLO}Solo BID {RESET}"
+    elif tiene_ask:
+        return f"{AMARILLO}◑{RESET}", f"{AMARILLO}Solo ASK {RESET}"
+    else:
+        return f"{ROJO}○{RESET}", f"{ROJO}SIN DATOS {RESET}"
+
+
+def formatear_tasa(valor) -> str:
+    if valor is None:
+        return f"{GRIS}   —   {RESET}"
+    return f"{BOLD}{float(valor):>7.4f}%{RESET}"
+
+
+def limpiar_pantalla():
+    os.system("cls" if os.name == "nt" else "clear")
+
+
+def dibujar_tabla(rows: list[dict], fecha: str, rango: str, ciclo: int):
+    ahora = datetime.now().strftime("%H:%M:%S")
+
+    print(f"{CYAN}{BOLD}{'═'*62}{RESET}")
+    print(f"{CYAN}{BOLD}  MONITOR BONOS SOBERANOS — {ahora}   ciclo #{ciclo}{RESET}")
+    print(f"{CYAN}  Fecha: {fecha}   Rango: {BOLD}{rango}{RESET}")
+    print(f"{CYAN}{BOLD}{'═'*62}{RESET}")
+
+    if not rows:
+        print(f"\n  {AMARILLO}⚠  Sin registros para este rango aún.{RESET}\n")
+        return
+
+    if "_error" in rows[0]:
+        print(f"\n  {ROJO}✖  Error SQL: {rows[0]['_error']}{RESET}\n")
+        return
+
+    # Cabecera
+    print(
+        f"  {'VENCE':<12}"
+        f"{'TASA BID':>10}"
+        f"{'TASA ASK':>10}"
+        f"   {'ESTADO'}"
+    )
+    print(f"  {'─'*56}")
+
+    ok = incompleto = malo = 0
+
+    for r in rows:
+        simbolo, etiqueta = estado_color(r["tiene_BID"], r["tiene_ASK"])
+        bid_str = formatear_tasa(r["Tasa_BID"])
+        ask_str = formatear_tasa(r["Tasa_ASK"])
+        vence   = str(r["Vence"])
+
+        print(f"  {vence:<12}{bid_str:>10}{ask_str:>10}   {simbolo} {etiqueta}")
+
+        if r["tiene_BID"] and r["tiene_ASK"]:
+            ok += 1
+        elif r["tiene_BID"] or r["tiene_ASK"]:
+            incompleto += 1
+        else:
+            malo += 1
+
+    total = len(rows)
+    print(f"\n  {'─'*56}")
+    print(
+        f"  Total bonos: {BOLD}{total}{RESET}   "
+        f"{VERDE}Completos: {ok}{RESET}   "
+        f"{AMARILLO}Incompletos: {incompleto}{RESET}   "
+        f"{ROJO}Sin datos: {malo}{RESET}"
+    )
+    print(f"\n  {GRIS}Próximo refresco en {REFRESCO_SEG}s  —  Ctrl+C para salir{RESET}")
+    print(f"{CYAN}{BOLD}{'═'*62}{RESET}\n")
+
+
+def fuera_de_horario(hora_actual: str) -> bool:
+    return hora_actual < HORA_INICIO or hora_actual > HORA_FIN
+
+
+def main():
+    ciclo = 0
+    print(f"\n{CYAN}{BOLD}  Iniciando monitor... (Ctrl+C para salir){RESET}\n")
+    time.sleep(1)
+
+    while True:
+        ciclo += 1
+        limpiar_pantalla()
+
+        ahora_str = datetime.now().strftime("%H:%M")
+
+        if fuera_de_horario(ahora_str):
+            print(
+                f"\n  {AMARILLO}Fuera del horario de mercado "
+                f"({HORA_INICIO} – {HORA_FIN}).  "
+                f"Hora actual: {ahora_str}{RESET}\n"
+            )
+        else:
+            fecha, rango = calcular_rango_actual()
+            rows = consultar_bonos(fecha, rango)
+            dibujar_tabla(rows, fecha, rango, ciclo)
+
+        try:
+            time.sleep(REFRESCO_SEG)
+        except KeyboardInterrupt:
+            print(f"\n  {CYAN}Monitor detenido.{RESET}\n")
+            break
+
+
+if __name__ == "__main__":
+    main()
