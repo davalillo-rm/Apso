@@ -1,0 +1,110 @@
+def _obtener_resultados_outlook(self):
+        procesos = leer_procesos()
+        hoy = datetime.datetime.now().date()
+        if not procesos: return {"procesos": [], "sin_reglas": True}
+
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+            bandeja = outlook.GetDefaultFolder(6) 
+            bandeja_enviados = outlook.GetDefaultFolder(5)
+        except Exception:
+            return {"procesos": [], "sin_reglas": True, "error": "No se pudo conectar a Outlook."}
+
+        resultados_finales = []
+        for proc in procesos:
+            # ... (el resto del for comienza aquí)
+
+
+
+
+
+# ... (arriba queda la validación del override manual)
+
+                # 2. RADAR DE SOLICITUDES INTELIGENTE (OPTIMIZADO)
+                validar_solicitud = itm.get("validar_sol", False)
+                sol_enviada, hora_sol = False, ""
+                
+                palabras_clave = itm["asunto"].lower().split()
+                remi_ppal = itm["remitente"].lower()
+                remi_alt = itm.get("remitente_alterno", "").lower()
+
+                # Filtro rápido de Outlook para Enviados
+                fecha_filtro_str = fecha_limite.strftime('%m/%d/%Y %H:%M %p')
+                restriccion = f"[SentOn] >= '{fecha_filtro_str}'"
+
+                if validar_solicitud:
+                    try:
+                        enviados_filtrados = bandeja_enviados.Items.Restrict(restriccion)
+                        enviados_filtrados.Sort("[SentOn]", True) # Más recientes primero
+                        
+                        # Buscamos en el subconjunto pequeño
+                        for m in enviados_filtrados:
+                            destinatario = str(m.To).lower()
+                            asunto_env = m.Subject.lower() if m.Subject else ""
+                            
+                            if (remi_ppal in destinatario or (remi_alt and remi_alt in destinatario)) and all(p in asunto_env for p in palabras_clave):
+                                sol_enviada, hora_sol = True, str(m.SentOn)[11:16]
+                                break
+                    except Exception as e:
+                        print(f"Error en Radar Enviados: {e}")
+                
+                ind_sol = f"  [✅ Sol. Enviada {hora_sol}]" if sol_enviada else f"  [⚠️ PENDIENTE SOLICITAR]" if validar_solicitud else ""
+                nombre_display = f"{itm['nombre']}{ind_sol}"
+
+                # 3. BÚSQUEDA EN BANDEJA DE ENTRADA (OPTIMIZADO)
+                ignorados = leer_ignorados_excel(itm["nombre"])
+                
+                # Filtro rápido de Outlook para Entrada
+                restriccion_entrada = f"[ReceivedTime] >= '{fecha_filtro_str}'"
+
+                try:
+                    mensajes_filtrados = bandeja.Items.Restrict(restriccion_entrada)
+                    mensajes_filtrados.Sort("[ReceivedTime]", True)
+                    
+                    for msg in mensajes_filtrados:
+                        if getattr(msg, "Class", 0) != 43: continue # Asegurar que es un MailItem
+                        if msg.EntryID in ignorados: continue
+
+                        remi_msg = msg.SenderEmailAddress.lower()
+                        if msg.SenderEmailType == "EX":
+                            try: remi_msg = msg.Sender.GetExchangeUser().PrimarySmtpAddress.lower()
+                            except: pass
+                        
+                        asun_msg = msg.Subject.lower() if msg.Subject else ""
+                        es_remitente_correcto = (remi_ppal in remi_msg) or (remi_alt != "" and remi_alt in remi_msg)
+                        
+                        if es_remitente_correcto and all(p in asun_msg for p in palabras_clave):
+                            cumplido, hora_str, correo_id = True, str(msg.ReceivedTime)[11:16], msg.EntryID
+                            es_valido = self.evaluar_contenido_conforme(msg.Body if msg.Body else "")
+                            break
+                except Exception as e:
+                    print(f"Error buscando correos recibidos: {e}")
+
+                if cumplido:
+                    datos_proc["cumplidos"] += 1
+                    datos_proc["recibidos"].append({"nombre": nombre_display, "hora": hora_str, "es_valido": es_valido, "correo_id": correo_id, "manual": False})
+                else:
+                    # Guardamos un diccionario para poder armar correos hermosos después
+                    datos_proc["faltantes"].append({
+                        "nombre_display": nombre_display,
+                        "nombre_puro": itm["nombre"],
+                        "remitente": remi_ppal,
+                        "falta_solicitar": (validar_solicitud and not sol_enviada)
+                    })
+
+
+
+
+
+
+
+for f in d["faltantes"]:
+                    row = ctk.CTkFrame(card, fg_color="transparent")
+                    row.pack(fill="x", padx=10, pady=2)
+                    
+                    # AQUÍ ESTÁ LA CLAVE: usar nombre_display para ver el indicador
+                    ctk.CTkLabel(row, text=f"✗ Falta: {f['nombre_display']}", text_color="#FF5252", font=("Trebuchet MS", 11)).pack(side="left")
+                    
+                    # El botón usa nombre_puro
+                    ctk.CTkButton(row, text="✓ Forzar", width=50, height=18, fg_color="transparent", text_color=SCOTIA_YELLOW, font=("Trebuchet MS", 10, "bold"),
+                                  command=lambda np=d['nombre'], ni=f['nombre_puro']: self.forzar_manual(np, ni)).pack(side="right")
