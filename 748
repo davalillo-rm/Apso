@@ -1,0 +1,575 @@
+import customtkinter as ctk
+import openpyxl
+import os
+import datetime
+import threading
+
+# ============================================================
+#  ██████╗ ██╗ ██████╗ ██████╗ ██╗ ██████╗ ███╗   ██╗ █████╗ ██████╗ ██╗ ██████╗
+#  DICCIONARIO DE USUARIOS
+#  Añade aquí los códigos y nombres reales del equipo.
+#  Si el código no está en el diccionario, se mostrará el código directamente.
+#  Formato:  "codigo_usuario": "Nombre Completo",
+# ============================================================
+DIRECTORIO_USUARIOS = {
+    "s7398771": "Ramón Fernández",
+    "s7412034": "Luis Paredes",
+    "s7389201": "Julio Castillo",
+    "s7401155": "Marcelo Quispe",
+    "s7378800": "Ana Torres",
+    # Agrega más usuarios aquí...
+}
+
+# ============================================================
+#  RUTA DE LA CARPETA COMPARTIDA
+#  Cambia esta ruta a la ruta real de tu unidad de red.
+# ============================================================
+RUTA_BASE = r"R:\Carpetas personales\Ramon\Status"
+
+# ============================================================
+#  PALETA SCOTIABANK
+# ============================================================
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+ROJO         = "#EC111A"
+ROJO_HOVER   = "#B50D13"
+ROJO_OSCURO  = "#8A0A0F"
+NEGRO        = "#1A1A1A"
+SUPERFICIE   = "#1E1E1E"
+CARD         = "#252525"
+CARD2        = "#2C2C2C"
+BORDE        = "#383838"
+TEXTO        = "#F0F0F0"
+SUBTEXTO     = "#909090"
+VERDE        = "#00C853"
+VERDE_DIM    = "#1B4A1B"
+AMARILLO     = "#FFCC00"
+AMARILLO_DIM = "#4A3A00"
+NARANJA      = "#FF6D00"
+AZUL         = "#4FC3F7"
+GRIS_CLARO   = "#3A3A3A"
+
+
+def nombre_display(codigo: str) -> str:
+    """Devuelve el nombre real si existe en el diccionario, si no el código."""
+    return DIRECTORIO_USUARIOS.get(codigo, codigo)
+
+
+def iniciales(nombre: str) -> str:
+    """Genera iniciales para el avatar."""
+    partes = nombre.strip().split()
+    if len(partes) >= 2:
+        return (partes[0][0] + partes[-1][0]).upper()
+    return nombre[:2].upper()
+
+
+def detectar_usuarios() -> list[str]:
+    """Escanea la carpeta fija y retorna lista de códigos detectados."""
+    usuarios = []
+    if not os.path.exists(RUTA_BASE):
+        return usuarios
+    for archivo in os.listdir(RUTA_BASE):
+        if archivo.endswith("_status.xlsx"):
+            codigo = archivo.replace("_status.xlsx", "")
+            usuarios.append(codigo)
+    return sorted(usuarios)
+
+
+def leer_status_usuario(codigo: str) -> dict:
+    """Lee el archivo Excel de status de un usuario y retorna sus datos."""
+    ruta = os.path.join(RUTA_BASE, f"{codigo}_status.xlsx")
+    if not os.path.exists(ruta):
+        return {"error": f"Archivo no encontrado:\n{ruta}", "procesos": []}
+
+    try:
+        wb = openpyxl.load_workbook(ruta)
+        ws = wb.active
+        procesos = []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            row = list(row) + [None] * 10  # normalizar
+            proceso    = str(row[0]).strip() if row[0] else ""
+            estado     = str(row[1]).strip() if row[1] else ""
+            avance     = str(row[2]).strip() if row[2] else ""
+            item       = str(row[3]).strip() if row[3] else ""
+            hora       = str(row[4]).strip() if row[4] else "PENDIENTE"
+            validacion = str(row[5]).strip() if row[5] else "PENDIENTE"
+            if proceso:
+                procesos.append({
+                    "proceso":    proceso,
+                    "estado":     estado,
+                    "avance":     avance,
+                    "item":       item,
+                    "hora":       hora,
+                    "validacion": validacion,
+                })
+        hora_mod = datetime.datetime.fromtimestamp(
+            os.path.getmtime(ruta)
+        ).strftime("%d/%m/%Y %H:%M")
+        return {"procesos": procesos, "ultima_actualizacion": hora_mod, "error": None}
+    except Exception as e:
+        return {"error": str(e), "procesos": []}
+
+
+# ============================================================
+#  WIDGETS UTILITARIOS
+# ============================================================
+def badge(parent, texto, color_fg, color_bg, width=110):
+    return ctk.CTkLabel(
+        parent, text=texto,
+        font=("Georgia", 10, "bold"),
+        text_color=color_fg,
+        fg_color=color_bg,
+        corner_radius=5,
+        width=width, height=22,
+        anchor="center"
+    )
+
+
+# ============================================================
+#  APLICACIÓN PRINCIPAL
+# ============================================================
+class DashboardGerente(ctk.CTk):
+
+    def __init__(self):
+        super().__init__()
+        self.title("Scotiabank — Dashboard Gerencial")
+        self.geometry("1180x720")
+        self.minsize(1000, 600)
+        self.configure(fg_color=NEGRO)
+
+        self._usuario_activo = None
+        self._usuarios_cache = []
+
+        self._build_ui()
+        self.after(300, self._cargar_usuarios)
+
+    # ----------------------------------------------------------
+    #  CONSTRUCCIÓN UI
+    # ----------------------------------------------------------
+    def _build_ui(self):
+        self._build_topbar()
+
+        # Layout principal: sidebar izquierdo + área de detalle
+        contenedor = ctk.CTkFrame(self, fg_color="transparent")
+        contenedor.pack(fill="both", expand=True, padx=0, pady=0)
+        contenedor.grid_columnconfigure(0, weight=0)
+        contenedor.grid_columnconfigure(1, weight=1)
+        contenedor.grid_rowconfigure(0, weight=1)
+
+        self._build_sidebar(contenedor)
+        self._build_detalle(contenedor)
+        self._build_statusbar()
+
+    def _build_topbar(self):
+        bar = ctk.CTkFrame(self, fg_color=ROJO, height=58, corner_radius=0)
+        bar.pack(side="top", fill="x")
+        bar.pack_propagate(False)
+
+        # Acento oscuro izquierdo
+        ctk.CTkFrame(bar, fg_color=ROJO_OSCURO, width=7, corner_radius=0).pack(side="left", fill="y")
+
+        izq = ctk.CTkFrame(bar, fg_color="transparent")
+        izq.pack(side="left", padx=16)
+
+        ctk.CTkLabel(
+            izq, text="●  SCOTIABANK",
+            font=("Georgia", 19, "bold"), text_color="white"
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            izq, text="Dashboard Gerencial — Riesgos de Mercado",
+            font=("Trebuchet MS", 11), text_color="#FFD0D0"
+        ).pack(anchor="w")
+
+        der = ctk.CTkFrame(bar, fg_color="transparent")
+        der.pack(side="right", padx=20)
+
+        self.lbl_fecha = ctk.CTkLabel(
+            der, text=datetime.datetime.now().strftime("%A, %d de %B de %Y"),
+            font=("Trebuchet MS", 11), text_color="#FFD0D0"
+        )
+        self.lbl_fecha.pack(anchor="e")
+
+        ctk.CTkButton(
+            der, text="🔄  Recargar Equipo",
+            fg_color=ROJO_OSCURO, hover_color="#6B0609",
+            text_color="white", font=("Trebuchet MS", 11),
+            width=150, height=30, corner_radius=6,
+            command=self._cargar_usuarios
+        ).pack(anchor="e", pady=(4, 0))
+
+    def _build_sidebar(self, parent):
+        self.sidebar = ctk.CTkFrame(
+            parent, fg_color=SUPERFICIE, width=240,
+            corner_radius=0
+        )
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.sidebar.grid_propagate(False)
+
+        # Encabezado del sidebar
+        header_sb = ctk.CTkFrame(self.sidebar, fg_color=CARD2, height=44, corner_radius=0)
+        header_sb.pack(fill="x")
+        header_sb.pack_propagate(False)
+        ctk.CTkLabel(
+            header_sb, text="👥  EQUIPO",
+            font=("Georgia", 12, "bold"), text_color=SUBTEXTO
+        ).pack(side="left", padx=14, pady=10)
+
+        self.lbl_total_equipo = ctk.CTkLabel(
+            header_sb, text="",
+            font=("Trebuchet MS", 10), text_color=SUBTEXTO
+        )
+        self.lbl_total_equipo.pack(side="right", padx=10)
+
+        # Scroll de miembros
+        self.scroll_miembros = ctk.CTkScrollableFrame(
+            self.sidebar, fg_color="transparent",
+            scrollbar_button_color=BORDE
+        )
+        self.scroll_miembros.pack(fill="both", expand=True, padx=0, pady=0)
+
+    def _build_detalle(self, parent):
+        self.area_detalle = ctk.CTkFrame(
+            parent, fg_color=NEGRO, corner_radius=0
+        )
+        self.area_detalle.grid(row=0, column=1, sticky="nsew")
+        self._mostrar_bienvenida()
+
+    def _build_statusbar(self):
+        bar = ctk.CTkFrame(self, fg_color=CARD, height=26, corner_radius=0)
+        bar.pack(side="bottom", fill="x")
+        bar.pack_propagate(False)
+        self.lbl_status = ctk.CTkLabel(
+            bar, text="Iniciando…",
+            font=("Trebuchet MS", 10), text_color=SUBTEXTO, anchor="w"
+        )
+        self.lbl_status.pack(side="left", padx=14)
+
+    # ----------------------------------------------------------
+    #  PANTALLA DE BIENVENIDA
+    # ----------------------------------------------------------
+    def _mostrar_bienvenida(self):
+        for w in self.area_detalle.winfo_children():
+            w.destroy()
+
+        centro = ctk.CTkFrame(self.area_detalle, fg_color="transparent")
+        centro.place(relx=0.5, rely=0.5, anchor="center")
+
+        ctk.CTkLabel(
+            centro, text="◈",
+            font=("Georgia", 52), text_color=ROJO
+        ).pack()
+        ctk.CTkLabel(
+            centro, text="Selecciona un miembro del equipo",
+            font=("Georgia", 18, "bold"), text_color=TEXTO
+        ).pack(pady=(8, 4))
+        ctk.CTkLabel(
+            centro, text="Haz clic en cualquier persona del panel izquierdo\npara ver su status de procesos en tiempo real.",
+            font=("Trebuchet MS", 12), text_color=SUBTEXTO, justify="center"
+        ).pack()
+
+    # ----------------------------------------------------------
+    #  CARGAR LISTA DE USUARIOS
+    # ----------------------------------------------------------
+    def _cargar_usuarios(self):
+        self.lbl_status.configure(text="Escaneando carpetas compartidas…")
+        threading.Thread(target=self._worker_usuarios, daemon=True).start()
+
+    def _worker_usuarios(self):
+        usuarios = detectar_usuarios()
+        self.after(0, lambda: self._poblar_sidebar(usuarios))
+
+    def _poblar_sidebar(self, usuarios: list):
+        for w in self.scroll_miembros.winfo_children():
+            w.destroy()
+
+        self._usuarios_cache = usuarios
+
+        if not usuarios:
+            ctk.CTkLabel(
+                self.scroll_miembros,
+                text="No se encontraron\nusuarios en la ruta\nconfigurada.",
+                font=("Trebuchet MS", 11), text_color=SUBTEXTO,
+                justify="center"
+            ).pack(pady=30)
+            self.lbl_status.configure(text=f"Ruta: {RUTA_BASE} — Sin usuarios detectados.")
+            return
+
+        self.lbl_total_equipo.configure(text=f"{len(usuarios)} miembros")
+
+        for codigo in usuarios:
+            self._crear_tarjeta_miembro(codigo)
+
+        self.lbl_status.configure(
+            text=f"Equipo cargado: {len(usuarios)} miembros  |  {RUTA_BASE}"
+        )
+
+    def _crear_tarjeta_miembro(self, codigo: str):
+        nombre = nombre_display(codigo)
+        ini    = iniciales(nombre)
+
+        frame = ctk.CTkFrame(
+            self.scroll_miembros,
+            fg_color=CARD, corner_radius=8,
+            border_width=1, border_color=BORDE,
+            cursor="hand2"
+        )
+        frame.pack(fill="x", padx=10, pady=4)
+
+        inner = ctk.CTkFrame(frame, fg_color="transparent")
+        inner.pack(fill="x", padx=10, pady=8)
+
+        # Avatar circular con iniciales
+        avatar = ctk.CTkLabel(
+            inner, text=ini,
+            font=("Georgia", 13, "bold"),
+            text_color="white",
+            fg_color=ROJO_OSCURO,
+            width=38, height=38,
+            corner_radius=19
+        )
+        avatar.pack(side="left")
+
+        info = ctk.CTkFrame(inner, fg_color="transparent")
+        info.pack(side="left", padx=10, fill="x", expand=True)
+
+        ctk.CTkLabel(
+            info, text=nombre,
+            font=("Trebuchet MS", 12, "bold"),
+            text_color=TEXTO, anchor="w"
+        ).pack(anchor="w")
+
+        ctk.CTkLabel(
+            info, text=codigo,
+            font=("Courier", 9),
+            text_color=SUBTEXTO, anchor="w"
+        ).pack(anchor="w")
+
+        flecha = ctk.CTkLabel(
+            inner, text="›",
+            font=("Georgia", 18), text_color=SUBTEXTO
+        )
+        flecha.pack(side="right")
+
+        # Bind click en todos los hijos
+        def _on_click(event, c=codigo, f=frame):
+            self._seleccionar_usuario(c, f)
+
+        for widget in [frame, inner, avatar, info, flecha] + info.winfo_children():
+            widget.bind("<Button-1>", _on_click)
+            widget.configure(cursor="hand2")
+
+        # Guardar referencia para highlight
+        frame._codigo = codigo
+
+    def _seleccionar_usuario(self, codigo: str, frame_click=None):
+        # Resetear highlight de todos
+        for w in self.scroll_miembros.winfo_children():
+            if isinstance(w, ctk.CTkFrame):
+                w.configure(border_color=BORDE, fg_color=CARD)
+
+        # Highlight seleccionado
+        if frame_click:
+            frame_click.configure(border_color=ROJO, fg_color=GRIS_CLARO)
+
+        self._usuario_activo = codigo
+        self.lbl_status.configure(text=f"Cargando datos de {nombre_display(codigo)}…")
+        threading.Thread(
+            target=lambda: self._worker_detalle(codigo), daemon=True
+        ).start()
+
+    def _worker_detalle(self, codigo: str):
+        datos = leer_status_usuario(codigo)
+        self.after(0, lambda: self._dibujar_detalle(codigo, datos))
+
+    # ----------------------------------------------------------
+    #  PANEL DE DETALLE
+    # ----------------------------------------------------------
+    def _dibujar_detalle(self, codigo: str, datos: dict):
+        for w in self.area_detalle.winfo_children():
+            w.destroy()
+
+        nombre = nombre_display(codigo)
+
+        # ── Encabezado del detalle ──
+        header = ctk.CTkFrame(
+            self.area_detalle, fg_color=CARD2,
+            height=72, corner_radius=0
+        )
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        ctk.CTkFrame(header, fg_color=ROJO, width=5, corner_radius=0).pack(side="left", fill="y")
+
+        ini_lbl = ctk.CTkLabel(
+            header, text=iniciales(nombre),
+            font=("Georgia", 20, "bold"), text_color="white",
+            fg_color=ROJO_OSCURO, width=50, height=50, corner_radius=25
+        )
+        ini_lbl.pack(side="left", padx=16, pady=10)
+
+        info_h = ctk.CTkFrame(header, fg_color="transparent")
+        info_h.pack(side="left", pady=10)
+
+        ctk.CTkLabel(
+            info_h, text=nombre,
+            font=("Georgia", 17, "bold"), text_color=TEXTO, anchor="w"
+        ).pack(anchor="w")
+
+        meta = f"Código: {codigo}"
+        if datos.get("ultima_actualizacion"):
+            meta += f"   |   Última actualización del archivo: {datos['ultima_actualizacion']}"
+        ctk.CTkLabel(
+            info_h, text=meta,
+            font=("Trebuchet MS", 10), text_color=SUBTEXTO, anchor="w"
+        ).pack(anchor="w")
+
+        # ── Manejo de error ──
+        if datos.get("error"):
+            err_frame = ctk.CTkFrame(self.area_detalle, fg_color="transparent")
+            err_frame.place(relx=0.5, rely=0.5, anchor="center")
+            ctk.CTkLabel(
+                err_frame, text="⚠",
+                font=("Georgia", 40), text_color=AMARILLO
+            ).pack()
+            ctk.CTkLabel(
+                err_frame, text="No se pudo leer el archivo de status",
+                font=("Georgia", 15, "bold"), text_color=TEXTO
+            ).pack(pady=(6, 2))
+            ctk.CTkLabel(
+                err_frame, text=datos["error"],
+                font=("Trebuchet MS", 10), text_color=SUBTEXTO, justify="center"
+            ).pack()
+            self.lbl_status.configure(text=f"Error al leer datos de {nombre}")
+            return
+
+        procesos = datos.get("procesos", [])
+
+        # ── Métricas resumidas ──
+        total      = len(procesos)
+        completados = sum(1 for p in procesos if "COMPLET" in p["estado"].upper()
+                          or ("/" in p["avance"] and p["avance"].split("/")[0] == p["avance"].split("/")[-1]))
+        pendientes = total - completados
+
+        metricas = ctk.CTkFrame(self.area_detalle, fg_color="transparent", height=80)
+        metricas.pack(fill="x", padx=18, pady=(14, 6))
+        metricas.pack_propagate(False)
+
+        for valor, etiqueta, color_v, color_bg in [
+            (str(total),       "Total procesos",  TEXTO,   CARD2),
+            (str(completados), "Completados",     VERDE,   VERDE_DIM),
+            (str(pendientes),  "En proceso",      AMARILLO, AMARILLO_DIM),
+        ]:
+            card_m = ctk.CTkFrame(
+                metricas, fg_color=color_bg,
+                corner_radius=10, border_width=1, border_color=BORDE
+            )
+            card_m.pack(side="left", padx=(0, 10), fill="y")
+
+            ctk.CTkLabel(
+                card_m, text=valor,
+                font=("Georgia", 26, "bold"), text_color=color_v
+            ).pack(padx=22, pady=(8, 0))
+            ctk.CTkLabel(
+                card_m, text=etiqueta,
+                font=("Trebuchet MS", 10), text_color=SUBTEXTO
+            ).pack(padx=22, pady=(0, 8))
+
+        # ── Sin procesos ──
+        if not procesos:
+            ctk.CTkLabel(
+                self.area_detalle,
+                text="Sin procesos registrados en el archivo.",
+                font=("Trebuchet MS", 12), text_color=SUBTEXTO
+            ).pack(pady=30)
+            self.lbl_status.configure(text=f"Datos de {nombre} cargados — sin procesos.")
+            return
+
+        # ── Tabla de procesos ──
+        tabla_container = ctk.CTkScrollableFrame(
+            self.area_detalle, fg_color="transparent",
+            scrollbar_button_color=BORDE
+        )
+        tabla_container.pack(fill="both", expand=True, padx=18, pady=(4, 12))
+
+        # Encabezado de tabla
+        self._fila_tabla(
+            tabla_container,
+            ["PROCESO", "ESTADO", "AVANCE", "ÍTEM / CORREO", "HORA RECIBIDO", "VALIDACIÓN"],
+            es_header=True
+        )
+
+        for i, p in enumerate(procesos):
+            self._fila_tabla(
+                tabla_container,
+                [p["proceso"], p["estado"], p["avance"],
+                 p["item"], p["hora"], p["validacion"]],
+                es_header=False,
+                alterno=(i % 2 == 1),
+                estado=p["estado"],
+                validacion=p["validacion"]
+            )
+
+        self.lbl_status.configure(
+            text=f"Datos de {nombre} — {total} proceso(s)  |  "
+                 f"{completados} completados, {pendientes} en proceso"
+        )
+
+    def _fila_tabla(self, parent, celdas, es_header=False,
+                    alterno=False, estado="", validacion=""):
+
+        anchos = [160, 110, 70, 220, 120, 110]
+        colores_celda = None
+
+        if es_header:
+            fg = ROJO
+        elif alterno:
+            fg = CARD2
+        else:
+            fg = CARD
+
+        fila = ctk.CTkFrame(
+            parent, fg_color=fg,
+            corner_radius=6 if not es_header else 0,
+            height=38
+        )
+        fila.pack(fill="x", pady=(0 if es_header else 2))
+        fila.pack_propagate(False)
+
+        for idx, (texto, ancho) in enumerate(zip(celdas, anchos)):
+            # Color dinámico por columna
+            if not es_header:
+                if idx == 1:  # Estado
+                    t_color = AMARILLO if "PROCESO" in texto.upper() else VERDE if "COMPLET" in texto.upper() else SUBTEXTO
+                elif idx == 5:  # Validación
+                    t_color = AMARILLO if "PENDIENTE" in texto.upper() else VERDE if "OK" in texto.upper() or "VALID" in texto.upper() else "#FF6B6B"
+                elif idx == 4:  # Hora
+                    t_color = SUBTEXTO if "PENDIENTE" in texto.upper() else AZUL
+                else:
+                    t_color = TEXTO
+                font_conf = ("Trebuchet MS", 10)
+            else:
+                t_color = "white"
+                font_conf = ("Trebuchet MS", 10, "bold")
+
+            ctk.CTkLabel(
+                fila, text=texto,
+                font=font_conf,
+                text_color=t_color,
+                width=ancho, anchor="w",
+                wraplength=ancho - 10
+            ).pack(side="left", padx=(10 if idx == 0 else 6), pady=4)
+
+            # Separador vertical entre celdas
+            if idx < len(celdas) - 1:
+                ctk.CTkFrame(
+                    fila, fg_color=BORDE, width=1, corner_radius=0
+                ).pack(side="left", fill="y", pady=6)
+
+
+# ============================================================
+#  ENTRY POINT
+# ============================================================
+if __name__ == "__main__":
+    app = DashboardGerente()
+    app.mainloop()
