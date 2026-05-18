@@ -1,0 +1,277 @@
+"""
+Visualizador Interactivo de la Metodología Svensson (Nelson-Siegel-Svensson)
+============================================================================
+Fórmula:
+  r(m) = β0 + β1 * [(1 - e^(-m/τ1)) / (m/τ1)]
+              + β2 * [(1 - e^(-m/τ1)) / (m/τ1) - e^(-m/τ1)]
+              + β3 * [(1 - e^(-m/τ2)) / (m/τ2) - e^(-m/τ2)]
+
+Uso: ejecuta el script y usa los sliders para ajustar parámetros en tiempo real.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from matplotlib.widgets import Slider, Button, RadioButtons
+
+# ─────────────────────────────────────────────
+# Función Svensson
+# ─────────────────────────────────────────────
+def svensson(m, b0, b1, b2, b3, tau1, tau2):
+    m = np.asarray(m, dtype=float)
+    eps = 1e-8
+
+    factor1 = (1 - np.exp(-m / tau1)) / (m / tau1 + eps)
+    factor2 = factor1 - np.exp(-m / tau1)
+    factor3 = (1 - np.exp(-m / tau2)) / (m / tau2 + eps) - np.exp(-m / tau2)
+
+    return b0 + b1 * factor1 + b2 * factor2 + b3 * factor3
+
+# ─────────────────────────────────────────────
+# Escenarios predefinidos
+# ─────────────────────────────────────────────
+ESCENARIOS = {
+    "Normal (Empinada)":   dict(b0=5.0,  b1=-2.5, b2=1.5,  b3=0.0,  tau1=1.5, tau2=5.0),
+    "Invertida":           dict(b0=3.0,  b1=2.5,  b2=-1.0, b3=0.0,  tau1=1.5, tau2=5.0),
+    "Plana":               dict(b0=4.0,  b1=0.0,  b2=0.0,  b3=0.0,  tau1=1.5, tau2=5.0),
+    "Joroba (Hump)":       dict(b0=4.5,  b1=-1.0, b2=3.0,  b3=-2.0, tau1=1.0, tau2=4.0),
+    "Doble Joroba":        dict(b0=4.0,  b1=-1.5, b2=3.5,  b3=3.5,  tau1=0.8, tau2=5.5),
+    "Crisis (Baja + Flat)":dict(b0=0.5,  b1=0.2,  b2=0.3,  b3=0.0,  tau1=2.0, tau2=6.0),
+}
+
+COLORES_ESCENARIOS = ["#e63946", "#457b9d", "#2a9d8f", "#e9c46a", "#f4a261", "#8338ec"]
+
+# ─────────────────────────────────────────────
+# Parámetros iniciales
+# ─────────────────────────────────────────────
+params_init = ESCENARIOS["Normal (Empinada)"]
+m = np.linspace(0.01, 30, 500)
+
+# ─────────────────────────────────────────────
+# Layout de la figura
+# ─────────────────────────────────────────────
+fig = plt.figure(figsize=(16, 10), facecolor="#0f1117")
+fig.canvas.manager.set_window_title("Visualizador Svensson – Curvas de Rendimiento")
+
+gs = gridspec.GridSpec(
+    3, 3,
+    figure=fig,
+    left=0.06, right=0.97,
+    top=0.93,  bottom=0.05,
+    hspace=0.45, wspace=0.35
+)
+
+ax_main    = fig.add_subplot(gs[0:2, 0:2])
+ax_compare = fig.add_subplot(gs[0:2, 2])
+ax_beta    = fig.add_subplot(gs[2, 0])
+ax_tau     = fig.add_subplot(gs[2, 1])
+ax_comp    = fig.add_subplot(gs[2, 2])
+
+for ax in [ax_main, ax_compare, ax_beta, ax_tau, ax_comp]:
+    ax.set_facecolor("#1a1d27")
+    ax.tick_params(colors="#aaaaaa", labelsize=8)
+    ax.spines[:].set_color("#333344")
+    ax.xaxis.label.set_color("#cccccc")
+    ax.yaxis.label.set_color("#cccccc")
+    ax.title.set_color("#ffffff")
+
+fig.text(0.5, 0.965, "Metodología Svensson – Curvas de Rendimiento",
+         ha="center", va="center", fontsize=14, fontweight="bold",
+         color="#ffffff", fontfamily="monospace")
+
+# ─────────────────────────────────────────────
+# Curva principal
+# ─────────────────────────────────────────────
+y_init = svensson(m, **params_init)
+line_main, = ax_main.plot(m, y_init, color="#00d4ff", lw=2.5, label="Curva actual")
+ax_main.set_xlim(0, 30); ax_main.set_ylim(-1, 10)
+ax_main.set_xlabel("Vencimiento (años)"); ax_main.set_ylabel("Tasa (%)")
+ax_main.set_title("Curva de Rendimiento (interactiva)", fontsize=10)
+ax_main.grid(True, alpha=0.15, color="#ffffff")
+ax_main.axhline(0, color="#ffffff", lw=0.5, alpha=0.3)
+
+annot = ax_main.annotate("", xy=(10, 4), xytext=(12, 5.5),
+    arrowprops=dict(arrowstyle="->", color="#ffcc00"),
+    fontsize=8, color="#ffcc00")
+
+# ─────────────────────────────────────────────
+# Panel comparativo
+# ─────────────────────────────────────────────
+ax_compare.set_title("Escenarios Predefinidos", fontsize=9)
+ax_compare.set_xlabel("Vencimiento (años)", fontsize=8)
+ax_compare.set_ylabel("Tasa (%)", fontsize=8)
+ax_compare.set_xlim(0, 30)
+ax_compare.grid(True, alpha=0.15, color="#ffffff")
+ax_compare.axhline(0, color="#ffffff", lw=0.5, alpha=0.3)
+
+for (name, p), col in zip(ESCENARIOS.items(), COLORES_ESCENARIOS):
+    y_sc = svensson(m, **p)
+    ax_compare.plot(m, y_sc, color=col, lw=1.5, label=name.split(" ")[0])
+ax_compare.legend(fontsize=6, framealpha=0.2, labelcolor="white",
+                  facecolor="#1a1d27", edgecolor="#444")
+
+# ─────────────────────────────────────────────
+# Sensibilidad β
+# ─────────────────────────────────────────────
+ax_beta.set_title("Sensibilidad β₀ β₁ β₂ β₃", fontsize=9)
+ax_beta.set_xlabel("Vencimiento (años)", fontsize=8)
+ax_beta.set_ylabel("Tasa (%)", fontsize=8)
+ax_beta.set_xlim(0, 30)
+ax_beta.grid(True, alpha=0.15, color="#ffffff")
+
+beta_lines = []
+beta_vals  = [("β₀", "#ff6b6b"), ("β₁", "#ffd166"), ("β₂", "#06d6a0"), ("β₃", "#118ab2")]
+base_p = dict(b0=4.0, b1=-1.5, b2=1.5, b3=1.0, tau1=1.5, tau2=5.0)
+for label, col in beta_vals:
+    bl, = ax_beta.plot(m, svensson(m, **base_p), color=col, lw=1.2, alpha=0.7, label=label)
+    beta_lines.append(bl)
+ax_beta.legend(fontsize=7, framealpha=0.2, labelcolor="white",
+               facecolor="#1a1d27", edgecolor="#444")
+
+# ─────────────────────────────────────────────
+# Sensibilidad τ
+# ─────────────────────────────────────────────
+ax_tau.set_title("Sensibilidad τ₁ y τ₂", fontsize=9)
+ax_tau.set_xlabel("Vencimiento (años)", fontsize=8)
+ax_tau.set_ylabel("Tasa (%)", fontsize=8)
+ax_tau.set_xlim(0, 30)
+ax_tau.grid(True, alpha=0.15, color="#ffffff")
+
+tau_colors_1 = ["#ff9f1c", "#ffbf69", "#cbf3f0"]
+tau_colors_2 = ["#a8dadc", "#457b9d", "#1d3557"]
+tau1_vals = [0.5, 1.5, 3.0]
+tau2_vals = [3.0, 5.0, 10.0]
+tau_lines = []
+for t1, col in zip(tau1_vals, tau_colors_1):
+    p = {**base_p, "tau1": t1}
+    tl, = ax_tau.plot(m, svensson(m, **p), color=col, lw=1.2,
+                      linestyle="--", label=f"τ₁={t1}")
+    tau_lines.append(tl)
+for t2, col in zip(tau2_vals, tau_colors_2):
+    p = {**base_p, "tau2": t2}
+    tl, = ax_tau.plot(m, svensson(m, **p), color=col, lw=1.2,
+                      linestyle=":", label=f"τ₂={t2}")
+    tau_lines.append(tl)
+ax_tau.legend(fontsize=6, framealpha=0.2, labelcolor="white",
+              facecolor="#1a1d27", edgecolor="#444", ncol=2)
+
+# ─────────────────────────────────────────────
+# Descomposición por componentes
+# ─────────────────────────────────────────────
+ax_comp.set_title("Componentes de la Curva", fontsize=9)
+ax_comp.set_xlabel("Vencimiento (años)", fontsize=8)
+ax_comp.set_ylabel("Contribución (%)", fontsize=8)
+ax_comp.set_xlim(0, 30)
+ax_comp.grid(True, alpha=0.15, color="#ffffff")
+ax_comp.axhline(0, color="#ffffff", lw=0.5, alpha=0.3)
+
+def _get_components(b0, b1, b2, b3, tau1, tau2):
+    eps = 1e-8
+    c0 = np.full_like(m, b0)
+    c1 = b1 * (1 - np.exp(-m/tau1)) / (m/tau1 + eps)
+    c2 = b2 * ((1 - np.exp(-m/tau1)) / (m/tau1 + eps) - np.exp(-m/tau1))
+    c3 = b3 * ((1 - np.exp(-m/tau2)) / (m/tau2 + eps) - np.exp(-m/tau2))
+    return c0, c1, c2, c3
+
+c0, c1, c2, c3 = _get_components(**params_init)
+comp_lines = []
+comp_data  = [(c0, "β₀ (nivel)", "#ff6b6b"),
+              (c1, "β₁ (pendiente)", "#ffd166"),
+              (c2, "β₂ (hump 1)", "#06d6a0"),
+              (c3, "β₃ (hump 2)", "#118ab2")]
+for data, lbl, col in comp_data:
+    cl, = ax_comp.plot(m, data, lw=1.5, color=col, label=lbl)
+    comp_lines.append(cl)
+ax_comp.legend(fontsize=6, framealpha=0.2, labelcolor="white",
+               facecolor="#1a1d27", edgecolor="#444")
+
+# ─────────────────────────────────────────────
+# SLIDERS
+# ─────────────────────────────────────────────
+slider_ax_specs = [
+    ([0.10, 0.96, 0.12, 0.018], "β₀",  -2,  8,  params_init["b0"],  "#ff6b6b"),
+    ([0.26, 0.96, 0.12, 0.018], "β₁",  -5,  5,  params_init["b1"],  "#ffd166"),
+    ([0.42, 0.96, 0.12, 0.018], "β₂",  -5,  5,  params_init["b2"],  "#06d6a0"),
+    ([0.58, 0.96, 0.12, 0.018], "β₃",  -5,  5,  params_init["b3"],  "#118ab2"),
+    ([0.74, 0.96, 0.10, 0.018], "τ₁", 0.1,  5,  params_init["tau1"],"#f4a261"),
+    ([0.86, 0.96, 0.10, 0.018], "τ₂", 0.5, 15,  params_init["tau2"],"#e9c46a"),
+]
+
+sliders = []
+for spec, lbl, vmin, vmax, vinit, col in slider_ax_specs:
+    ax_sl = fig.add_axes(spec, facecolor="#1a1d27")
+    sl = Slider(ax_sl, lbl, vmin, vmax, valinit=vinit,
+                color=col, track_color="#2a2d3a")
+    sl.label.set_color("#ffffff")
+    sl.valtext.set_color("#ffffff")
+    sl.label.set_fontsize(8)
+    sl.valtext.set_fontsize(7)
+    sliders.append(sl)
+
+s_b0, s_b1, s_b2, s_b3, s_tau1, s_tau2 = sliders
+
+# ─────────────────────────────────────────────
+# Función de actualización
+# ─────────────────────────────────────────────
+def update(_):
+    b0   = s_b0.val
+    b1   = s_b1.val
+    b2   = s_b2.val
+    b3   = s_b3.val
+    tau1 = s_tau1.val
+    tau2 = s_tau2.val
+
+    y = svensson(m, b0, b1, b2, b3, tau1, tau2)
+    line_main.set_ydata(y)
+
+    r10 = svensson(np.array([10.0]), b0, b1, b2, b3, tau1, tau2)[0]
+    annot.set_text(f"10Y: {r10:.2f}%")
+    annot.xy = (10, r10)
+
+    ymin, ymax = min(y.min() - 0.5, -0.5), max(y.max() + 0.5, 1.0)
+    ax_main.set_ylim(ymin, ymax)
+
+    c0_, c1_, c2_, c3_ = _get_components(b0, b1, b2, b3, tau1, tau2)
+    for cl, data in zip(comp_lines, [c0_, c1_, c2_, c3_]):
+        cl.set_ydata(data)
+    ax_comp.relim(); ax_comp.autoscale_view()
+
+    fig.canvas.draw_idle()
+
+for sl in sliders:
+    sl.on_changed(update)
+
+# ─────────────────────────────────────────────
+# Botones de escenarios predefinidos
+# ─────────────────────────────────────────────
+btn_objs = []
+nombres = list(ESCENARIOS.keys())
+for i, (nombre, col) in enumerate(zip(nombres, COLORES_ESCENARIOS)):
+    bx = fig.add_axes([0.06 + i * 0.155, 0.93, 0.14, 0.022], facecolor=col)
+    label = " ".join(nombre.split()[:2]) if len(nombre.split()) > 1 else nombre
+    btn = Button(bx, label, color=col, hovercolor="#ffffff")
+    btn.label.set_fontsize(6.5)
+    btn.label.set_color("#ffffff")
+    btn_objs.append(btn)
+
+def make_callback(p):
+    def cb(_):
+        s_b0.set_val(p["b0"])
+        s_b1.set_val(p["b1"])
+        s_b2.set_val(p["b2"])
+        s_b3.set_val(p["b3"])
+        s_tau1.set_val(p["tau1"])
+        s_tau2.set_val(p["tau2"])
+    return cb
+
+for btn, (name, p) in zip(btn_objs, ESCENARIOS.items()):
+    btn.on_clicked(make_callback(p))
+
+# ─────────────────────────────────────────────
+# Instrucciones
+# ─────────────────────────────────────────────
+fig.text(0.5, 0.005,
+         "Mueve los sliders para ajustar parámetros  |  Haz clic en los botones de colores para cargar escenarios",
+         ha="center", fontsize=7.5, color="#888888", fontstyle="italic")
+
+plt.show()
