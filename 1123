@@ -1,0 +1,1 @@
+=ABS(SUMAR.SI.CONJUNTO('Stress Test'!B:B, 'Stress Test'!A:A, "*" & TEXTO(A37, "d/mm/aaaa")))
