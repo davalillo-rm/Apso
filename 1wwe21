@@ -1,0 +1,18 @@
+Current Usagexl = 
+-- 1. Tomamos el valor directo del Excel para cada fila
+VAR Uso_Excel = SUM('Tabla_excel'[Usage Current])
+
+-- 2. Traemos los valores de VaR y Stress de tus consultas
+VAR Uso_VaR_Base = MAX('Merge1'[Totalvarresult])
+VAR Uso_Stress_Base = ABS(MIN('Query1'[Stress Test Value]))
+
+-- 3. Leemos qué fila estamos mirando en el Excel en este momento
+VAR Descripcion_Fila = SELECTEDVALUE('Tabla_excel'[Limit Description])
+
+-- 4. Asignamos el VaR y Stress SOLO a sus filas correspondientes
+VAR Resultado_VaR = IF(Descripcion_Fila = "Total VaR EWI" || Descripcion_Fila = "Total VaR Limit", Uso_VaR_Base, 0)
+VAR Resultado_Stress = IF(Descripcion_Fila = "Stress Test EWI" || Descripcion_Fila = "Stress Test Limit", Uso_Stress_Base, 0)
+
+-- 5. Sumamos el Excel con los reemplazos
+RETURN 
+Uso_Excel + Resultado_VaR + Resultado_Stress
