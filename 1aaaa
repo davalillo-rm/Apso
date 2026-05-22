@@ -1,0 +1,129 @@
+Sub CargarReporteSQL()
+    Dim conn As Object
+    Dim cmd As Object
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim i As Long
+    
+    ' Variables para construir el INSERT transpuesto
+    Dim sqlColumns As String
+    Dim sqlValues As String
+    Dim fechaProceso As String
+    Dim limiteDesc As String
+    Dim limiteGrupo As String
+    Dim valorUso As String
+    Dim columnaDestino As String
+    
+    Set ws = ThisWorkbook.Sheets("Recopilado")
+    
+    ' La última fila del bloque de datos (fila 40 según la captura)
+    lastRow = 40
+    
+    ' 1. Configurar la conexión a SQL Server
+    Set conn = CreateObject("ADODB.Connection")
+    ' IMPORTANTE: Reemplazar MI_SERVIDOR y MI_BASE_DATOS con los accesos de tu servidor local
+    conn.ConnectionString = "Provider=MSOLEDBSQL;Data Source=MI_SERVIDOR;Initial Catalog=MI_BASE_DATOS;Integrated Security=SSPI;"
+    
+    On Error GoTo ErrorHandler
+    conn.Open
+    
+    ' 2. Capturar la fecha de proceso directamente de la fila 2, columna A
+    fechaProceso = Format(ws.Cells(2, "A").Value, "YYYY-MM-DD")
+    
+    ' Inicializamos la estructura del INSERT con la columna de la fecha
+    sqlColumns = "[Fecha]"
+    sqlValues = "'" & fechaProceso & "'"
+    
+    ' 3. Recorrer las filas verticalmente para armar las columnas horizontales
+    For i = 2 To lastRow
+        limiteGrupo = Trim(ws.Cells(i, "D").Value)  ' Columna D: Limit Group
+        limiteDesc = Trim(ws.Cells(i, "E").Value)   ' Columna E: Limit Description
+        
+        ' Convertir el número a formato SQL (cambiar comas por puntos decimales)
+        valorUso = Replace(CStr(ws.Cells(i, "G").Value), ",", ".")
+        If valorUso = "" Or Not IsNumeric(valorUso) Then valorUso = "0"
+        
+        ' Buscar a qué columna de la tabla ancha le corresponde este valor
+        columnaDestino = MapearColumnaSQL(limiteGrupo, limiteDesc)
+        
+        ' Si la fila tiene un mapeo definido, la agregamos a la estructura
+        If columnaDestino <> "" Then
+            sqlColumns = sqlColumns & ", [" & columnaDestino & "]"
+            sqlValues = sqlValues & ", " & valorUso
+        End If
+    Next i
+    
+    ' 4. Armar la query completa e impactar la base de datos
+    Dim query As String
+    query = "INSERT INTO dbo.limit_report (" & sqlColumns & ") VALUES (" & sqlValues & ");"
+    
+    Set cmd = CreateObject("ADODB.Command")
+    Set cmd.ActiveConnection = conn
+    cmd.CommandText = query
+    cmd.Execute
+    
+    MsgBox "¡Éxito total! El registro del día " & fechaProceso & " se ha guardado en formato ancho en dbo.limit_report.", vbInformation, "Carga Exitosa"
+    
+    ' Limpieza de memoria
+    conn.Close
+    Set conn = Nothing
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error al insertar en SQL Server: " & Err.Description, vbCritical, "Error de Conexión"
+    If conn.State = 1 Then conn.Close
+    Set conn = Nothing
+End Sub
+
+' Diccionario de mapeo para transformar filas verticales en columnas horizontales
+Function MapearColumnaSQL(grupo As String, desc As String) As String
+    Select Case desc
+        ' === RIESGO DE PORTAFOLIO (Securities Trading Portfolio) ===
+        Case "Overall Portfolio": MapearColumnaSQL = "Overall_Portfolio_Limit"
+        Case "Central Bank Securities Limit": MapearColumnaSQL = "Central_Bank_CDs"
+        Case "Short Positions Limit": MapearColumnaSQL = "Short_Positions" ' El valor manual
+        Case "USD Treasury Bonds Limit": MapearColumnaSQL = "USD_Treasury_Bonds"
+        Case "USD-Denominated LATAM Bonds Limit": MapearColumnaSQL = "USD_Sovereign_LATAM_Bonds"
+        Case "USD-Denominated Peruvian Bonds Limit": MapearColumnaSQL = "USD_Sovereign_Peruvian_Bonds"
+        
+        ' === FIXING RISK ===
+        Case "Fixing Risk Limit": MapearColumnaSQL = "Fixing_Risk_Limit"
+        
+        ' === SPOT OVERNIGHT NTP ===
+        Case "All Currencies Combined": MapearColumnaSQL = "Peru_GBM_Overnight_NTP_All_Currencies_Combined"
+        Case "CAD, EUR, JPY Limit": MapearColumnaSQL = "Peru_GBM_Overnight_NTP_CAD_EUR_JPY_Limit"
+        Case "GBP, AUD, CHF, DKK, NZD Limit": MapearColumnaSQL = "Peru_GBM_Overnight_NTP_GBP_AUD_CHF_DKK_NZD_Limit"
+        Case "USD Limit": MapearColumnaSQL = "Peru_GBM_Overnight_NTP_USD_Limit"
+        
+        ' === STRESS TEST Y VAR ===
+        Case "Stress Test EWI": MapearColumnaSQL = "Peru_GBM_Overnight_Total_StressTest_EWI"
+        Case "Stress Test Limit": MapearColumnaSQL = "Peru_GBM_Overnight_Total_StressTest_Limit"
+        Case "Total VaR EWI": MapearColumnaSQL = "Peru_GBM_Overnight_Total_VaR_EWI"
+        Case "Total VaR Limit": MapearColumnaSQL = "Peru_GBM_Overnight_Total_VaR_Limit"
+        
+        ' === SENSITIVITY CURVES (Resolviendo duplicados usando el grupo) ===
+        Case "Parallel"
+            If grupo = "PEN" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_PEN_Parallel"
+            If grupo = "USD" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_USD_Parallel"
+            If grupo = "Basis" Then MapearColumnaSQL = "Basis_Risk_Limits_USD_PEN_Parallel"
+            
+        Case "0 to 3 months"
+            If grupo = "Basis" Then MapearColumnaSQL = "Basis_Risk_Limits_USD_PEN_0_3"
+        Case "3 to 6 months"
+            If grupo = "Basis" Then MapearColumnaSQL = "Basis_Risk_Limits_USD_PEN_3_6"
+        Case "6 to 12 months"
+            If grupo = "Basis" Then MapearColumnaSQL = "Basis_Risk_Limits_USD_PEN_6_12"
+        Case "1 to 2 years"
+            If grupo = "Basis" Then MapearColumnaSQL = "Basis_Risk_Limits_USD_PEN_1_2"
+        Case "2 to 5 years"
+            If grupo = "Basis" Then MapearColumnaSQL = "Basis_Risk_Limits_USD_PEN_2_5"
+        Case "5 to 10 years"
+            If grupo = "Basis" Then MapearColumnaSQL = "Basis_Risk_Limits_USD_PEN_5_10"
+        Case "10 to 12.5 years"
+            If grupo = "Basis" Then MapearColumnaSQL = "Basis_Risk_Limits_USD_PEN_10_12_5"
+
+        ' Puedes agregar aquí los Tenors para las curvas PEN y USD si tu tabla ancha los requiere
+        
+        Case Else: MapearColumnaSQL = ""
+    End Select
+End Function
