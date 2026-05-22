@@ -1,0 +1,38 @@
+Sub ActualizarYExtraerValores()
+    Dim wsRecopilado As Worksheet
+    Dim wsStress As Worksheet
+    Dim wsVaR As Worksheet
+    Dim ultimaFilaStress As Long
+    Dim ultimaFilaVaR As Long
+    Dim valorStress As Double
+    Dim valorVaR As Double
+    
+    ' Definir las hojas
+    Set wsRecopilado = ThisWorkbook.Sheets("Recopilado")
+    Set wsStress = ThisWorkbook.Sheets("Stress Test")
+    Set wsVaR = ThisWorkbook.Sheets("VaR")
+    
+    ' 1. Forzar la actualización del modelo de Power BI
+    ' (Como desactivamos el segundo plano, Excel se pausará aquí hasta que termine)
+    ThisWorkbook.RefreshAll
+    
+    ' 2. Encontrar la última fila con datos en la Columna A de cada hoja
+    ultimaFilaStress = wsStress.Cells(wsStress.Rows.Count, "A").End(xlUp).Row
+    ultimaFilaVaR = wsVaR.Cells(wsVaR.Rows.Count, "A").End(xlUp).Row
+    
+    ' 3. Capturar el valor de la columna B de esa última fila
+    ' Aplicamos Abs() al Stress Test para asegurar que pase a positivo
+    valorStress = Abs(wsStress.Cells(ultimaFilaStress, "B").Value)
+    valorVaR = wsVaR.Cells(ultimaFilaVaR, "B").Value
+    
+    ' 4. Pegar los valores estáticos en la hoja Recopilado
+    ' Celdas G37 y G38 para Stress Test
+    wsRecopilado.Range("G37").Value = valorStress
+    wsRecopilado.Range("G38").Value = valorStress
+    
+    ' Celdas G39 y G40 para VaR
+    wsRecopilado.Range("G39").Value = valorVaR
+    wsRecopilado.Range("G40").Value = valorVaR
+    
+    MsgBox "Modelo actualizado. Valores de VaR y Stress Test pegados con éxito.", vbInformation, "Actualización Completa"
+End Sub
