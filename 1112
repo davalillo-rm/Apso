@@ -1,0 +1,19 @@
+Case "0 years to 1 years"
+            If grupo = "PEN" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_PEN_0_1"
+            If grupo = "USD" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_USD_0_1"
+            
+        Case "1 years to 5 years"
+            If grupo = "PEN" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_PEN_1_5"
+            If grupo = "USD" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_USD_1_5"
+            
+        Case "5 years to 10 years"
+            If grupo = "PEN" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_PEN_5_10"
+            If grupo = "USD" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_USD_5_10"
+            
+        Case "10 years to 20 years"
+            If grupo = "PEN" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_PEN_10_20"
+            If grupo = "USD" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_USD_10_20"
+            
+        Case "20 years to 30 years"
+            If grupo = "PEN" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_PEN_20_30"
+            If grupo = "USD" Then MapearColumnaSQL = "Interest_Rate_Sensitivity_Limit_USD_20_30"
