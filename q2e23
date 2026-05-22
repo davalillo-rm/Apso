@@ -1,0 +1,1 @@
+=ABS(IMPORTARDATOSDINAMICOS("[Query1].[Stress Test Value]", 'Stress Test'!$A$3, "[Query1].[Varrundate]", "[Query1].[Varrundate].&[" & TEXTO(A37, "yyyy-mm-ddT00:00:00") & "]"))
