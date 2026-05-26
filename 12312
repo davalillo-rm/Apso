@@ -1,0 +1,67 @@
+Sub EnviarReporteRiesgo()
+    Dim Hoja As Worksheet
+    Dim RangoDestino As Range
+    Dim OutApp As Object
+    Dim OutMail As Object
+    Dim WordDoc As Object
+    Dim WordRng As Object
+    Dim FechaReporte As String
+    
+    ' 1. Generar la fecha del reporte (Día anterior / T-1)
+    FechaReporte = Format(Date - 1, "dd.mm.yyyy")
+    
+    ' 2. Definir la hoja y el rango
+    On Error Resume Next
+    Set Hoja = ThisWorkbook.Sheets("Correo")
+    Set RangoDestino = Hoja.Range("B1:O147")
+    On Error GoTo 0
+    
+    If RangoDestino Is Nothing Then
+        MsgBox "No se encontró la hoja 'Correo' o el rango.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' 3. Copiar el rango COMO IMAGEN (evita separaciones y mantiene calidad)
+    RangoDestino.CopyPicture Appearance:=xlScreen, Format:=xlPicture
+    
+    ' 4. Conectar con la aplicación de Outlook
+    On Error Resume Next
+    Set OutApp = GetObject(, "Outlook.Application")
+    If OutApp Is Nothing Then
+        Set OutApp = CreateObject("Outlook.Application")
+    End If
+    On Error GoTo 0
+    
+    ' 5. Crear el correo
+    Set OutMail = OutApp.CreateItem(0)
+    
+    With OutMail
+        .To = "destinatario@correo.com" ' Reemplaza con el destinatario
+        .Subject = "Market Overview - " & Format(Date, "dd/mm/yyyy")
+        .Display ' Necesario para activar el editor de Word
+        
+        ' 6. Trabajar con el cuerpo del correo (WordEditor)
+        Set WordDoc = .GetInspector.WordEditor
+        
+        ' Seleccionar el inicio del documento
+        Set WordRng = WordDoc.Range(0, 0)
+        
+        ' 7. Insertar el comentario inicial con la fecha dinámica y dar saltos de línea
+        WordRng.Text = "Hola, enviamos el reporte diario de posiciones y movimientos de mercado al " & FechaReporte & vbCrLf & vbCrLf
+        
+        ' 8. Mover el cursor al final del texto recién insertado (0 = wdCollapseEnd)
+        WordRng.Collapse 0
+        
+        ' 9. Pegar la imagen del rango debajo del texto
+        WordRng.Paste
+        
+    End With
+    
+    ' 10. Limpiar memoria y portapapeles
+    Application.CutCopyMode = False
+    Set WordRng = Nothing
+    Set WordDoc = Nothing
+    Set OutMail = Nothing
+    Set OutApp = Nothing
+
+End Sub
