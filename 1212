@@ -1,0 +1,58 @@
+Sub EnviarRangoPorCorreo()
+    Dim Hoja As Worksheet
+    Dim RangoDestino As Range
+    Dim OutApp As Object
+    Dim OutMail As Object
+    Dim WordDoc As Object
+    
+    ' 1. Definir la hoja y el rango exacto que mencionas
+    On Error Resume Next
+    Set Hoja = ThisWorkbook.Sheets("Correo")
+    Set RangoDestino = Hoja.Range("B1:O147")
+    On Error GoTo 0
+    
+    If RangoDestino Is Nothing Then
+        MsgBox "No se encontró la hoja 'Correo' o el rango.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' 2. Copiar el rango en el portapapeles
+    RangoDestino.Copy
+    
+    ' 3. Crear o conectar con la aplicación de Outlook
+    On Error Resume Next
+    Set OutApp = GetObject(, "Outlook.Application")
+    If OutApp Is Nothing Then
+        Set OutApp = CreateObject("Outlook.Application")
+    End If
+    On Error GoTo 0
+    
+    ' 4. Crear el elemento de correo
+    Set OutMail = OutApp.CreateItem(0)
+    
+    With OutMail
+        .To = "destinatario@correo.com" ' Reemplaza con el correo deseado
+        .CC = ""
+        .Subject = "Reporte de Riesgo DV01 - " & Format(Date, "dd/mm/yyyy")
+        
+        ' CRÍTICO: Es necesario mostrar (.Display) el correo para activar el editor de Word
+        .Display
+        
+        ' 5. Obtener el cuerpo del correo como documento de Word
+        Set WordDoc = .GetInspector.WordEditor
+        
+        ' 6. Pegar manteniendo el formato original y los gráficos
+        ' El número 16 equivale a "wdFormatOriginalFormatting"
+        WordDoc.Range.PasteAndFormat 16
+        
+        ' (Opcional) Puedes usar .Send si quieres que se envíe automáticamente sin que lo veas.
+    End With
+    
+    ' 7. Limpiar el portapapeles y liberar objetos
+    Application.CutCopyMode = False
+    Set WordDoc = Nothing
+    Set OutMail = Nothing
+    Set OutApp = Nothing
+    
+    MsgBox "El correo se ha generado con el reporte.", vbInformation, "Proceso completado"
+End Sub
