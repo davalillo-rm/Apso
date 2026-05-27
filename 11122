@@ -1,0 +1,161 @@
+param_records.append({
+    'Date': current_date,
+    'b0': params[0], 'b1': params[1],
+    'b2': params[2], 'b3': params[3],
+    't1': params[4], 't2': params[5]
+})
+
+
+
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import seaborn as sns
+import numpy as np
+import pandas as pd
+from statsmodels.graphics.tsaplots import plot_acf
+
+# Asumimos que ya tienes isin_df y daily_df
+# Para parámetros, necesitas guardarlos en el loop así:
+# param_records.append({'Date': current_date, 'b0': params[0], 'b1': params[1],
+#                       'b2': params[2], 'b3': params[3], 't1': params[4], 't2': params[5]})
+# params_df = pd.DataFrame(param_records)
+
+fig_size = (12, 5)
+
+# ─────────────────────────────────────────────
+# 1. EVOLUCIÓN TEMPORAL DEL MAE
+# ─────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=fig_size)
+ax.plot(daily_df['Date'], daily_df['MAE_bps'], label='MAE diario', color='steelblue', lw=1.5)
+ax.plot(daily_df['Date'], daily_df['MAE_bps'].rolling(20).mean(), 
+        label='Media móvil 20d', color='orange', lw=2)
+
+# Marcar días con nueva emisión
+new_issue_days = daily_df[daily_df['Has_New_Issue'] == True]
+ax.scatter(new_issue_days['Date'], new_issue_days['MAE_bps'], 
+           color='red', zorder=5, s=30, label='Día nueva emisión')
+
+ax.set_title('Evolución Temporal del MAE')
+ax.set_ylabel('MAE (bps)')
+ax.set_xlabel('Fecha')
+ax.legend()
+ax.xaxis.set_major_formatter(mdates.DateFormatter('%b-%y'))
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.savefig('evolucion_mae.png', dpi=150)
+plt.show()
+
+
+# ─────────────────────────────────────────────
+# 2. BOXPLOT DE ERRORES POR BUCKET DE PLAZO
+# ─────────────────────────────────────────────
+bins   = [0, 30, 90, 180, 360, 9999]
+labels = ['<30d', '30-90d', '90-180d', '180-360d', '>360d']
+isin_df['Bucket'] = pd.cut(isin_df['Tenor'], bins=bins, labels=labels)
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Boxplot de error en bps
+sns.boxplot(data=isin_df, x='Bucket', y='Err_Yield_bps', 
+            palette='coolwarm', ax=axes[0], showfliers=False)
+axes[0].axhline(0, color='black', lw=1, linestyle='--')
+axes[0].set_title('Distribución del Error por Bucket (bps)')
+axes[0].set_ylabel('Error (bps)')
+axes[0].set_xlabel('Bucket de Plazo')
+
+# Boxplot del error en precio
+sns.boxplot(data=isin_df, x='Bucket', y='Err_Price', 
+            palette='coolwarm', ax=axes[1], showfliers=False)
+axes[1].axhline(0, color='black', lw=1, linestyle='--')
+axes[1].set_title('Distribución del Error en Precio por Bucket')
+axes[1].set_ylabel('Error Precio (S/.)')
+axes[1].set_xlabel('Bucket de Plazo')
+
+plt.tight_layout()
+plt.savefig('boxplot_errores.png', dpi=150)
+plt.show()
+
+
+# ─────────────────────────────────────────────
+# 3. ESTABILIDAD DE PARÁMETROS SVENSSON
+# ─────────────────────────────────────────────
+# Requiere haber guardado params_df en el loop
+param_cols = ['b0', 'b1', 'b2', 'b3', 't1', 't2']
+labels_params = ['β₀ (largo plazo)', 'β₁ (pendiente)', 
+                 'β₂ (curvatura 1)', 'β₃ (curvatura 2)', 
+                 'τ₁', 'τ₂']
+colors = ['steelblue','tomato','seagreen','purple','orange','brown']
+
+fig, axes = plt.subplots(3, 2, figsize=(14, 10))
+axes = axes.flatten()
+
+for i, (col, label, color) in enumerate(zip(param_cols, labels_params, colors)):
+    axes[i].plot(params_df['Date'], params_df[col], color=color, lw=1.2)
+    axes[i].set_title(label)
+    axes[i].set_ylabel('Valor')
+    axes[i].xaxis.set_major_formatter(mdates.DateFormatter('%b-%y'))
+    axes[i].tick_params(axis='x', rotation=45)
+
+plt.suptitle('Estabilidad de Parámetros Svensson en el Tiempo', 
+             fontsize=14, fontweight='bold')
+plt.tight_layout()
+plt.savefig('estabilidad_parametros.png', dpi=150)
+plt.show()
+
+
+# ─────────────────────────────────────────────
+# 4. PODER PREDICTIVO DIRECCIONAL POR BUCKET
+# ─────────────────────────────────────────────
+isin_df['Dir_Actual']   = np.sign(isin_df['Actual_Yield'] - isin_df['Prev_Yield'])
+isin_df['Dir_Svensson'] = np.sign(isin_df['Svensson_Yield'] - isin_df['Prev_Yield'])
+isin_df['Hit'] = (isin_df['Dir_Actual'] == isin_df['Dir_Svensson']) & \
+                 (isin_df['Dir_Actual'] != 0)
+
+hit_rate = (isin_df.groupby('Bucket')['Hit']
+            .apply(lambda x: x.sum() / (x != 0).sum() * 100)
+            .reset_index())
+hit_rate.columns = ['Bucket', 'Hit_Rate']
+
+fig, ax = plt.subplots(figsize=(8, 5))
+bars = ax.bar(hit_rate['Bucket'], hit_rate['Hit_Rate'], 
+              color='steelblue', edgecolor='white')
+ax.axhline(50, color='red', linestyle='--', lw=1.5, label='50% (random)')
+ax.set_title('Hit Rate Direccional por Bucket')
+ax.set_ylabel('% Aciertos Direccionales')
+ax.set_xlabel('Bucket de Plazo')
+ax.set_ylim(0, 100)
+ax.legend()
+
+for bar, val in zip(bars, hit_rate['Hit_Rate']):
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
+            f'{val:.1f}%', ha='center', va='bottom', fontsize=10)
+
+plt.tight_layout()
+plt.savefig('hit_rate_direccional.png', dpi=150)
+plt.show()
+
+
+# ─────────────────────────────────────────────
+# 5. ERROR HISTÓRICO — AUTOCORRELACIÓN Y ACUMULADO POR ISIN
+# ─────────────────────────────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# 5a. Autocorrelación del MAE diario
+plot_acf(daily_df['MAE_bps'].dropna(), lags=30, ax=axes[0], color='steelblue')
+axes[0].set_title('Autocorrelación del MAE Diario')
+axes[0].set_xlabel('Lag (días)')
+
+# 5b. Error medio acumulado por ISIN (top 15 peores)
+isin_bias = (isin_df.groupby('ISIN')['Err_Yield_bps']
+             .mean()
+             .abs()
+             .sort_values(ascending=False)
+             .head(15))
+
+axes[1].barh(isin_bias.index[::-1], isin_bias.values[::-1], color='tomato')
+axes[1].set_title('Top 15 ISINs con Mayor Error Medio Absoluto')
+axes[1].set_xlabel('|Error Medio| (bps)')
+
+plt.tight_layout()
+plt.savefig('error_historico.png', dpi=150)
+plt.show()
