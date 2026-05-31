@@ -1,3 +1,46 @@
+# Variable global
+_cache_gal = []
+
+def cargar_cache_gal():
+    """Carga la GAL una vez al iniciar. Llamar en __init__ en un hilo."""
+    global _cache_gal
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        ns = outlook.GetNamespace("MAPI")
+        gal = ns.AddressLists["Global Address List"]
+        entries = gal.AddressEntries
+        cache = []
+        
+        for i in range(1, min(entries.Count + 1, 2000)):
+            try:
+                entry = entries.Item(i)
+                if entry.AddressEntryUserType != 0:
+                    continue
+                eu = entry.GetExchangeUser()
+                if eu and eu.PrimarySmtpAddress:
+                    cache.append({
+                        "nombre": entry.Name,
+                        "email": eu.PrimarySmtpAddress
+                    })
+            except:
+                continue
+        
+        _cache_gal = cache
+        print(f"GAL cacheada: {len(cache)} contactos")
+    except Exception as e:
+        print(f"Error cargando GAL: {e}")
+
+def buscar_contactos_outlook(query: str) -> list:
+    """Busca en el cache local - instantáneo."""
+    if not _cache_gal:
+        return []
+    q = query.lower()
+    return [c for c in _cache_gal 
+            if q in c["nombre"].lower() or q in c["email"].lower()][:6]
+
+
+
+
 
 def buscar_contactos_outlook(query: str) -> list:
     try:
