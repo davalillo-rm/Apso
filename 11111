@@ -1,0 +1,28 @@
+def buscar_contactos_outlook(query: str) -> list:
+    """Busca emails en la libreta de direcciones de Outlook."""
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+        gal = outlook.AddressLists["Global Address List"]
+        resultados = []
+        
+        for entrada in gal.AddressEntries:
+            nombre = str(entrada.Name).lower()
+            email = ""
+            try:
+                email = str(entrada.GetExchangeUser().PrimarySmtpAddress).lower()
+            except:
+                continue
+            
+            if query.lower() in nombre or query.lower() in email:
+                resultados.append({
+                    "nombre": entrada.Name,
+                    "email": email
+                })
+            
+            if len(resultados) >= 8:  # Limitar sugerencias
+                break
+                
+        return resultados
+    except Exception as e:
+        print(f"Error GAL: {e}")
+        return []
