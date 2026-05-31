@@ -1,3 +1,86 @@
+
+def cargar_cache_gal():
+    global _cache_gal
+    import pythoncom
+    pythoncom.CoInitialize()
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        ns = outlook.GetNamespace("MAPI")
+        
+        cache = []
+        vistos = set()
+        
+        # Leer inbox Y enviados para maximizar contactos
+        carpetas = [
+            ns.GetDefaultFolder(6),   # Inbox
+            ns.GetDefaultFolder(5),   # Sent Items
+        ]
+        
+        for carpeta in carpetas:
+            try:
+                mensajes = carpeta.Items
+                mensajes.Sort("[ReceivedTime]", True)
+                
+                for i in range(1, min(300, mensajes.Count + 1)):
+                    try:
+                        msg = mensajes.Item(i)
+                        
+                        # Debug: ver qué tipo de dirección tiene
+                        remitente_raw = getattr(msg, 'SenderEmailAddress', '') or ''
+                        nombre = getattr(msg, 'SenderName', '') or ''
+                        tipo = getattr(msg, 'SenderEmailType', '') or ''
+                        
+                        print(f"Tipo: {tipo} | Email: {remitente_raw[:50]} | Nombre: {nombre}")
+                        
+                        # Si es tipo EX, resolver a SMTP
+                        email_final = ""
+                        if tipo == "EX":
+                            try:
+                                recip = ns.CreateRecipient(nombre)
+                                recip.Resolve()
+                                if recip.Resolved:
+                                    eu = recip.AddressEntry.GetExchangeUser()
+                                    if eu:
+                                        email_final = eu.PrimarySmtpAddress or ""
+                            except:
+                                pass
+                        elif "@" in remitente_raw:
+                            email_final = remitente_raw
+                        
+                        if email_final and email_final not in vistos:
+                            vistos.add(email_final)
+                            cache.append({
+                                "nombre": nombre,
+                                "email": email_final
+                            })
+                            
+                    except:
+                        continue
+            except:
+                continue
+        
+        _cache_gal = cache
+        print(f"Cache cargado: {len(cache)} contactos")
+        
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        pythoncom.CoUninitialize()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def cargar_cache_gal():
     global _cache_gal
     import pythoncom
