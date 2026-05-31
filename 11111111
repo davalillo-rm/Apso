@@ -1,0 +1,42 @@
+def abrir_correo_especifico(self, entry_id: str):
+    if not entry_id:
+        return
+    try:
+        import pythoncom
+        pythoncom.CoInitialize()
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        ns = outlook.GetNamespace("MAPI")
+        
+        # Intentar primero con EntryID normal
+        try:
+            if "||" in entry_id:
+                eid, sid = entry_id.split("||")
+                item = ns.GetItemFromID(eid, sid)
+            else:
+                item = ns.GetItemFromID(entry_id)
+            item.Display()
+            return
+        except:
+            pass
+        
+        # Si falla, buscar en inbox por EntryID como string
+        try:
+            bandeja = ns.GetDefaultFolder(6)  # Inbox
+            mensajes = bandeja.Items
+            for i in range(1, min(mensajes.Count + 1, 500)):
+                try:
+                    msg = mensajes.Item(i)
+                    if str(msg.EntryID) == entry_id.split("||")[0]:
+                        msg.Display()
+                        return
+                except:
+                    continue
+        except:
+            pass
+            
+        print("No se encontró el correo")
+        
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        pythoncom.CoUninitialize()
