@@ -10,6 +10,106 @@ def cargar_cache_gal():
         cache = []
         vistos = set()
         
+        carpetas = [
+            ns.GetDefaultFolder(6),   # Inbox
+            ns.GetDefaultFolder(5),   # Sent Items
+        ]
+        
+        for carpeta in carpetas:
+            try:
+                mensajes = carpeta.Items
+                mensajes.Sort("[ReceivedTime]", True)
+                
+                for i in range(1, min(300, mensajes.Count + 1)):
+                    try:
+                        msg = mensajes.Item(i)
+                        tipo = getattr(msg, 'SenderEmailType', '') or ''
+                        nombre = getattr(msg, 'SenderName', '') or ''
+                        
+                        email_final = ""
+                        
+                        if tipo == "EX":
+                            # Usar AddressEntry directamente del mensaje
+                            try:
+                                ae = msg.Sender
+                                if ae:
+                                    eu = ae.GetExchangeUser()
+                                    if eu:
+                                        email_final = eu.PrimarySmtpAddress or ""
+                            except:
+                                pass
+                        elif tipo == "SMTP":
+                            email_final = getattr(msg, 'SenderEmailAddress', '') or ''
+                        
+                        if (email_final and 
+                            email_final not in vistos and
+                            '@' in email_final):
+                            vistos.add(email_final)
+                            cache.append({
+                                "nombre": nombre,
+                                "email": email_final
+                            })
+                            
+                    except:
+                        continue
+                        
+            except:
+                continue
+        
+        # También escanear destinatarios de enviados
+        try:
+            enviados = ns.GetDefaultFolder(5)
+            mensajes = enviados.Items
+            mensajes.Sort("[ReceivedTime]", True)
+            
+            for i in range(1, min(200, mensajes.Count + 1)):
+                try:
+                    msg = mensajes.Item(i)
+                    for recip in msg.Recipients:
+                        try:
+                            ae = recip.AddressEntry
+                            if ae:
+                                eu = ae.GetExchangeUser()
+                                if eu:
+                                    email_final = eu.PrimarySmtpAddress or ""
+                                    nombre = eu.Name or ""
+                                    if email_final and email_final not in vistos:
+                                        vistos.add(email_final)
+                                        cache.append({
+                                            "nombre": nombre,
+                                            "email": email_final
+                                        })
+                        except:
+                            continue
+                except:
+                    continue
+        except:
+            pass
+        
+        _cache_gal = cache
+        print(f"Cache cargado: {len(cache)} contactos")
+        
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        pythoncom.CoUninitialize()
+
+
+
+
+
+.. 
+def cargar_cache_gal():
+    global _cache_gal
+    import pythoncom
+    pythoncom.CoInitialize()
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        ns = outlook.GetNamespace("MAPI")
+        
+        cache = []
+        vistos = set()
+        
         # Leer inbox Y enviados para maximizar contactos
         carpetas = [
             ns.GetDefaultFolder(6),   # Inbox
