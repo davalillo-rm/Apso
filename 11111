@@ -26,3 +26,57 @@ def buscar_contactos_outlook(query: str) -> list:
     except Exception as e:
         print(f"Error GAL: {e}")
         return []
+
+
+
+def agregar_autocomplete(entry_widget):
+    """Conecta un CTkEntry con sugerencias de Outlook."""
+    sugerencias_frame = None
+    
+    def on_keyrelease(event):
+        nonlocal sugerencias_frame
+        texto = entry_widget.get().strip()
+        
+        # Limpiar sugerencias anteriores
+        if sugerencias_frame:
+            sugerencias_frame.destroy()
+            sugerencias_frame = None
+        
+        if len(texto) < 3:  # Mínimo 3 caracteres
+            return
+        
+        contactos = buscar_contactos_outlook(texto)
+        if not contactos:
+            return
+        
+        # Crear dropdown
+        sugerencias_frame = ctk.CTkFrame(
+            entry_widget.master,
+            fg_color=SCOTIA_CARD,
+            border_width=1,
+            border_color=SCOTIA_BORDER
+        )
+        sugerencias_frame.place(
+            x=entry_widget.winfo_x(),
+            y=entry_widget.winfo_y() + entry_widget.winfo_height()
+        )
+        
+        for c in contactos:
+            def seleccionar(email=c["email"]):
+                entry_widget.delete(0, 'end')
+                entry_widget.insert(0, email)
+                sugerencias_frame.destroy()
+            
+            ctk.CTkButton(
+                sugerencias_frame,
+                text=f"{c['nombre']}  <{c['email']}>",
+                fg_color="transparent",
+                hover_color=SCOTIA_SURFACE,
+                text_color=SCOTIA_TEXT,
+                anchor="w",
+                command=seleccionar
+            ).pack(fill="x", padx=4, pady=1)
+    
+    entry_widget.bind("<KeyRelease>", on_keyrelease)
+
+
