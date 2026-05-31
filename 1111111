@@ -1,0 +1,27 @@
+def abrir_correo_especifico(self, entry_id: str):
+    if not entry_id:
+        print("correo_id vacío")
+        return
+    try:
+        import pythoncom
+        pythoncom.CoInitialize()
+        
+        # Usar GetActiveObject en vez de Dispatch
+        # Esto reutiliza el Outlook ya abierto
+        try:
+            outlook = win32com.client.GetActiveObject("Outlook.Application")
+        except:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+        
+        ns = outlook.GetNamespace("MAPI")
+        
+        # Limpiar el EntryID por si tiene espacios o caracteres extra
+        eid = entry_id.strip()
+        
+        item = ns.GetItemFromID(eid)
+        item.Display()
+        
+    except Exception as e:
+        print(f"Error al abrir correo: {e}")
+    finally:
+        pythoncom.CoUninitialize()
