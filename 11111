@@ -1,4 +1,63 @@
 
+def buscar_contactos_outlook(query: str) -> list:
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        ns = outlook.GetNamespace("MAPI")
+        resultados = []
+
+        # Usar el dialog de nombres (método nativo, sin iterar GAL)
+        dialog = ns.CreateRecipient(query)
+        dialog.Resolve()
+        
+        if dialog.Resolved:
+            try:
+                eu = dialog.AddressEntry.GetExchangeUser()
+                if eu and eu.PrimarySmtpAddress:
+                    resultados.append({
+                        "nombre": eu.Name,
+                        "email": eu.PrimarySmtpAddress
+                    })
+            except:
+                pass
+
+        # Buscar también en contactos locales
+        try:
+            contacts = ns.GetDefaultFolder(10)  # olFolderContacts
+            for item in contacts.Items:
+                try:
+                    if (query.lower() in item.FullName.lower() or 
+                        query.lower() in item.Email1Address.lower()):
+                        resultados.append({
+                            "nombre": item.FullName,
+                            "email": item.Email1Address
+                        })
+                    if len(resultados) >= 6:
+                        break
+                except:
+                    continue
+        except:
+            pass
+
+        return resultados
+
+    except Exception as e:
+        print(f"Outlook error: {e}")
+        return []
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         def buscar_contactos_outlook(query: str) -> list:
     try:
         outlook = win32com.client.Dispatch("Outlook.Application")
