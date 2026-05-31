@@ -1,4 +1,27 @@
 
+
+def buscar_contactos_outlook(query: str) -> list:
+    print(f"Buscando: '{query}' en {len(_cache_gal)} contactos")
+    if not _cache_gal:
+        print("Cache vacío!")
+        return []
+    q = query.lower()
+    resultados = [c for c in _cache_gal 
+                  if q in c["nombre"].lower() or q in c["email"].lower()][:6]
+    print(f"Encontrados: {resultados}")
+    return resultados
+
+
+
+
+
+
+
+
+
+
+
+
 def cargar_cache_gal():
     global _cache_gal
     import pythoncom
