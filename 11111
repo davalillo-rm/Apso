@@ -1,4 +1,87 @@
 
+def agregar_autocomplete(entry_widget):
+    sugerencias_ventana = None
+
+    def cerrar():
+        nonlocal sugerencias_ventana
+        try:
+            if sugerencias_ventana:
+                sugerencias_ventana.destroy()
+        except:
+            pass
+        sugerencias_ventana = None
+
+    def mostrar_dropdown(contactos):
+        nonlocal sugerencias_ventana
+        cerrar()
+
+        x = entry_widget.winfo_rootx()
+        y = entry_widget.winfo_rooty() + entry_widget.winfo_height() + 2
+        w = entry_widget.winfo_width()
+        h = len(contactos) * 32
+
+        sugerencias_ventana = ctk.CTkToplevel()
+        sugerencias_ventana.wm_overrideredirect(True)
+        sugerencias_ventana.geometry(f"{w}x{h}+{x}+{y}")
+        sugerencias_ventana.configure(fg_color=SCOTIA_CARD)
+        sugerencias_ventana.attributes("-topmost", True)
+
+        for c in contactos:
+            if not c["email"]:
+                ctk.CTkLabel(
+                    sugerencias_ventana,
+                    text=c["nombre"],
+                    text_color=SCOTIA_SUBTEXT,
+                    font=("Trebuchet MS", 11)
+                ).pack(fill="x", padx=8, pady=4)
+                continue
+
+            def seleccionar(email=c["email"]):
+                entry_widget.delete(0, 'end')
+                entry_widget.insert(0, email)
+                cerrar()
+
+            ctk.CTkButton(
+                sugerencias_ventana,
+                text=f"{c['nombre']}  <{c['email']}>",
+                fg_color="transparent",
+                hover_color=SCOTIA_SURFACE,
+                text_color=SCOTIA_TEXT,
+                anchor="w",
+                height=30,
+                font=("Trebuchet MS", 11),
+                command=seleccionar
+            ).pack(fill="x", padx=2, pady=0)
+
+    def on_keyrelease(event):
+        texto = entry_widget.get().strip()
+
+        if len(texto) < 2:
+            cerrar()
+            return
+
+        def buscar():
+            contactos = buscar_contactos_outlook(texto)
+            if contactos:
+                entry_widget.after(0, lambda: mostrar_dropdown(contactos))
+            else:
+                entry_widget.after(0, cerrar)
+
+        import threading
+        threading.Thread(target=buscar, daemon=True).start()
+
+    entry_widget.bind("<KeyRelease>", on_keyrelease)
+    entry_widget.bind("<FocusOut>", lambda e: entry_widget.after(200, cerrar))
+
+
+
+
+
+
+
+
+
+
 def abrir_correo_especifico(self, entry_id):
     # Convertir a string por si llega como lista o dict
     if isinstance(entry_id, list):
