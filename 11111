@@ -1,3 +1,85 @@
+def cargar_cache_gal():
+    global _cache_gal
+    import pythoncom
+    pythoncom.CoInitialize()
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        ns = outlook.GetNamespace("MAPI")
+        
+        # Usar carpeta de contactos del Exchange (más accesible que la GAL)
+        cache = []
+        
+        # Método 1: Contactos locales de Outlook
+        try:
+            contactos = ns.GetDefaultFolder(10)  # olFolderContacts
+            for item in contactos.Items:
+                try:
+                    nombre = getattr(item, 'FullName', '') or ''
+                    email = getattr(item, 'Email1Address', '') or ''
+                    if nombre and email and '@scotiabank' in email.lower():
+                        cache.append({
+                            "nombre": nombre,
+                            "email": email
+                        })
+                except:
+                    continue
+        except:
+            pass
+        
+        # Método 2: Autocompletar del historial de Outlook (sugeridos recientes)
+        try:
+            sugeridos = ns.GetDefaultFolder(4)  # olFolderInbox
+            mensajes = sugeridos.Items
+            mensajes.Sort("[ReceivedTime]", True)
+            vistos = set()
+            
+            for i in range(1, min(501, mensajes.Count + 1)):
+                try:
+                    msg = mensajes.Item(i)
+                    remitente = getattr(msg, 'SenderEmailAddress', '') or ''
+                    nombre = getattr(msg, 'SenderName', '') or ''
+                    
+                    if (remitente and 
+                        '@scotiabank' in remitente.lower() and 
+                        remitente not in vistos):
+                        vistos.add(remitente)
+                        cache.append({
+                            "nombre": nombre,
+                            "email": remitente
+                        })
+                except:
+                    continue
+        except:
+            pass
+        
+        # Deduplicar por email
+        vistos_final = set()
+        cache_final = []
+        for c in cache:
+            if c["email"] not in vistos_final:
+                vistos_final.add(c["email"])
+                cache_final.append(c)
+        
+        _cache_gal = cache_final
+        print(f"Cache cargado: {len(cache_final)} contactos")
+        
+    except Exception as e:
+        print(f"Error cargando cache: {e}")
+    finally:
+        pythoncom.CoUninitialize()
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Variable global
 _cache_gal = []
 
