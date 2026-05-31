@@ -1,0 +1,329 @@
+# ==========================================
+# HISTÓRICO
+# ==========================================
+
+def guardar_snapshot_historico(codigo: str, procesos: list):
+    """Guarda una foto del estado actual en el historico del usuario."""
+    ruta = os.path.join(RUTA_BASE, f"{codigo}_historico.xlsx")
+    
+    ahora = datetime.datetime.now()
+    fecha_str = ahora.strftime("%d/%m/%Y")
+    hora_str  = ahora.strftime("%H:%M")
+    
+    # Cargar o crear el archivo
+    if os.path.exists(ruta):
+        wb = openpyxl.load_workbook(ruta)
+    else:
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+    
+    # ── Hoja Snapshots ──
+    if "Snapshots" not in wb.sheetnames:
+        ws = wb.create_sheet("Snapshots")
+        ws.append(["Fecha", "Hora", "Proceso", "Estado", "Avance", "Completados", "Total"])
+    else:
+        ws = wb["Snapshots"]
+    
+    for p in procesos:
+        ws.append([
+            fecha_str,
+            hora_str,
+            p.get("proceso", ""),
+            p.get("estado", ""),
+            p.get("avance", ""),
+            # Extraer numerador de avance "2/3"
+            int(p.get("avance","0/1").split("/")[0]) if "/" in p.get("avance","") else 0,
+            int(p.get("avance","0/1").split("/")[1]) if "/" in p.get("avance","") else 0,
+        ])
+    
+    # ── Hoja Eventos ──
+    if "Eventos" not in wb.sheetnames:
+        we = wb.create_sheet("Eventos")
+        we.append(["Fecha", "Hora", "Proceso", "Item", "Tipo", "Remitente"])
+    
+    wb.save(ruta)
+
+
+def registrar_evento_historico(codigo: str, proceso: str, 
+                                item: str, tipo: str, remitente: str):
+    """
+    Registra un evento puntual.
+    tipo puede ser: 'SOLICITUD ENVIADA' o 'CORREO RECIBIDO'
+    """
+    ruta = os.path.join(RUTA_BASE, f"{codigo}_historico.xlsx")
+    
+    ahora = datetime.datetime.now()
+    fecha_str = ahora.strftime("%d/%m/%Y")
+    hora_str  = ahora.strftime("%H:%M:%S")
+    
+    if os.path.exists(ruta):
+        wb = openpyxl.load_workbook(ruta)
+    else:
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+    
+    if "Eventos" not in wb.sheetnames:
+        we = wb.create_sheet("Eventos")
+        we.append(["Fecha", "Hora", "Proceso", "Item", "Tipo", "Remitente"])
+    else:
+        we = wb["Eventos"]
+    
+    if "Snapshots" not in wb.sheetnames:
+        ws = wb.create_sheet("Snapshots")
+        ws.append(["Fecha", "Hora", "Proceso", "Estado", "Avance", "Completados", "Total"])
+    
+    we.append([fecha_str, hora_str, proceso, item, tipo, remitente])
+    wb.save(ruta)
+
+
+def leer_historico_usuario(codigo: str) -> dict:
+    """Lee el historico y retorna snapshots y eventos."""
+    ruta = os.path.join(RUTA_BASE, f"{codigo}_historico.xlsx")
+    if not os.path.exists(ruta):
+        return {"snapshots": [], "eventos": []}
+    
+    try:
+        wb = openpyxl.load_workbook(ruta)
+        snapshots = []
+        eventos   = []
+        
+        if "Snapshots" in wb.sheetnames:
+            ws = wb["Snapshots"]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                row = list(row) + [None] * 10
+                if row[0]:
+                    snapshots.append({
+                        "fecha":       str(row[0]).strip(),
+                        "hora":        str(row[1]).strip(),
+                        "proceso":     str(row[2]).strip(),
+                        "estado":      str(row[3]).strip(),
+                        "avance":      str(row[4]).strip(),
+                        "completados": row[5] or 0,
+                        "total":       row[6] or 0,
+                    })
+        
+        if "Eventos" in wb.sheetnames:
+            we = wb["Eventos"]
+            for row in we.iter_rows(min_row=2, values_only=True):
+                row = list(row) + [None] * 10
+                if row[0]:
+                    eventos.append({
+                        "fecha":     str(row[0]).strip(),
+                        "hora":      str(row[1]).strip(),
+                        "proceso":   str(row[2]).strip(),
+                        "item":      str(row[3]).strip(),
+                        "tipo":      str(row[4]).strip(),
+                        "remitente": str(row[5]).strip(),
+                    })
+        
+        return {"snapshots": snapshots, "eventos": eventos}
+    
+    except Exception as e:
+        return {"snapshots": [], "eventos": [], "error": str(e)}
+
+
+
+def _worker_detalle(self, codigo: str):
+    datos = leer_status_usuario(codigo)
+    # Guardar snapshot automático
+    if datos.get("procesos"):
+        guardar_snapshot_historico(codigo, datos["procesos"])
+    self.after(0, lambda: self._dibujar_detalle(codigo, datos))
+
+
+
+
+# Después del header del usuario
+ctk.CTkButton(
+    header,
+    text="📅 History",
+    width=100, height=28,
+    fg_color=AZUL,
+    font=("Trebuchet MS", 11),
+    command=lambda: self._mostrar_historico(codigo)
+).pack(side="right", padx=10)
+
+
+
+def _mostrar_historico(self, codigo: str):
+    """Muestra panel histórico reemplazando el área de detalle."""
+    for w in self.area_detalle.winfo_children():
+        w.destroy()
+    
+    nombre = nombre_display(codigo)
+    datos  = leer_historico_usuario(codigo)
+    snapshots = datos.get("snapshots", [])
+    eventos   = datos.get("eventos",   [])
+    
+    # ── Header ──
+    header = ctk.CTkFrame(self.area_detalle, fg_color=CARD2, height=52, corner_radius=0)
+    header.pack(fill="x")
+    header.pack_propagate(False)
+    
+    ctk.CTkButton(
+        header, text="← Back",
+        width=80, height=28,
+        fg_color="transparent",
+        hover_color=CARD,
+        text_color=SUBTEXTO,
+        font=("Trebuchet MS", 11),
+        command=lambda: self._seleccionar_usuario(codigo)
+    ).pack(side="left", padx=10, pady=10)
+    
+    ctk.CTkLabel(
+        header,
+        text=f"📅  Historical Record — {nombre}",
+        font=("Georgia", 15, "bold"),
+        text_color=TEXTO
+    ).pack(side="left", padx=10)
+    
+    # ── Filtro de mes ──
+    meses_disponibles = sorted(set(
+        s["fecha"][:7] for s in snapshots if s.get("fecha")
+    ), reverse=True)
+    
+    filtro_frame = ctk.CTkFrame(self.area_detalle, fg_color="transparent")
+    filtro_frame.pack(fill="x", padx=18, pady=(10, 0))
+    
+    ctk.CTkLabel(
+        filtro_frame, text="Filter by month:",
+        font=("Trebuchet MS", 11), text_color=SUBTEXTO
+    ).pack(side="left")
+    
+    mes_var = ctk.StringVar(value=meses_disponibles[0] if meses_disponibles else "")
+    
+    combo_mes = ctk.CTkOptionMenu(
+        filtro_frame,
+        values=meses_disponibles if meses_disponibles else ["No data"],
+        variable=mes_var,
+        width=160,
+        command=lambda m: _refrescar(m)
+    )
+    combo_mes.pack(side="left", padx=10)
+    
+    # ── Área scrollable ──
+    scroll = ctk.CTkScrollableFrame(
+        self.area_detalle,
+        fg_color="transparent",
+        scrollbar_button_color=BORDE
+    )
+    scroll.pack(fill="both", expand=True, padx=18, pady=10)
+    
+    def _refrescar(mes_filtro: str):
+        for w in scroll.winfo_children():
+            w.destroy()
+        
+        # Filtrar por mes (formato DD/MM/YYYY → primeros 7 chars son MM/YYYY... 
+        # ajustar según formato)
+        snaps_mes = [s for s in snapshots if s.get("fecha","")[:7] == mes_filtro]
+        eventos_mes = [e for e in eventos   if e.get("fecha","")[:7] == mes_filtro]
+        
+        if not snaps_mes and not eventos_mes:
+            ctk.CTkLabel(
+                scroll,
+                text="No records found for this month.",
+                font=("Trebuchet MS", 13),
+                text_color=SUBTEXTO
+            ).pack(pady=40)
+            return
+        
+        # ── Sección Snapshots ──
+        ctk.CTkLabel(
+            scroll,
+            text="📊  Status Snapshots",
+            font=("Georgia", 13, "bold"),
+            text_color=TEXTO
+        ).pack(anchor="w", pady=(0, 6))
+        
+        # Encabezado tabla snapshots
+        self._fila_tabla(
+            scroll,
+            ["DATE", "TIME", "PROCESS", "STATUS", "PROGRESS"],
+            es_header=True
+        )
+        
+        # Agrupar snapshots por fecha+hora (un guardado = múltiples procesos)
+        from itertools import groupby
+        snaps_sorted = sorted(snaps_mes, key=lambda x: (x["fecha"], x["hora"]))
+        
+        for i, snap in enumerate(snaps_sorted):
+            color_estado = (VERDE if "COMPLET" in snap["estado"].upper()
+                           else AMARILLO if "PROCESO" in snap["estado"].upper()
+                           else SUBTEXTO)
+            
+            fila = ctk.CTkFrame(
+                scroll,
+                fg_color=CARD2 if i % 2 == 0 else CARD,
+                corner_radius=4, height=30
+            )
+            fila.pack(fill="x", pady=1)
+            fila.pack_propagate(False)
+            
+            for texto, ancho in zip(
+                [snap["fecha"], snap["hora"], snap["proceso"],
+                 snap["estado"], snap["avance"]],
+                [100, 70, 180, 120, 80]
+            ):
+                t_color = color_estado if texto == snap["estado"] else TEXTO
+                ctk.CTkLabel(
+                    fila, text=texto,
+                    font=("Trebuchet MS", 10),
+                    text_color=t_color,
+                    width=ancho, anchor="w",
+                    wraplength=ancho - 10
+                ).pack(side="left", padx=6, pady=4)
+        
+        # ── Sección Eventos ──
+        if eventos_mes:
+            ctk.CTkLabel(
+                scroll,
+                text="📬  Email Events",
+                font=("Georgia", 13, "bold"),
+                text_color=TEXTO
+            ).pack(anchor="w", pady=(20, 6))
+            
+            self._fila_tabla(
+                scroll,
+                ["DATE", "TIME", "PROCESS", "ITEM", "TYPE", "SENDER"],
+                es_header=True
+            )
+            
+            for i, ev in enumerate(sorted(eventos_mes,
+                                          key=lambda x: (x["fecha"], x["hora"]))):
+                color_tipo = (VERDE   if "RECIBIDO" in ev["tipo"].upper()
+                             else AZUL if "SOLICITUD" in ev["tipo"].upper()
+                             else SUBTEXTO)
+                
+                fila = ctk.CTkFrame(
+                    scroll,
+                    fg_color=CARD2 if i % 2 == 0 else CARD,
+                    corner_radius=4, height=30
+                )
+                fila.pack(fill="x", pady=1)
+                fila.pack_propagate(False)
+                
+                for texto, ancho in zip(
+                    [ev["fecha"], ev["hora"], ev["proceso"],
+                     ev["item"], ev["tipo"], ev["remitente"]],
+                    [100, 80, 150, 150, 130, 200]
+                ):
+                    t_color = color_tipo if texto == ev["tipo"] else TEXTO
+                    ctk.CTkLabel(
+                        fila, text=texto,
+                        font=("Trebuchet MS", 10),
+                        text_color=t_color,
+                        width=ancho, anchor="w",
+                        wraplength=ancho - 10
+                    ).pack(side="left", padx=6, pady=4)
+    
+    # Cargar mes actual
+    if meses_disponibles:
+        _refrescar(meses_disponibles[0])
+    else:
+        ctk.CTkLabel(
+            scroll,
+            text="No historical data yet.\nData will appear after the first sync.",
+            font=("Trebuchet MS", 13),
+            text_color=SUBTEXTO,
+            justify="center"
+        ).pack(pady=60)
