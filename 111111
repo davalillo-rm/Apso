@@ -1,0 +1,47 @@
+# Variable global de estado
+_cache_gal = []
+_cache_listo = False
+
+def cargar_cache_gal():
+    global _cache_gal, _cache_listo
+    import pythoncom
+    pythoncom.CoInitialize()
+    _cache_listo = False
+    try:
+        # ... tu código existente ...
+        _cache_gal = cache_final
+        print(f"Cache cargado: {len(cache_final)} contactos")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        _cache_listo = True  # <-- marcar como listo
+        pythoncom.CoUninitialize()
+
+
+
+def buscar_contactos_outlook(query: str) -> list:
+    if not _cache_listo:
+        return [{"nombre": "⏳ Loading contacts...", "email": ""}]
+    if not _cache_gal:
+        return []
+    q = query.lower()
+    return [c for c in _cache_gal 
+            if q in c["nombre"].lower() or q in c["email"].lower()][:6]
+
+
+for c in contactos:
+    if not c["email"]:  # Es el mensaje de loading
+        ctk.CTkLabel(
+            sugerencias_ventana,
+            text=c["nombre"],
+            text_color=SCOTIA_SUBTEXT,
+            font=("Trebuchet MS", 11)
+        ).pack(padx=8, pady=4)
+        continue
+    
+    def seleccionar(email=c["email"]):
+        entry_widget.delete(0, 'end')
+        entry_widget.insert(0, email)
+        sugerencias_ventana.destroy()
+    
+    ctk.CTkButton(...).pack(...)
