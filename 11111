@@ -1,5 +1,33 @@
 
 
+def abrir_correo_especifico(self, entry_id: str):
+    if not entry_id:
+        return
+    try:
+        import pythoncom
+        pythoncom.CoInitialize()
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        ns = outlook.GetNamespace("MAPI")
+        
+        # Separar EntryID y StoreID si los guardaste juntos
+        if "||" in entry_id:
+            eid, sid = entry_id.split("||")
+            item = ns.GetItemFromID(eid, sid)
+        else:
+            item = ns.GetItemFromID(entry_id)
+        
+        item.Display()
+        
+    except Exception as e:
+        print(f"Error al abrir correo: {e}")
+    finally:
+        pythoncom.CoUninitialize()
+
+
+
+
+
+
 def buscar_contactos_outlook(query: str) -> list:
     print(f"Buscando: '{query}' en {len(_cache_gal)} contactos")
     if not _cache_gal:
