@@ -1,3 +1,146 @@
+
+# ==========================================
+# HISTÓRICO
+# ==========================================
+
+def guardar_snapshot_historico(procesos: list):
+    """Guarda snapshot del estado actual en el historico."""
+    try:
+        usuario = getpass.getuser()
+        ruta = os.path.join(RUTA_COMPARTIDA, f"{usuario}_historico.xlsx")
+        
+        ahora = datetime.datetime.now()
+        fecha_str = ahora.strftime("%d/%m/%Y")
+        hora_str  = ahora.strftime("%H:%M")
+        
+        if os.path.exists(ruta):
+            wb = openpyxl.load_workbook(ruta)
+        else:
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)
+        
+        if "Snapshots" not in wb.sheetnames:
+            ws = wb.create_sheet("Snapshots")
+            ws.append(["Fecha", "Hora", "Proceso", 
+                       "Estado", "Avance", "Completados", "Total"])
+        else:
+            ws = wb["Snapshots"]
+        
+        if "Eventos" not in wb.sheetnames:
+            we = wb.create_sheet("Eventos")
+            we.append(["Fecha", "Hora", "Proceso", 
+                       "Item", "Tipo", "Remitente"])
+        
+        for p in procesos:
+            total    = p.get("total", 0)
+            cumplidos = p.get("cumplidos", 0)
+            estado   = "COMPLETO" if cumplidos == total and total > 0 else "EN PROCESO"
+            avance   = f"{cumplidos}/{total}"
+            
+            ws.append([
+                fecha_str,
+                hora_str,
+                p.get("nombre", ""),
+                estado,
+                avance,
+                cumplidos,
+                total,
+            ])
+        
+        wb.save(ruta)
+        
+    except Exception as e:
+        print(f"Error guardando snapshot: {e}")
+
+
+def registrar_evento_historico(proceso: str, item: str, 
+                                tipo: str, remitente: str):
+    """
+    Registra un evento puntual en el histórico.
+    tipo: 'CORREO RECIBIDO' o 'SOLICITUD ENVIADA'
+    """
+    try:
+        usuario = getpass.getuser()
+        ruta = os.path.join(RUTA_COMPARTIDA, f"{usuario}_historico.xlsx")
+        
+        ahora = datetime.datetime.now()
+        fecha_str = ahora.strftime("%d/%m/%Y")
+        hora_str  = ahora.strftime("%H:%M:%S")
+        
+        if os.path.exists(ruta):
+            wb = openpyxl.load_workbook(ruta)
+        else:
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)
+        
+        if "Eventos" not in wb.sheetnames:
+            we = wb.create_sheet("Eventos")
+            we.append(["Fecha", "Hora", "Proceso", 
+                       "Item", "Tipo", "Remitente"])
+        else:
+            we = wb["Eventos"]
+        
+        if "Snapshots" not in wb.sheetnames:
+            ws = wb.create_sheet("Snapshots")
+            ws.append(["Fecha", "Hora", "Proceso", 
+                       "Estado", "Avance", "Completados", "Total"])
+        
+        we.append([fecha_str, hora_str, proceso, item, tipo, remitente])
+        wb.save(ruta)
+        
+    except Exception as e:
+        print(f"Error registrando evento: {e}")
+
+
+
+# --- NUEVO: guardar snapshot histórico ---
+        if hasattr(self, 'ultimo_resultado') and self.ultimo_resultado:
+            procesos_data = self.ultimo_resultado.get("procesos", [])
+            if procesos_data:
+                guardar_snapshot_historico(procesos_data)
+        
+        wb.save(ruta_final)  # ← esta línea ya existe
+
+
+
+
+
+cumplido, hora_str, correo_id = True, str(msg.ReceivedTime)[11:16], str(msg.EntryID)
+
+# NUEVO: registrar evento correo recibido
+registrar_evento_historico(
+    proceso=nombre_proc,
+    item=itm["nombre"],
+    tipo="CORREO RECIBIDO",
+    remitente=remi_msg
+)
+
+
+
+
+if all(p in asunto_env for p in palabras_clave):
+    sol_enviada, hora_sol = True, str(m.SentOn)[11:16]
+    
+    # NUEVO: registrar evento solicitud enviada
+    registrar_evento_historico(
+        proceso=nombre_proc,
+        item=itm["nombre"],
+        tipo="SOLICITUD ENVIADA",
+        remitente=destinatario
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ==========================================
 # HISTÓRICO
 # ==========================================
