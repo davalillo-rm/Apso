@@ -1,4 +1,80 @@
 
+def abrir_correo_especifico(self, entry_id):
+    # Convertir a string por si llega como lista o dict
+    if isinstance(entry_id, list):
+        entry_id = entry_id[0] if entry_id else ""
+    if isinstance(entry_id, dict):
+        entry_id = entry_id.get("correo_id", "")
+    if not entry_id:
+        print("correo_id vacío")
+        return
+    
+    eid = str(entry_id).strip()
+    
+    try:
+        import pythoncom
+        pythoncom.CoInitialize()
+        
+        try:
+            outlook = win32com.client.GetActiveObject("Outlook.Application")
+        except:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+        
+        ns = outlook.GetNamespace("MAPI")
+        
+        # Intento 1: GetItemFromID directo
+        try:
+            item = ns.GetItemFromID(eid)
+            item.Display()
+            return
+        except:
+            pass
+        
+        # Intento 2: Buscar en Inbox por EntryID
+        try:
+            bandeja = ns.GetDefaultFolder(6)
+            mensajes = bandeja.Items
+            for i in range(1, min(mensajes.Count + 1, 500)):
+                try:
+                    msg = mensajes.Item(i)
+                    if str(msg.EntryID) == eid:
+                        msg.Display()
+                        return
+                except:
+                    continue
+        except:
+            pass
+        
+        # Intento 3: Buscar en todas las carpetas
+        try:
+            for folder_id in [6, 5, 3, 4]:  # Inbox, Sent, Deleted, Outbox
+                try:
+                    carpeta = ns.GetDefaultFolder(folder_id)
+                    mensajes = carpeta.Items
+                    for i in range(1, min(mensajes.Count + 1, 200)):
+                        try:
+                            msg = mensajes.Item(i)
+                            if str(msg.EntryID) == eid:
+                                msg.Display()
+                                return
+                        except:
+                            continue
+                except:
+                    continue
+        except:
+            pass
+        
+        print(f"No se encontró el correo con ID: {eid[:30]}...")
+        
+    except Exception as e:
+        print(f"Error al abrir correo: {e}")
+    finally:
+        pythoncom.CoUninitialize()
+
+
+
+
+
 def abrir_correo_especifico(self, entry_id: str):
     if not entry_id:
         return
