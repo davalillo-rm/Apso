@@ -1,0 +1,41 @@
+Sub GuardarHojaCorreo()
+
+    Dim wbOrigen As Workbook
+    Dim wbNuevo As Workbook
+    Dim wsCorreo As Worksheet
+    Dim wsRecopilado As Worksheet
+    Dim fechaCelda As Date
+    Dim nombreArchivo As String
+    Dim rutaDestino As String
+    Dim rutaCompleta As String
+    
+    ' =============================================
+    ' ESPECIFICA LA RUTA AQUÍ:
+    rutaDestino = "C:\TuRuta\Aqui\"
+    ' =============================================
+    
+    Set wbOrigen = ThisWorkbook
+    Set wsCorreo = wbOrigen.Sheets("Correo")
+    Set wsRecopilado = wbOrigen.Sheets("Recopilado")
+    
+    ' Leer fecha desde celda L10 de hoja Recopilado
+    fechaCelda = CDate(wsRecopilado.Range("L10").Value)
+    
+    ' Construir nombre archivo: LCSyyyymmdd.xlsx
+    nombreArchivo = "LCS" & Format(fechaCelda, "yyyymmdd") & ".xlsx"
+    rutaCompleta = rutaDestino & nombreArchivo
+    
+    ' Copiar hoja Correo a nuevo libro
+    wsCorreo.Copy
+    Set wbNuevo = ActiveWorkbook
+    
+    ' Guardar nuevo libro
+    Application.DisplayAlerts = False
+    wbNuevo.SaveAs Filename:=rutaCompleta, FileFormat:=xlOpenXMLWorkbook
+    Application.DisplayAlerts = True
+    
+    wbNuevo.Close SaveChanges:=False
+    
+    MsgBox "Archivo guardado exitosamente:" & vbNewLine & rutaCompleta, vbInformation
+
+End Sub
