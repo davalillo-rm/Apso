@@ -1,0 +1,307 @@
+if evaluar_proceso:
+    # Solo registrar si no se registró hoy ya
+    hoy_str = datetime.datetime.now().strftime("%d/%m/%Y")
+    eventos_hoy = leer_eventos_hoy(nombre_proc, hoy_str)
+    if "REGLA ACTIVADA" not in eventos_hoy:
+        registrar_evento_historico(
+            proceso=nombre_proc,
+            item="",
+            tipo="REGLA ACTIVADA",
+            remitente=""
+        )
+
+
+
+
+
+def leer_eventos_hoy(proceso: str, fecha: str) -> list:
+    """Retorna lista de tipos de eventos registrados hoy para un proceso."""
+    try:
+        usuario = getpass.getuser()
+        ruta = os.path.join(RUTA_COMPARTIDA, f"{usuario}_historico.xlsx")
+        if not os.path.exists(ruta):
+            return []
+        wb = openpyxl.load_workbook(ruta)
+        if "Eventos" not in wb.sheetnames:
+            return []
+        we = wb["Eventos"]
+        tipos = []
+        for row in we.iter_rows(min_row=2, values_only=True):
+            if row[0] == fecha and row[2] == proceso:
+                tipos.append(str(row[4]).strip())
+        return tipos
+    except:
+        return []
+
+
+registrar_evento_historico(
+    proceso=nombre_proc,
+    item=itm["nombre"],
+    tipo="SOLICITUD ENVIADA",
+    remitente=destinatario
+)
+
+
+
+
+
+def _mostrar_historico(self, codigo: str):
+    for w in self.area_detalle.winfo_children():
+        w.destroy()
+
+    nombre = nombre_display(codigo)
+    datos  = leer_historico_usuario(codigo)
+    eventos = datos.get("eventos", [])
+
+    # ── Header ──
+    header = ctk.CTkFrame(
+        self.area_detalle, fg_color=CARD2, 
+        height=52, corner_radius=0
+    )
+    header.pack(fill="x")
+    header.pack_propagate(False)
+
+    ctk.CTkButton(
+        header, text="← Back",
+        width=80, height=28,
+        fg_color="transparent",
+        hover_color=CARD,
+        text_color=SUBTEXTO,
+        font=("Trebuchet MS", 11),
+        command=lambda: self._seleccionar_usuario(codigo)
+    ).pack(side="left", padx=10, pady=10)
+
+    ctk.CTkLabel(
+        header,
+        text=f"📅  Historical Record — {nombre}",
+        font=("Georgia", 15, "bold"),
+        text_color=TEXTO
+    ).pack(side="left", padx=10)
+
+    # ── Filtro de mes ──
+    def extraer_mes(fecha_str: str) -> str:
+        try:
+            partes = fecha_str.split("/")
+            return f"{partes[1]}/{partes[2]}"
+        except:
+            return ""
+
+    import calendar
+
+    def mes_legible(mes_str: str) -> str:
+        try:
+            mes, anio = mes_str.split("/")
+            return f"{calendar.month_name[int(mes)]} {anio}"
+        except:
+            return mes_str
+
+    meses_disponibles = sorted(set(
+        extraer_mes(e["fecha"]) for e in eventos if e.get("fecha")
+    ), reverse=True)
+
+    meses_map = {mes_legible(m): m for m in meses_disponibles}
+
+    filtro_frame = ctk.CTkFrame(
+        self.area_detalle, fg_color="transparent"
+    )
+    filtro_frame.pack(fill="x", padx=18, pady=(10, 0))
+
+    ctk.CTkLabel(
+        filtro_frame, text="Month:",
+        font=("Trebuchet MS", 11),
+        text_color=SUBTEXTO
+    ).pack(side="left")
+
+    mes_var = ctk.StringVar(
+        value=list(meses_map.keys())[0] if meses_map else ""
+    )
+
+    # ── Área scrollable ──
+    scroll = ctk.CTkScrollableFrame(
+        self.area_detalle,
+        fg_color="transparent",
+        scrollbar_button_color=BORDE
+    )
+    scroll.pack(fill="both", expand=True, padx=18, pady=10)
+
+    def _refrescar(mes_legible_sel: str):
+        for w in scroll.winfo_children():
+            w.destroy()
+
+        mes_codigo = meses_map.get(mes_legible_sel, "")
+        eventos_mes = [
+            e for e in eventos
+            if extraer_mes(e.get("fecha", "")) == mes_codigo
+        ]
+
+        if not eventos_mes:
+            ctk.CTkLabel(
+                scroll,
+                text="No records found for this month.",
+                font=("Trebuchet MS", 13),
+                text_color=SUBTEXTO
+            ).pack(pady=40)
+            return
+
+        # ── Construir resumen por proceso+item ──
+        # Estructura: {proceso: {item: {activado, solicitud, recibido}}}
+        resumen = {}
+
+        for ev in sorted(eventos_mes, key=lambda x: (x["fecha"], x["hora"])):
+            proc  = ev.get("proceso", "")
+            item  = ev.get("item", "")
+            tipo  = ev.get("tipo", "")
+            fecha = ev.get("fecha", "")
+            hora  = ev.get("hora", "")
+
+            if proc not in resumen:
+                resumen[proc] = {}
+
+            # REGLA ACTIVADA aplica a todos los ítems del proceso
+            if tipo == "REGLA ACTIVADA":
+                # Guardar fecha activación del proceso
+                if "_activado" not in resumen[proc]:
+                    resumen[proc]["_activado"] = f"{fecha} {hora[:5]}"
+                continue
+
+            if item not in resumen[proc]:
+                resumen[proc][item] = {
+                    "fecha_inicio":    resumen[proc].get("_activado", "—"),
+                    "fecha_solicitud": "—",
+                    "fecha_recepcion": "—",
+                    "estado":          "PENDIENTE"
+                }
+
+            if tipo == "SOLICITUD ENVIADA":
+                resumen[proc][item]["fecha_solicitud"] = f"{fecha} {hora[:5]}"
+
+            elif tipo == "CORREO RECIBIDO":
+                resumen[proc][item]["fecha_recepcion"] = f"{fecha} {hora[:5]}"
+                resumen[proc][item]["estado"] = "COMPLETO"
+
+        # ── Dibujar tabla por proceso ──
+        for proceso, items in resumen.items():
+            # Título del proceso
+            ctk.CTkLabel(
+                scroll,
+                text=f"📁  {proceso}",
+                font=("Georgia", 13, "bold"),
+                text_color=TEXTO,
+                anchor="w"
+            ).pack(fill="x", pady=(14, 4), padx=4)
+
+            # Encabezado
+            self._fila_tabla(
+                scroll,
+                ["ITEM", "ACTIVATED", "REQUEST SENT", "RECEIVED", "STATUS"],
+                es_header=True
+            )
+
+            for item_nombre, datos_item in items.items():
+                if item_nombre == "_activado":
+                    continue
+
+                estado = datos_item["estado"]
+                color_estado = (VERDE   if estado == "COMPLETO"
+                               else AMARILLO)
+
+                fila = ctk.CTkFrame(
+                    scroll,
+                    fg_color=CARD2,
+                    corner_radius=4,
+                    height=32
+                )
+                fila.pack(fill="x", pady=1)
+                fila.pack_propagate(False)
+
+                for texto, ancho in zip([
+                    item_nombre,
+                    datos_item["fecha_inicio"],
+                    datos_item["fecha_solicitud"],
+                    datos_item["fecha_recepcion"],
+                    estado
+                ], [180, 120, 120, 120, 100]):
+                    t_color = color_estado if texto == estado else TEXTO
+                    ctk.CTkLabel(
+                        fila,
+                        text=texto,
+                        font=("Trebuchet MS", 10),
+                        text_color=t_color,
+                        width=ancho,
+                        anchor="w",
+                        wraplength=ancho - 10
+                    ).pack(side="left", padx=6, pady=4)
+
+        # ── Sección eventos cronológicos ──
+        ctk.CTkLabel(
+            scroll,
+            text="📬  Event Timeline",
+            font=("Georgia", 13, "bold"),
+            text_color=TEXTO
+        ).pack(anchor="w", pady=(20, 6))
+
+        self._fila_tabla(
+            scroll,
+            ["DATE", "TIME", "PROCESS", "ITEM", "TYPE"],
+            es_header=True
+        )
+
+        for i, ev in enumerate(
+            sorted(eventos_mes, key=lambda x: (x["fecha"], x["hora"]))
+        ):
+            tipo = ev.get("tipo", "")
+            color_tipo = (
+                VERDE   if "RECIBIDO"  in tipo else
+                AZUL    if "SOLICITUD" in tipo else
+                NARANJA if "ACTIVADA"  in tipo else
+                SUBTEXTO
+            )
+
+            fila = ctk.CTkFrame(
+                scroll,
+                fg_color=CARD2 if i % 2 == 0 else CARD,
+                corner_radius=4,
+                height=30
+            )
+            fila.pack(fill="x", pady=1)
+            fila.pack_propagate(False)
+
+            for texto, ancho in zip([
+                ev.get("fecha", ""),
+                ev.get("hora", "")[:8],
+                ev.get("proceso", ""),
+                ev.get("item", "") or "—",
+                tipo
+            ], [100, 80, 150, 180, 150]):
+                t_color = color_tipo if texto == tipo else TEXTO
+                ctk.CTkLabel(
+                    fila,
+                    text=texto,
+                    font=("Trebuchet MS", 10),
+                    text_color=t_color,
+                    width=ancho,
+                    anchor="w",
+                    wraplength=ancho - 10
+                ).pack(side="left", padx=6, pady=4)
+
+    # Combo mes — va después de definir _refrescar
+    combo_mes = ctk.CTkOptionMenu(
+        filtro_frame,
+        values=list(meses_map.keys()) if meses_map else ["No data"],
+        variable=mes_var,
+        width=180,
+        command=_refrescar
+    )
+    combo_mes.pack(side="left", padx=10)
+
+    # Cargar mes actual
+    if meses_map:
+        _refrescar(list(meses_map.keys())[0])
+    else:
+        ctk.CTkLabel(
+            scroll,
+            text="No historical data yet.",
+            font=("Trebuchet MS", 13),
+            text_color=SUBTEXTO
+        ).pack(pady=60)
+
