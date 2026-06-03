@@ -1,4 +1,34 @@
 
+
+' ── DIAGNÓSTICO DE ESTRUCTURA ─────────────────────────────
+    Debug.Print "filaTRAD: " & filaTRAD
+    Debug.Print "filaALM: " & filaALM
+    Debug.Print "filaInicioTRAD: " & filaInicioTRAD
+    Debug.Print "filaFinTRAD: " & filaFinTRAD
+    Debug.Print "filaInicioALM: " & filaInicioALM
+    Debug.Print "filaFinALM: " & filaFinALM
+    Debug.Print "---"
+    
+    ' Ver las 5 filas después de TRAD_FIXIN
+    Dim k As Long
+    For k = filaTRAD To filaTRAD + 6
+        Debug.Print "Fila " & k & " ColA: [" & wsRTK.Cells(k, 1).Value & "]" & _
+                    " ColAC: [" & wsRTK.Cells(k, 29).Value & "]"
+    Next k
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Sub CalcularShortPositionSB()
 
     Dim wbActual     As Workbook
