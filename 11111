@@ -1,5 +1,37 @@
 
 
+# Leer eventos existentes del día
+existentes = set()
+for row in we.iter_rows(min_row=2, values_only=True):
+    if row[0] and row[2] and row[4]:  # fecha, proceso, tipo
+        # Clave única: fecha + proceso + item + tipo
+        clave = f"{row[0]}|{row[2]}|{row[3]}|{row[4]}"
+        existentes.add(clave)
+
+# Solo guardar eventos nuevos
+nuevos = 0
+for evento in _eventos_pendientes:
+    clave = f"{evento[0]}|{evento[2]}|{evento[3]}|{evento[4]}"
+    if clave not in existentes:
+        we.append(evento)
+        nuevos += 1
+
+print(f"Guardados {nuevos} eventos nuevos en histórico")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Variable global - cola de eventos pendientes
 _eventos_pendientes = []
 
