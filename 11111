@@ -1,5 +1,66 @@
 
 
+Sub UpdateTC()
+
+    Dim cn As Object
+    Dim rs As Object
+    Dim provStr As String
+    Dim sql As String
+    Dim a As Worksheet
+    Dim usd_pen As Double
+
+    ' ── Late binding: no requiere referencia ADODB ─────────────
+    Set cn = CreateObject("ADODB.Connection")
+    Set rs = CreateObject("ADODB.Recordset")
+
+    Set a = ThisWorkbook.Sheets("Securities")
+
+    ' ── Conexión SQL ───────────────────────────────────────────
+    cn.Provider = "sqloledb"
+    provStr = "Server=PEPGVIPR1DS9672.PER.BNS\SQL1,275;" & _
+              "Database=SBP_RGTRABAJO;" & _
+              "Trusted_Connection=yes"
+    cn.Open provStr
+
+    ' ── Query TC USD/PEN usando fecha de C2 ────────────────────
+    sql = "SELECT * FROM [dbo].[RM_TCHistorico] " & _
+          "WHERE Moneda='USD/PEN' " & _
+          "AND Fecha='" & Format(a.Cells(2, "C").Value, "yyyy-mm-dd") & "' " & _
+          "ORDER BY 1 DESC"
+
+    Set rs = cn.Execute(sql)
+
+    ' ── Escribir TC en Securities E2 ───────────────────────────
+    If Not rs.EOF Then
+        usd_pen = rs("TC")
+        a.Cells(2, "E").Value = usd_pen
+    Else
+        MsgBox "No se encontró TC para la fecha: " & _
+               Format(a.Cells(2, "C").Value, "yyyy-mm-dd"), vbExclamation
+    End If
+
+    ' ── Cerrar conexión ────────────────────────────────────────
+    rs.Close
+    cn.Close
+    Set rs = Nothing
+    Set cn = Nothing
+
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Busca donde lees las filas de Eventos y cambia:
 "fecha": str(row[0]).strip(),
 "hora":  str(row[1]).strip(),
