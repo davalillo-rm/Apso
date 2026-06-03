@@ -1,4 +1,198 @@
 
+Sub CalcularShortPositionSB()
+
+    Dim wbActual As Workbook
+    Dim wbRTK As Workbook
+    Dim wsRTK As Worksheet
+    Dim hojaDestino As Worksheet
+    Dim fechaUso As Date
+    Dim rutaArchivo As String
+    Dim tc As Double
+    Dim sumaNeta As Double
+    Dim i As Long, j As Long
+    Dim shortName As String
+    Dim mvTrading As Double, mvALM As Double, mvNeto As Double
+    Dim encontrado As Boolean
+    Dim filaTRAD As Long, filaALM As Long
+    Dim filaHeaderTRAD As Long, filaHeaderALM As Long
+    Dim filaInicioTRAD As Long, filaFinTRAD As Long
+    Dim filaInicioALM As Long, filaFinALM As Long
+    Dim lastRow As Long
+    Dim celda As Range
+
+    ' ── Workbook actual y hoja destino ─────────────────────────
+    Set wbActual    = ThisWorkbook
+    Set hojaDestino = wbActual.Sheets("Securities")
+
+    ' ── Tipo de cambio desde Securities E2 ─────────────────────
+    tc = hojaDestino.Range("E2").Value
+    If tc = 0 Then
+        MsgBox "El tipo de cambio en Securities!E2 es 0 o está vacío.", vbExclamation
+        Exit Sub
+    End If
+
+    ' ── Fecha y ruta del RTK ───────────────────────────────────
+    fechaUso    = hojaDestino.Range("B6").Value
+    rutaArchivo = "R:\RTK\RTK" & Format(fechaUso, "yymmdd") & ".xlsx"
+
+    ' ── Verificar que el archivo exista ───────────────────────
+    If Dir(rutaArchivo) = "" Then
+        MsgBox "No se encontró el archivo RTK:" & vbNewLine & rutaArchivo, vbExclamation
+        Exit Sub
+    End If
+
+    ' ── Abrir RTK en solo lectura ─────────────────────────────
+    Set wbRTK = Workbooks.Open(rutaArchivo, ReadOnly:=True)
+    Set wsRTK = wbRTK.Sheets(1)
+    lastRow   = wsRTK.Cells(wsRTK.Rows.Count, 1).End(xlUp).Row
+
+    ' ══════════════════════════════════════════════════════════
+    ' 1. LOCALIZAR TRAD_FIXIN y ALM_INV dinámicamente
+    ' ══════════════════════════════════════════════════════════
+    filaTRAD = 0
+    filaALM  = 0
+
+    Set celda = wsRTK.Columns("A").Find(What:="TRAD_FIXIN", _
+                LookIn:=xlValues, LookAt:=xlWhole)
+    If Not celda Is Nothing Then filaTRAD = celda.Row
+
+    Set celda = wsRTK.Columns("A").Find(What:="ALM_INV", _
+                LookIn:=xlValues, LookAt:=xlWhole)
+    If Not celda Is Nothing Then filaALM = celda.Row
+
+    If filaTRAD = 0 Then
+        MsgBox "No se encontró TRAD_FIXIN en el RTK.", vbExclamation
+        GoTo CerrarRTK
+    End If
+    If filaALM = 0 Then
+        MsgBox "No se encontró ALM_INV en el RTK.", vbExclamation
+        GoTo CerrarRTK
+    End If
+
+    ' ── Header TRAD_FIXIN: fila con "Short" en col A ──────────
+    filaHeaderTRAD = 0
+    For i = filaTRAD + 1 To filaTRAD + 5
+        If InStr(1, wsRTK.Cells(i, 1).Value, "Short", vbTextCompare) > 0 Then
+            filaHeaderTRAD = i
+            Exit For
+        End If
+    Next i
+    If filaHeaderTRAD = 0 Then filaHeaderTRAD = filaTRAD + 1
+    filaInicioTRAD = filaHeaderTRAD + 1
+
+    ' ── Fin TRAD_FIXIN: primera fila vacía en col A ───────────
+    filaFinTRAD = filaInicioTRAD
+    For i = filaInicioTRAD To lastRow
+        If Trim(wsRTK.Cells(i, 1).Value) = "" Then
+            filaFinTRAD = i - 1
+            Exit For
+        End If
+        filaFinTRAD = i
+    Next i
+
+    ' ── Header ALM_INV ────────────────────────────────────────
+    filaHeaderALM = 0
+    For i = filaALM + 1 To filaALM + 5
+        If InStr(1, wsRTK.Cells(i, 1).Value, "Short", vbTextCompare) > 0 Then
+            filaHeaderALM = i
+            Exit For
+        End If
+    Next i
+    If filaHeaderALM = 0 Then filaHeaderALM = filaALM + 1
+    filaInicioALM = filaHeaderALM + 1
+
+    ' ── Fin ALM_INV: primera fila vacía en col A ─────────────
+    filaFinALM = filaInicioALM
+    For i = filaInicioALM To lastRow
+        If Trim(wsRTK.Cells(i, 1).Value) = "" Then
+            filaFinALM = i - 1
+            Exit For
+        End If
+        filaFinALM = i
+    Next i
+
+    ' ══════════════════════════════════════════════════════════
+    ' 2. ITERAR TRAD_FIXIN: solo filas SB
+    ' ══════════════════════════════════════════════════════════
+    sumaNeta = 0
+
+    For i = filaInicioTRAD To filaFinTRAD
+
+        shortName = Trim(wsRTK.Cells(i, 1).Value)
+
+        ' Solo filas que empiecen con "SB"
+        If UCase(Left(shortName, 2)) = "SB" Then
+
+            ' Verificar que Market Value (col AC = 29) sea numérico
+            If Not IsNumeric(wsRTK.Cells(i, 29).Value) Then GoTo SiguienteFila
+            mvTrading = wsRTK.Cells(i, 29).Value
+
+            ' ── Buscar mismo SB en ALM_INV ─────────────────
+            mvALM      = 0
+            encontrado = False
+            For j = filaInicioALM To filaFinALM
+                If Trim(wsRTK.Cells(j, 1).Value) = shortName Then
+                    If IsNumeric(wsRTK.Cells(j, 29).Value) Then
+                        mvALM      = wsRTK.Cells(j, 29).Value
+                        encontrado = True
+                        Exit For
+                    End If
+                End If
+            Next j
+
+            ' ── Lógica de neteo corregida ───────────────────
+            If encontrado Then
+                ' Tiene par en ALM: suma si |Trading| > |ALM|
+                mvNeto = Abs(mvTrading) - Abs(mvALM)
+                If mvNeto > 0 Then
+                    sumaNeta = sumaNeta + mvNeto
+                End If
+            Else
+                ' Sin par en ALM: suma solo si es posición corta
+                If mvTrading < 0 Then
+                    sumaNeta = sumaNeta + Abs(mvTrading)
+                End If
+            End If
+
+            ' Debug: ver fila por fila en ventana Inmediato (Ctrl+G)
+            Debug.Print shortName & _
+                        " | Trading: " & mvTrading & _
+                        " | ALM: " & mvALM & _
+                        " | Encontrado: " & encontrado & _
+                        " | Neto: " & IIf(encontrado, Abs(mvTrading) - Abs(mvALM), mvTrading)
+
+        End If
+
+SiguienteFila:
+    Next i
+
+    ' ══════════════════════════════════════════════════════════
+    ' 3. DOLARIZAR Y ESCRIBIR EN Securities!L2
+    '    sumaNeta está en PEN → dividir entre TC → USD
+    ' ══════════════════════════════════════════════════════════
+    hojaDestino.Range("L2").Value = sumaNeta / tc
+
+    MsgBox "Completado." & vbNewLine & _
+           "Short Positions SB (PEN): " & Format(sumaNeta, "#,##0.00") & vbNewLine & _
+           "Short Positions SB (USD): " & Format(sumaNeta / tc, "#,##0.00"), vbInformation
+
+CerrarRTK:
+    wbRTK.Close SaveChanges:=False
+
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 Sub UpdateTC()
 
