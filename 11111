@@ -1,5 +1,352 @@
 
 
+
+def _mostrar_historico(self, codigo: str):
+    for w in self.area_detalle.winfo_children():
+        w.destroy()
+
+    nombre = nombre_display(codigo)
+    datos  = leer_historico_usuario(codigo)
+    eventos = datos.get("eventos", [])
+
+    # ── Header ──
+    header = ctk.CTkFrame(
+        self.area_detalle, fg_color="#1E1E1E", 
+        height=52, corner_radius=0
+    )
+    header.pack(fill="x")
+    header.pack_propagate(False)
+
+    ctk.CTkButton(
+        header, text="← Back",
+        width=80, height=28,
+        fg_color="transparent",
+        hover_color="#2A2A2A",
+        text_color="#6A6A6A",
+        font=("Trebuchet MS", 11),
+        command=lambda: self._seleccionar_usuario(codigo)
+    ).pack(side="left", padx=10, pady=10)
+
+    ctk.CTkLabel(
+        header,
+        text=f"📅  Historical Record — {nombre}",
+        font=("Georgia", 15, "bold"),
+        text_color="#F0F0F0"
+    ).pack(side="left", padx=10)
+
+    # ── Filtro de mes ──
+    def extraer_mes(fecha_str: str) -> str:
+        try:
+            partes = fecha_str.split("/")
+            return f"{partes[1]}/{partes[2]}"
+        except:
+            return ""
+
+    import calendar
+
+    def mes_legible(mes_str: str) -> str:
+        try:
+            mes, anio = mes_str.split("/")
+            return f"{calendar.month_name[int(mes)]} {anio}"
+        except:
+            return mes_str
+
+    def semana_del_mes(fecha_str: str) -> int:
+        """Retorna semana 1-4 según día del mes."""
+        try:
+            dia = int(fecha_str.split("/")[0])
+            if dia <= 7:   return 1
+            if dia <= 14:  return 2
+            if dia <= 21:  return 3
+            return 4
+        except:
+            return 1
+
+    meses_disponibles = sorted(set(
+        extraer_mes(e["fecha"]) for e in eventos if e.get("fecha")
+    ), reverse=True)
+
+    meses_map = {mes_legible(m): m for m in meses_disponibles}
+
+    filtro_frame = ctk.CTkFrame(
+        self.area_detalle, fg_color="#1A1A1A"
+    )
+    filtro_frame.pack(fill="x", padx=0, pady=0)
+
+    ctk.CTkLabel(
+        filtro_frame, text="  Month:",
+        font=("Trebuchet MS", 11),
+        text_color="#6A6A6A"
+    ).pack(side="left", padx=(18, 4), pady=10)
+
+    mes_var = ctk.StringVar(
+        value=list(meses_map.keys())[0] if meses_map else ""
+    )
+
+    # ── Scroll ──
+    scroll = ctk.CTkScrollableFrame(
+        self.area_detalle,
+        fg_color="#1A1A1A",
+        scrollbar_button_color="#333333"
+    )
+    scroll.pack(fill="both", expand=True, padx=0, pady=0)
+
+    def _refrescar(mes_legible_sel: str):
+        for w in scroll.winfo_children():
+            w.destroy()
+
+        mes_codigo = meses_map.get(mes_legible_sel, "")
+        eventos_mes = [
+            e for e in eventos
+            if extraer_mes(e.get("fecha", "")) == mes_codigo
+            and e.get("tipo") != "REGLA ACTIVADA"
+        ]
+
+        if not eventos_mes:
+            ctk.CTkLabel(
+                scroll,
+                text="No records found for this month.",
+                font=("Trebuchet MS", 13),
+                text_color="#5A5A5A"
+            ).pack(pady=40)
+            return
+
+        # ── Agrupar: proceso → semana → item → eventos ──
+        from collections import defaultdict
+        agrupado = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+
+        for ev in sorted(eventos_mes, key=lambda x: (x["fecha"], x["hora"])):
+            proc  = ev.get("proceso", "")
+            item  = ev.get("item", "") or "—"
+            sem   = semana_del_mes(ev.get("fecha", ""))
+            agrupado[proc][sem][item].append(ev)
+
+        # ── Dibujar ──
+        for proceso in agrupado:
+            # Card del proceso
+            proc_frame = ctk.CTkFrame(
+                scroll,
+                fg_color="#252525",
+                corner_radius=10
+            )
+            proc_frame.pack(fill="x", padx=18, pady=(12, 0))
+
+            # Header proceso
+            proc_header = ctk.CTkFrame(
+                proc_frame,
+                fg_color="#2D2D2D",
+                corner_radius=10,
+                height=36
+            )
+            proc_header.pack(fill="x", padx=0, pady=0)
+            proc_header.pack_propagate(False)
+
+            ctk.CTkLabel(
+                proc_header,
+                text=f"📁  {proceso}",
+                font=("Georgia", 13, "bold"),
+                text_color="#F0F0F0",
+                anchor="w"
+            ).pack(side="left", padx=14, pady=8)
+
+            # Por semana
+            for semana in sorted(agrupado[proceso]):
+                # Separador semana
+                sem_frame = ctk.CTkFrame(
+                    proc_frame,
+                    fg_color="transparent"
+                )
+                sem_frame.pack(fill="x", padx=14, pady=(10, 4))
+
+                ctk.CTkFrame(
+                    sem_frame,
+                    fg_color="#333333",
+                    height=1,
+                    corner_radius=0
+                ).pack(fill="x", pady=(0, 4))
+
+                ctk.CTkLabel(
+                    sem_frame,
+                    text=f"Week {semana}",
+                    font=("Trebuchet MS", 10, "bold"),
+                    text_color="#6A6A6A"
+                ).pack(anchor="w")
+
+                # Por item
+                for item_nombre in agrupado[proceso][semana]:
+                    evs = agrupado[proceso][semana][item_nombre]
+
+                    # Determinar estado
+                    tipos = [e.get("tipo","") for e in evs]
+                    if "CORREO RECIBIDO" in tipos:
+                        estado = "COMPLETO"
+                        badge_bg = "#1A3A1A"
+                        badge_fg = "#4CAF50"
+                        badge_icon = "✅"
+                    else:
+                        estado = "PENDIENTE"
+                        badge_bg = "#3A1A1A"
+                        badge_fg = "#EF5350"
+                        badge_icon = "⏳"
+
+                    # Card del item
+                    item_frame = ctk.CTkFrame(
+                        proc_frame,
+                        fg_color="#2A2A2A",
+                        corner_radius=8
+                    )
+                    item_frame.pack(
+                        fill="x", padx=14, pady=(4, 8)
+                    )
+
+                    # Nombre del item + badge
+                    item_header = ctk.CTkFrame(
+                        item_frame,
+                        fg_color="transparent"
+                    )
+                    item_header.pack(fill="x", padx=12, pady=(8, 4))
+
+                    ctk.CTkLabel(
+                        item_header,
+                        text=item_nombre,
+                        font=("Trebuchet MS", 12, "bold"),
+                        text_color="#E0E0E0",
+                        anchor="w"
+                    ).pack(side="left")
+
+                    # Badge estado
+                    badge = ctk.CTkFrame(
+                        item_header,
+                        fg_color=badge_bg,
+                        corner_radius=6,
+                        height=24
+                    )
+                    badge.pack(side="right")
+                    badge.pack_propagate(False)
+
+                    ctk.CTkLabel(
+                        badge,
+                        text=f"{badge_icon} {estado}",
+                        font=("Trebuchet MS", 10, "bold"),
+                        text_color=badge_fg
+                    ).pack(padx=8, pady=3)
+
+                    # Eventos del item
+                    for ev in evs:
+                        tipo = ev.get("tipo", "")
+                        fecha = ev.get("fecha", "")
+                        hora  = ev.get("hora", "")[:5]
+
+                        # Color por tipo
+                        if "RECIBIDO" in tipo:
+                            dot_color = "#4CAF50"
+                            tipo_text = "Correo recibido"
+                            tipo_color = "#4CAF50"
+                        elif "ENVIADA" in tipo:
+                            dot_color  = "#44FC3F7"[1:]
+                            tipo_text  = "Solicitud enviada"
+                            tipo_color = "#4FC3F7"
+                        else:
+                            dot_color  = "#6A6A6A"
+                            tipo_text  = tipo
+                            tipo_color = "#6A6A6A"
+
+                        ev_row = ctk.CTkFrame(
+                            item_frame,
+                            fg_color="transparent"
+                        )
+                        ev_row.pack(fill="x", padx=12, pady=2)
+
+                        # Dot
+                        ctk.CTkLabel(
+                            ev_row,
+                            text="●",
+                            font=("Trebuchet MS", 8),
+                            text_color=dot_color,
+                            width=16
+                        ).pack(side="left")
+
+                        # Fecha
+                        ctk.CTkLabel(
+                            ev_row,
+                            text=f"{fecha[:5]}",
+                            font=("Trebuchet MS", 10),
+                            text_color="#6A6A6A",
+                            width=50
+                        ).pack(side="left", padx=(0, 8))
+
+                        # Hora
+                        ctk.CTkLabel(
+                            ev_row,
+                            text=hora,
+                            font=("Trebuchet MS", 10),
+                            text_color="#6A6A6A",
+                            width=40
+                        ).pack(side="left", padx=(0, 12))
+
+                        # Tipo
+                        ctk.CTkLabel(
+                            ev_row,
+                            text=tipo_text,
+                            font=("Trebuchet MS", 10),
+                            text_color=tipo_color,
+                            anchor="w"
+                        ).pack(side="left")
+
+                    # Espacio inferior
+                    ctk.CTkFrame(
+                        item_frame,
+                        fg_color="transparent",
+                        height=6
+                    ).pack()
+
+            # Espacio inferior del proceso
+            ctk.CTkFrame(
+                proc_frame,
+                fg_color="transparent",
+                height=8
+            ).pack()
+
+    # Combo mes
+    combo_mes = ctk.CTkOptionMenu(
+        filtro_frame,
+        values=list(meses_map.keys()) if meses_map else ["No data"],
+        variable=mes_var,
+        width=180,
+        fg_color="#2A2A2A",
+        button_color="#333333",
+        button_hover_color="#3A3A3A",
+        text_color="#F0F0F0",
+        command=_refrescar
+    )
+    combo_mes.pack(side="left", padx=4, pady=10)
+
+    # Cargar mes actual
+    if meses_map:
+        _refrescar(list(meses_map.keys())[0])
+    else:
+        ctk.CTkLabel(
+            scroll,
+            text="No historical data yet.\nData will appear after the first sync.",
+            font=("Trebuchet MS", 13),
+            text_color="#5A5A5A",
+            justify="center"
+        ).pack(pady=60)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Leer eventos existentes del día
 existentes = set()
 for row in we.iter_rows(min_row=2, values_only=True):
