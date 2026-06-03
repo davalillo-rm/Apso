@@ -1,5 +1,65 @@
 
 
+def leer_eventos_hoy(proceso: str, fecha: str) -> list:
+    global _cache_eventos_hoy, _cache_fecha
+    
+    if _cache_fecha == fecha and _cache_eventos_hoy is not None:
+        return [t for p, t in _cache_eventos_hoy if p == proceso]
+    
+    try:
+        usuario = getpass.getuser()
+        ruta = os.path.join(RUTA_COMPARTIDA, f"{usuario}_historico.xlsx")
+        
+        _cache_fecha = fecha
+        _cache_eventos_hoy = []
+        
+        if not os.path.exists(ruta):
+            return []
+        try:
+            wb = openpyxl.load_workbook(ruta)
+        except:
+            os.remove(ruta)
+            return []
+            
+        if "Eventos" not in wb.sheetnames:
+            return []
+            
+        we = wb["Eventos"]
+        for row in we.iter_rows(min_row=2, values_only=True):
+            if row[0] == fecha:
+                _cache_eventos_hoy.append((
+                    str(row[2]).strip(),
+                    str(row[4]).strip()
+                ))
+        
+        return [t for p, t in _cache_eventos_hoy if p == proceso]
+        
+    except Exception as e:
+        print(f"Error leyendo eventos hoy: {e}")
+        return []
+
+
+
+# Actualizar cache en memoria
+        global _cache_eventos_hoy, _cache_fecha
+        if _cache_fecha == fecha_str and _cache_eventos_hoy is not None:
+            _cache_eventos_hoy.append((proceso, tipo))
+        
+        print(f"Evento registrado: {tipo} | {proceso} | {item}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ==========================================
 # HISTÓRICO
 # ==========================================
