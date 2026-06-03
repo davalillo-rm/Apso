@@ -1,4 +1,40 @@
 
+
+' ── DIAGNÓSTICO: ver qué sumó ──────────────────────────────
+    Debug.Print "========================================="
+    Debug.Print "filaInicioTRAD: " & filaInicioTRAD
+    Debug.Print "filaFinTRAD: " & filaFinTRAD
+    Debug.Print "filaInicioALM: " & filaInicioALM
+    Debug.Print "filaFinALM: " & filaFinALM
+    Debug.Print "-----------------------------------------"
+    
+    For i = filaInicioTRAD To filaFinTRAD
+        shortName = Trim(wsRTK.Cells(i, 1).Value)
+        If UCase(Left(shortName, 2)) = "SB" Then
+            Debug.Print "FILA " & i & " | " & shortName & _
+                        " | MV col29: " & wsRTK.Cells(i, 29).Value
+        End If
+    Next i
+    
+    Debug.Print "-----------------------------------------"
+    Debug.Print "SUMA NETA PEN: " & sumaNeta
+    Debug.Print "TC: " & tc
+    Debug.Print "RESULTADO USD: " & sumaNeta / tc
+    Debug.Print "========================================="
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Sub CalcularShortPositionSB()
 
     Dim wbActual As Workbook
