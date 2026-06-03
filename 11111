@@ -1,32 +1,171 @@
 
-def agregar_autocomplete(entry_widget):
-    sugerencias_ventana = None
 
-    def cerrar():
-        nonlocal sugerencias_ventana
-        try:
-            if sugerencias_ventana:
-                sugerencias_ventana.destroy()
-        except:
-            pass
-        sugerencias_ventana = None
+def _refrescar(mes_legible_sel: str):
+    for w in scroll.winfo_children():
+        w.destroy()
 
-    def mostrar_dropdown(contactos):
-        nonlocal sugerencias_ventana
-        cerrar()
+    mes_codigo = meses_map.get(mes_legible_sel, "")
+    eventos_mes = [
+        e for e in eventos
+        if extraer_mes(e.get("fecha", "")) == mes_codigo
+    ]
 
-        x = entry_widget.winfo_rootx()
-        y = entry_widget.winfo_rooty() + entry_widget.winfo_height() + 2
-        w = entry_widget.winfo_width()
-        h = len(contactos) * 32
+    if not eventos_mes:
+        ctk.CTkLabel(
+            scroll,
+            text="No records found for this month.",
+            font=("Trebuchet MS", 13),
+            text_color=SUBTEXTO
+        ).pack(pady=40)
+        return
 
-        sugerencias_ventana = ctk.CTkToplevel()
-        sugerencias_ventana.wm_overrideredirect(True)
-        sugerencias_ventana.geometry(f"{w}x{h}+{x}+{y}")
-        sugerencias_ventana.configure(fg_color=SCOTIA_CARD)
-        sugerencias_ventana.attributes("-topmost", True)
+    # ── Construir resumen por proceso+item ──
+    resumen = {}
 
-        for c in contactos:
+    for ev in sorted(eventos_mes, key=lambda x: (x["fecha"], x["hora"])):
+        proc  = ev.get("proceso", "")
+        item  = ev.get("item", "")
+        tipo  = ev.get("tipo", "")
+        fecha = ev.get("fecha", "")
+        hora  = ev.get("hora", "")
+
+        if proc not in resumen:
+            resumen[proc] = {}
+
+        if tipo == "REGLA ACTIVADA":
+            if "_activado" not in resumen[proc]:
+                resumen[proc]["_activado"] = f"{fecha} {hora[:5]}"
+            continue
+
+        if item not in resumen[proc]:
+            resumen[proc][item] = {
+                "fecha_inicio":    resumen[proc].get("_activado", "—"),
+                "fecha_solicitud": "—",
+                "fecha_recepcion": "—",
+                "estado":          "PENDIENTE"
+            }
+
+        if tipo == "SOLICITUD ENVIADA":
+            resumen[proc][item]["fecha_solicitud"] = f"{fecha} {hora[:5]}"
+
+        elif tipo == "CORREO RECIBIDO":
+            resumen[proc][item]["fecha_recepcion"] = f"{fecha} {hora[:5]}"
+            resumen[proc][item]["estado"] = "COMPLETO"
+
+    # ── Dibujar tabla por proceso ──
+    for proceso, items in resumen.items():
+        ctk.CTkLabel(
+            scroll,
+            text=f"📁  {proceso}",
+            font=("Georgia", 13, "bold"),
+            text_color=TEXTO,
+            anchor="w"
+        ).pack(fill="x", pady=(14, 4), padx=4)
+
+        self._fila_tabla(
+            scroll,
+            ["ITEM", "ACTIVATED", "REQUEST SENT", "RECEIVED", "STATUS"],
+            es_header=True
+        )
+
+        for item_nombre, datos_item in items.items():
+            if item_nombre == "_activado":
+                continue
+
+            estado = datos_item["estado"]
+            color_estado = VERDE if estado == "COMPLETO" else AMARILLO
+
+            fila = ctk.CTkFrame(
+                scroll,
+                fg_color=CARD2,
+                corner_radius=4,
+                height=32
+            )
+            fila.pack(fill="x", pady=1)
+            fila.pack_propagate(False)
+
+            for texto, ancho in zip([
+                item_nombre,
+                datos_item["fecha_inicio"],
+                datos_item["fecha_solicitud"],
+                datos_item["fecha_recepcion"],
+                estado
+            ], [180, 120, 120, 120, 100]):
+                t_color = color_estado if texto == estado else TEXTO
+                ctk.CTkLabel(
+                    fila,
+                    text=texto,
+                    font=("Trebuchet MS", 10),
+                    text_color=t_color,
+                    width=ancho,
+                    anchor="w",
+                    wraplength=ancho - 10
+                ).pack(side="left", padx=6, pady=4)
+
+    # ── Sección eventos cronológicos ──
+    ctk.CTkLabel(
+        scroll,
+        text="📬  Event Timeline",
+        font=("Georgia", 13, "bold"),
+        text_color=TEXTO
+    ).pack(anchor="w", pady=(20, 6))
+
+    self._fila_tabla(
+        scroll,
+        ["DATE", "TIME", "PROCESS", "ITEM", "TYPE"],
+        es_header=True
+    )
+
+    for i, ev in enumerate(
+        sorted(eventos_mes, key=lambda x: (x["fecha"], x["hora"]))
+    ):
+        tipo = ev.get("tipo", "")
+        color_tipo = (
+            VERDE   if "RECIBIDO"  in tipo else
+            AZUL    if "SOLICITUD" in tipo else
+            NARANJA if "ACTIVADA"  in tipo else
+            SUBTEXTO
+        )
+
+        fila = ctk.CTkFrame(
+            scroll,
+            fg_color=CARD2 if i % 2 == 0 else CARD,
+            corner_radius=4,
+            height=30
+        )
+        fila.pack(fill="x", pady=1)
+        fila.pack_propagate(False)
+
+        for texto, ancho in zip([
+            ev.get("fecha", ""),
+            ev.get("hora", "")[:8],
+            ev.get("proceso", ""),
+            ev.get("item", "") or "—",
+            tipo
+        ], [100, 80, 150, 180, 150]):
+            t_color = color_tipo if texto == tipo else TEXTO
+            ctk.CTkLabel(
+                fila,
+                text=texto,
+                font=("Trebuchet MS", 10),
+                text_color=t_color,
+                width=ancho,
+                anchor="w",
+                wraplength=ancho - 10
+            ).pack(side="left", padx=6, pady=4)
+
+
+
+
+
+
+
+
+
+
+
+
+
             if not c["email"]:
                 ctk.CTkLabel(
                     sugerencias_ventana,
