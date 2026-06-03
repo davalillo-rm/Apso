@@ -1,4 +1,163 @@
 
+Sub CalcularShortPositionSB()
+
+    Dim wbActual     As Workbook
+    Dim wbRTK        As Workbook
+    Dim wsRTK        As Worksheet
+    Dim hojaDestino  As Worksheet
+    Dim fechaUso     As Date
+    Dim rutaArchivo  As String
+    Dim tc           As Double
+    Dim sumaNeta     As Double
+    Dim i As Long, j As Long
+    Dim shortName    As String
+    Dim mvTrading    As Double
+    Dim mvALM        As Double
+    Dim encontrado   As Boolean
+    Dim celda        As Range
+    Dim lastRow      As Long
+    Dim filaTRAD     As Long, filaALM      As Long
+    Dim filaInicioTRAD As Long, filaFinTRAD As Long
+    Dim filaInicioALM  As Long, filaFinALM  As Long
+
+    ' ── Setup ─────────────────────────────────────────────────
+    Set wbActual    = ThisWorkbook
+    Set hojaDestino = wbActual.Sheets("Securities")
+
+    tc = hojaDestino.Range("E2").Value
+    If tc = 0 Then
+        MsgBox "TC en Securities!E2 está vacío o es 0.", vbExclamation
+        Exit Sub
+    End If
+
+    fechaUso    = hojaDestino.Range("B6").Value
+    rutaArchivo = "R:\RTK\RTK" & Format(fechaUso, "yymmdd") & ".xlsx"
+
+    If Dir(rutaArchivo) = "" Then
+        MsgBox "No se encontró el archivo:" & vbNewLine & rutaArchivo, vbExclamation
+        Exit Sub
+    End If
+
+    Set wbRTK = Workbooks.Open(rutaArchivo, ReadOnly:=True)
+    Set wsRTK = wbRTK.Sheets(1)
+    lastRow   = wsRTK.Cells(wsRTK.Rows.Count, 1).End(xlUp).Row
+
+    ' ── Localizar secciones ───────────────────────────────────
+    Set celda = wsRTK.Columns("A").Find(What:="TRAD_FIXIN", _
+                LookIn:=xlValues, LookAt:=xlWhole)
+    If celda Is Nothing Then
+        MsgBox "No se encontró TRAD_FIXIN.", vbExclamation
+        GoTo CerrarRTK
+    End If
+    filaTRAD = celda.Row
+
+    Set celda = wsRTK.Columns("A").Find(What:="ALM_INV", _
+                LookIn:=xlValues, LookAt:=xlWhole)
+    If celda Is Nothing Then
+        MsgBox "No se encontró ALM_INV.", vbExclamation
+        GoTo CerrarRTK
+    End If
+    filaALM = celda.Row
+
+    ' ── Inicio de datos: saltar título + encabezado ───────────
+    filaInicioTRAD = filaTRAD + 2
+    filaInicioALM  = filaALM + 2
+
+    ' ── Fin de sección: primera fila vacía en col A ───────────
+    filaFinTRAD = filaInicioTRAD
+    For i = filaInicioTRAD To lastRow
+        If Trim(wsRTK.Cells(i, 1).Value) = "" Then
+            filaFinTRAD = i - 1
+            Exit For
+        End If
+    Next i
+
+    filaFinALM = filaInicioALM
+    For i = filaInicioALM To lastRow
+        If Trim(wsRTK.Cells(i, 1).Value) = "" Then
+            filaFinALM = i - 1
+            Exit For
+        End If
+    Next i
+
+    ' ══════════════════════════════════════════════════════════
+    ' CÁLCULO PRINCIPAL
+    ' ══════════════════════════════════════════════════════════
+    sumaNeta = 0
+
+    For i = filaInicioTRAD To filaFinTRAD
+
+        shortName = Trim(wsRTK.Cells(i, 1).Value)
+
+        ' Solo filas SB
+        If UCase(Left(shortName, 2)) <> "SB" Then GoTo Siguiente
+
+        ' Solo si Market Value es numérico
+        If Not IsNumeric(wsRTK.Cells(i, 29).Value) Then GoTo Siguiente
+
+        mvTrading = wsRTK.Cells(i, 29).Value
+
+        ' Solo procesar si Trading es NEGATIVO
+        If mvTrading >= 0 Then GoTo Siguiente
+
+        ' Buscar par en ALM_INV
+        mvALM      = 0
+        encontrado = False
+        For j = filaInicioALM To filaFinALM
+            If Trim(wsRTK.Cells(j, 1).Value) = shortName Then
+                If IsNumeric(wsRTK.Cells(j, 29).Value) Then
+                    mvALM      = wsRTK.Cells(j, 29).Value
+                    encontrado = True
+                    Exit For
+                End If
+            End If
+        Next j
+
+        ' ── Sumar según caso ──────────────────────────────────
+        If encontrado Then
+            ' Con par ALM: solo si |Trading| > |ALM|
+            If Abs(mvTrading) > Abs(mvALM) Then
+                sumaNeta = sumaNeta + (Abs(mvTrading) - Abs(mvALM))
+                Debug.Print shortName & " | CON PAR | Trading: " & _
+                            mvTrading & " | ALM: " & mvALM & _
+                            " | Suma: " & (Abs(mvTrading) - Abs(mvALM))
+            End If
+        Else
+            ' Sin par ALM: suma directo en Abs
+            sumaNeta = sumaNeta + Abs(mvTrading)
+            Debug.Print shortName & " | SIN PAR | Trading: " & _
+                        mvTrading & " | Suma: " & Abs(mvTrading)
+        End If
+
+Siguiente:
+    Next i
+
+    ' ── Resultado en USD → Securities L2 ─────────────────────
+    hojaDestino.Range("L2").Value = sumaNeta / tc
+
+    MsgBox "Completado." & vbNewLine & _
+           "Total PEN: " & Format(sumaNeta, "#,##0.00") & vbNewLine & _
+           "Total USD: " & Format(sumaNeta / tc, "#,##0.00"), vbInformation
+
+CerrarRTK:
+    wbRTK.Close SaveChanges:=False
+
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ' ── DIAGNÓSTICO: ver qué sumó ──────────────────────────────
     Debug.Print "========================================="
