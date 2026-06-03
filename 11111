@@ -1,4 +1,22 @@
 
+
+# Busca donde lees las filas de Eventos y cambia:
+"fecha": str(row[0]).strip(),
+"hora":  str(row[1]).strip(),
+
+# Por:
+"fecha": row[0].strftime("%d/%m/%Y") if hasattr(row[0], 'strftime') else str(row[0]).strip(),
+"hora":  row[1].strftime("%H:%M:%S") if hasattr(row[1], 'strftime') else str(row[1]).strip(),
+
+
+
+
+
+
+
+
+
+
 Fecha      | Hora     | Proceso   | Item               | Tipo              | Remitente
 02/06/2026 | 10:16:00 | Anexo 7   | Conforme de Julio  | SOLICITUD ENVIADA | marcelo@scotia...
 02/06/2026 | 10:17:00 | Anexo 7   | Conforme de Julio  | CORREO RECIBIDO   | marcelo@scotia...
