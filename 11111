@@ -1,5 +1,83 @@
 
 
+# Variable global - cola de eventos pendientes
+_eventos_pendientes = []
+
+def registrar_evento_historico(proceso: str, item: str,
+                                tipo: str, remitente: str):
+    """Acumula evento en memoria - se guarda al final del sync."""
+    global _eventos_pendientes, _cache_eventos_hoy, _cache_fecha
+    
+    ahora = datetime.datetime.now()
+    fecha_str = ahora.strftime("%d/%m/%Y")
+    hora_str  = ahora.strftime("%H:%M:%S")
+    
+    _eventos_pendientes.append([fecha_str, hora_str, proceso, item, tipo, remitente])
+    
+    # Actualizar cache en memoria
+    if _cache_fecha == fecha_str and _cache_eventos_hoy is not None:
+        _cache_eventos_hoy.append((proceso, tipo))
+    
+    print(f"Evento en cola: {tipo} | {proceso} | {item}")
+
+
+def guardar_eventos_pendientes():
+    """Guarda todos los eventos acumulados en una sola escritura."""
+    global _eventos_pendientes
+    
+    if not _eventos_pendientes:
+        return
+    
+    try:
+        usuario = getpass.getuser()
+        ruta = os.path.join(RUTA_COMPARTIDA, f"{usuario}_historico.xlsx")
+        
+        if os.path.exists(ruta):
+            try:
+                wb = openpyxl.load_workbook(ruta)
+            except:
+                os.remove(ruta)
+                wb = openpyxl.Workbook()
+                wb.remove(wb.active)
+        else:
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)
+        
+        if "Eventos" not in wb.sheetnames:
+            we = wb.create_sheet("Eventos")
+            we.append(["Fecha", "Hora", "Proceso",
+                       "Item", "Tipo", "Remitente"])
+        else:
+            we = wb["Eventos"]
+        
+        if "Snapshots" not in wb.sheetnames:
+            ws = wb.create_sheet("Snapshots")
+            ws.append(["Fecha", "Hora", "Proceso",
+                       "Estado", "Avance", "Completados", "Total"])
+        
+        for evento in _eventos_pendientes:
+            we.append(evento)
+        
+        wb.save(ruta)
+        print(f"Guardados {len(_eventos_pendientes)} eventos en histórico")
+        _eventos_pendientes = []
+        
+    except Exception as e:
+        print(f"Error guardando eventos: {e}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def leer_eventos_hoy(proceso: str, fecha: str) -> list:
     global _cache_eventos_hoy, _cache_fecha
     
