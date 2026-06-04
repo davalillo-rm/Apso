@@ -1,0 +1,119 @@
+def limpiar_ignorado_excel(nombre_item: str):
+    """Elimina todos los IDs ignorados de un ítem."""
+    try:
+        if not os.path.exists(EXCEL_FILE):
+            return
+        wb = openpyxl.load_workbook(EXCEL_FILE)
+        if "Items Esperados" not in wb.sheetnames:
+            return
+        ws = wb["Items Esperados"]
+        for row in ws.iter_rows(min_row=2, values_only=False):
+            if row[1] and str(row[1].value).strip() == nombre_item:
+                row[4].value = ""  # columna ignorados (índice 4 = columna 5)
+                break
+        wb.save(EXCEL_FILE)
+        print(f"Ignorados limpiados para: {nombre_item}")
+    except Exception as e:
+        print(f"Error limpiando ignorados: {e}")
+
+
+
+
+
+def limpiar_forzado_excel(nombre_proceso: str, nombre_item: str):
+    """Elimina la fecha forzada de un ítem."""
+    try:
+        if not os.path.exists(EXCEL_FILE):
+            return
+        wb = openpyxl.load_workbook(EXCEL_FILE)
+        if "Items Esperados" not in wb.sheetnames:
+            return
+        ws = wb["Items Esperados"]
+        for row in ws.iter_rows(min_row=2, values_only=False):
+            if (row[0] and str(row[0].value).strip() == nombre_proceso and
+                row[1] and str(row[1].value).strip() == nombre_item):
+                row[6].value = ""  # columna forzado_fecha
+                break
+        wb.save(EXCEL_FILE)
+        print(f"Forzado limpiado para: {nombre_proceso} | {nombre_item}")
+    except Exception as e:
+        print(f"Error limpiando forzado: {e}")
+
+
+
+
+
+def forzar_manual(self, nombre_proceso, nombre_item):
+    if messagebox.askyesno("Forzar Recibido",
+                           f"¿Marcar manualmente como recibido:\n'{nombre_item}'?"):
+        limpiar_ignorado_excel(nombre_item)  # ← limpiar ignorados primero
+        fecha_hoy_str = str(datetime.datetime.now().date())
+        forzar_item_excel(nombre_proceso, nombre_item, fecha_hoy_str)
+        self._iniciar_sync_thread()
+
+
+
+
+
+def rechazar_correo(self, nombre_regla: str, entry_id: str, 
+                    nombre_proceso: str = ""):
+    if not entry_id:
+        return
+    if nombre_proceso:
+        limpiar_forzado_excel(nombre_proceso, nombre_regla)  # ← limpiar forzado primero
+    agregar_ignorado_excel(nombre_regla, entry_id)
+    self._iniciar_sync_thread()
+
+
+
+
+
+
+for item in datos["recibidos"]:
+    row = ctk.CTkFrame(card, fg_color="transparent")
+    row.pack(anchor="w", fill="x", padx=8, pady=2)
+
+    color  = SCOTIA_GREEN if item.get("es_valido", True) else "#FFA000"
+    simbolo = "✓" if item.get("es_valido", True) else "△"
+
+    ctk.CTkLabel(
+        row,
+        text=f"{simbolo} {item['nombre']} ({item['hora']})",
+        text_color=color,
+        font=("Trebuchet MS", 11)
+    ).pack(side="left")
+
+    # ind_sol con color
+    ind = item.get("ind_sol", "")
+    if ind:
+        color_ind = SCOTIA_BLUE_LINK if "Submitted" in ind else SCOTIA_YELLOW
+        ctk.CTkLabel(
+            row,
+            text=ind,
+            text_color=color_ind,
+            font=("Trebuchet MS", 10)
+        ).pack(side="left", padx=2)
+
+    # Botón abrir
+    ctk.CTkButton(
+        row, text="abrir",
+        width=40, height=18,
+        fg_color="transparent",
+        text_color=SCOTIA_BLUE_LINK,
+        font=("Trebuchet MS", 10, "underline"),
+        command=lambda cid=item["correo_id"]: self.abrir_correo_especifico(cid)
+    ).pack(side="left", padx=5)
+
+    # Botón Return — para TODOS los ítems
+    ctk.CTkButton(
+        row, text="Return",
+        width=60, height=20,
+        fg_color=SCOTIA_RED,
+        hover_color=SCOTIA_RED_HOVER,
+        text_color="white",
+        font=("Trebuchet MS", 10, "bold"),
+        command=lambda n=item["nombre"], cid=item["correo_id"], 
+                       proc=datos["nombre"]:
+            self.rechazar_correo(n, cid, proc)
+    ).pack(side="left", padx=2)
+
