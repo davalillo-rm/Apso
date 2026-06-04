@@ -1,5 +1,28 @@
 
 
+-- Primero verifica qué se va a borrar
+WITH cte AS (
+  SELECT *,
+    ROW_NUMBER() OVER (
+      PARTITION BY FECHA, TOP_20, TOTAL_BALANCE, RATIO
+      ORDER BY (SELECT NULL)
+    ) AS rn
+  FROM dbo.SBP_HISTORICO_TOP_20
+)
+SELECT * FROM cte WHERE rn > 1;
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # ❌ Actual:
 ctk.CTkLabel(row, text=f"{simbolo} {item['nombre']} ({item['hora']})", 
