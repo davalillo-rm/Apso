@@ -1,5 +1,39 @@
 
 
+
+# ❌ Actual:
+ctk.CTkLabel(row, text=f"{simbolo} {item['nombre']} ({item['hora']})", 
+             text_color=color, font=("Trebuchet MS", 11)).pack(side="left")
+
+# ✅ Reemplazar por:
+ctk.CTkLabel(row,
+             text=f"{simbolo} {item['nombre']} ({item['hora']})",
+             text_color=color,
+             font=("Trebuchet MS", 11)
+).pack(side="left")
+
+ind = item.get("ind_sol", "")
+if ind:
+    color_ind = SCOTIA_BLUE_LINK if "Submitted" in ind else SCOTIA_YELLOW
+    ctk.CTkLabel(row,
+                 text=ind,
+                 text_color=color_ind,
+                 font=("Trebuchet MS", 10)
+    ).pack(side="left", padx=2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Sub CalcularShortPositionSB()
 
     Dim wbActual       As Workbook
