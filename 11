@@ -1,3 +1,99 @@
+
+from pathlib import Path
+import sys
+import pandas as pd
+from sqlalchemy import create_engine, text
+
+ARCHIVO = r"\\Fs2\riesgos de mercado\15B Nuevo\LC9W11.XLS"
+
+DB_CONFIG = {
+    "server":   "PEPGVIPR1DS9672.PER.BNS\SQL1,275",
+    "database": "TU_BASE",   # <-- cambiar
+}
+
+TABLA = "RMERCADO.LEASING_SCHEDULE"
+
+COLUMNAS = [
+    "C9W11COD", "C9W11FPR", "C9W11MDA", "C9W11RUB",
+    "C9W11SUC", "C9W11PAP", "C9W11CTA", "C9W11OPE",
+    "C9W11SOB", "C9W11TOP", "C9W11MOD",
+    "C9W11SD1", "C9W11SD2", "C9W11SD3", "C9W11SD4",
+    "C9W11SD5", "C9W11SD6", "C9W11SD7", "C9W11SD8",
+    "C9W11SD9", "C9W11S10", "C9W11S11",
+    "C9W11SDH", "C9W11FRG", "C9W11REA", "C9W11TSA",
+    "C9W11DCL", "C9W11DSR", "C9W11FL1", "C9W11FL2",
+]
+
+COLS_TEXTO = {"C9W11COD", "C9W11FPR", "C9W11MDA", "C9W11TSA", "C9W11DSR"}
+
+def build_engine():
+    s = DB_CONFIG
+    servidor = s["server"].replace("\\", "\\\\")
+    conn = (f"mssql+pyodbc://{servidor}/{s['database']}"
+            f"?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes")
+    print(f"[1/4] Conectando a: {s['server']} / {s['database']}")
+    engine = create_engine(conn, fast_executemany=True)
+    print("[1/4] Conexión OK")
+    return engine
+
+def leer_xls(ruta):
+    print(f"[2/4] Leyendo archivo: {ruta}")
+    xl = pd.ExcelFile(ruta, engine="xlrd")
+    print(f"      Hojas encontradas: {xl.sheet_names}")
+    frames = []
+    for hoja in xl.sheet_names:
+        df = xl.parse(hoja, header=0)
+        df.columns = COLUMNAS[: len(df.columns)]
+        print(f"      Hoja '{hoja}': {len(df):,} filas")
+        frames.append(df)
+    resultado = pd.concat(frames, ignore_index=True)
+    print(f"      Total combinado: {len(resultado):,} filas")
+    return resultado
+
+def limpiar(df):
+    print("[3/4] Limpiando datos...")
+    for col in COLUMNAS:
+        if col in COLS_TEXTO:
+            df[col] = df[col].astype(str).str.strip().replace("nan", None)
+        else:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    print("      Limpieza OK")
+    return df
+
+def cargar(df, engine):
+    fecha = df["C9W11FPR"].dropna().iloc[0]
+    print(f"[4/4] Cargando {len(df):,} filas para fecha {fecha}...")
+    with engine.begin() as con:
+        result = con.execute(text(f"DELETE FROM {TABLA} WHERE C9W11FPR = :f"), {"f": fecha})
+        print(f"      Filas eliminadas previamente: {result.rowcount}")
+    df.to_sql(
+        name=TABLA.split(".")[-1],
+        schema=TABLA.split(".")[0],
+        con=engine, if_exists="append", index=False, chunksize=1000,
+    )
+    print(f"      ✓ Carga completada — {len(df):,} filas insertadas.")
+
+print("=== INICIO CARGA LEASING ===")
+ruta = Path(ARCHIVO)
+if not ruta.exists():
+    sys.exit(f"ERROR: Archivo no encontrado: {ruta}")
+
+engine = build_engine()
+df = leer_xls(ruta)
+df = limpiar(df)
+cargar(df, engine)
+print("=== FIN ===")
+
+
+
+
+
+
+
+
+
+
+
 IF OBJECT_ID('RMERCADO.LEASING_SCHEDULE', 'U') IS NOT NULL
     DROP TABLE RMERCADO.LEASING_SCHEDULE;
 
