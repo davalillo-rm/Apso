@@ -1,0 +1,114 @@
+IF OBJECT_ID('RMERCADO.LEASING_SCHEDULE', 'U') IS NOT NULL
+    DROP TABLE RMERCADO.LEASING_SCHEDULE;
+
+CREATE TABLE RMERCADO.LEASING_SCHEDULE (
+    C9W11COD        VARCHAR(30)     NULL,
+    C9W11FPR        VARCHAR(8)      NULL,
+    C9W11MDA        VARCHAR(5)      NULL,
+    C9W11RUB        NUMERIC(18,0)   NULL,
+    C9W11SUC        SMALLINT        NULL,
+    C9W11PAP        NUMERIC(18,4)   NULL,
+    C9W11CTA        NUMERIC(18,0)   NULL,
+    C9W11OPE        NUMERIC(18,0)   NULL,
+    C9W11SOB        SMALLINT        NULL,
+    C9W11TOP        SMALLINT        NULL,
+    C9W11MOD        SMALLINT        NULL,
+    C9W11SD1        NUMERIC(18,4)   NULL,
+    C9W11SD2        NUMERIC(18,4)   NULL,
+    C9W11SD3        NUMERIC(18,4)   NULL,
+    C9W11SD4        NUMERIC(18,4)   NULL,
+    C9W11SD5        NUMERIC(18,4)   NULL,
+    C9W11SD6        NUMERIC(18,4)   NULL,
+    C9W11SD7        NUMERIC(18,4)   NULL,
+    C9W11SD8        NUMERIC(18,4)   NULL,
+    C9W11SD9        NUMERIC(18,4)   NULL,
+    C9W11S10        NUMERIC(18,4)   NULL,
+    C9W11S11        NUMERIC(18,4)   NULL,
+    C9W11SDH        NUMERIC(18,4)   NULL,
+    C9W11FRG        NUMERIC(18,4)   NULL,
+    C9W11REA        NUMERIC(18,4)   NULL,
+    C9W11TSA        VARCHAR(5)      NULL,
+    C9W11DCL        NUMERIC(18,4)   NULL,
+    C9W11DSR        VARCHAR(100)    NULL,
+    C9W11FL1        SMALLINT        NULL,
+    C9W11FL2        SMALLINT        NULL
+);
+
+
+
+
+
+
+
+
+
+
+from pathlib import Path
+import sys
+import pandas as pd
+from sqlalchemy import create_engine, text
+
+ARCHIVO = r"\\Fs2\riesgos de mercado\15B Nuevo\LC9W11.XLS"
+
+DB_CONFIG = {
+    "server":   "TU_SERVIDOR",   # <-- cambiar
+    "database": "TU_BASE",       # <-- cambiar
+}
+
+TABLA = "RMERCADO.LEASING_SCHEDULE"
+
+COLUMNAS = [
+    "C9W11COD", "C9W11FPR", "C9W11MDA", "C9W11RUB",
+    "C9W11SUC", "C9W11PAP", "C9W11CTA", "C9W11OPE",
+    "C9W11SOB", "C9W11TOP", "C9W11MOD",
+    "C9W11SD1", "C9W11SD2", "C9W11SD3", "C9W11SD4",
+    "C9W11SD5", "C9W11SD6", "C9W11SD7", "C9W11SD8",
+    "C9W11SD9", "C9W11S10", "C9W11S11",
+    "C9W11SDH", "C9W11FRG", "C9W11REA", "C9W11TSA",
+    "C9W11DCL", "C9W11DSR", "C9W11FL1", "C9W11FL2",
+]
+
+COLS_TEXTO = {"C9W11COD", "C9W11FPR", "C9W11MDA", "C9W11TSA", "C9W11DSR"}
+
+def build_engine():
+    s = DB_CONFIG
+    conn = (f"mssql+pyodbc://{s['server']}/{s['database']}"
+            f"?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes")
+    return create_engine(conn, fast_executemany=True)
+
+def leer_xls(ruta):
+    xl = pd.ExcelFile(ruta, engine="xlrd")
+    frames = []
+    for hoja in xl.sheet_names:
+        df = xl.parse(hoja, header=0)
+        df.columns = COLUMNAS[: len(df.columns)]
+        frames.append(df)
+    return pd.concat(frames, ignore_index=True)
+
+def limpiar(df):
+    for col in COLUMNAS:
+        if col in COLS_TEXTO:
+            df[col] = df[col].astype(str).str.strip().replace("nan", None)
+        else:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+def cargar(df, engine):
+    fecha = df["C9W11FPR"].dropna().iloc[0]
+    with engine.begin() as con:
+        con.execute(text(f"DELETE FROM {TABLA} WHERE C9W11FPR = :f"), {"f": fecha})
+    df.to_sql(
+        name=TABLA.split(".")[-1],
+        schema=TABLA.split(".")[0],
+        con=engine, if_exists="append", index=False, chunksize=1000,
+    )
+    print(f"OK — {len(df):,} filas cargadas para fecha {fecha}.")
+
+ruta = Path(ARCHIVO)
+if not ruta.exists():
+    sys.exit(f"Archivo no encontrado: {ruta}")
+
+engine = build_engine()
+df = leer_xls(ruta)
+df = limpiar(df)
+cargar(df, engine)
