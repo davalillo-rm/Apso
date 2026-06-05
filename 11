@@ -1,4 +1,54 @@
 
+
+
+IF OBJECT_ID('RMERCADO.LEASING_SCHEDULE', 'U') IS NOT NULL
+    DROP TABLE RMERCADO.LEASING_SCHEDULE;
+
+CREATE TABLE RMERCADO.LEASING_SCHEDULE (
+    C9W11COD        VARCHAR(50)     NULL,
+    C9W11FPR        VARCHAR(8)      NULL,
+    C9W11MDA        VARCHAR(5)      NULL,
+    C9W11RUB        NUMERIC(18,0)   NULL,
+    C9W11SUC        SMALLINT        NULL,
+    C9W11PAP        NUMERIC(18,4)   NULL,
+    C9W11CTA        NUMERIC(18,0)   NULL,
+    C9W11OPE        NUMERIC(18,0)   NULL,
+    C9W11SOB        SMALLINT        NULL,
+    C9W11TOP        SMALLINT        NULL,
+    C9W11MOD        SMALLINT        NULL,
+    C9W11SD1        NUMERIC(18,4)   NULL,
+    C9W11SD2        NUMERIC(18,4)   NULL,
+    C9W11SD3        NUMERIC(18,4)   NULL,
+    C9W11SD4        NUMERIC(18,4)   NULL,
+    C9W11SD5        NUMERIC(18,4)   NULL,
+    C9W11SD6        NUMERIC(18,4)   NULL,
+    C9W11SD7        NUMERIC(18,4)   NULL,
+    C9W11SD8        NUMERIC(18,4)   NULL,
+    C9W11SD9        NUMERIC(18,4)   NULL,
+    C9W11S10        NUMERIC(18,4)   NULL,
+    C9W11S11        NUMERIC(18,4)   NULL,
+    C9W11SDH        NUMERIC(18,4)   NULL,
+    C9W11FRG        NUMERIC(18,4)   NULL,
+    C9W11REA        NUMERIC(18,4)   NULL,
+    C9W11TSA        VARCHAR(200)    NULL,
+    C9W11DCL        NUMERIC(18,4)   NULL,
+    C9W11DSR        VARCHAR(200)    NULL,
+    C9W11FL1        SMALLINT        NULL,
+    C9W11FL2        SMALLINT        NULL
+);
+
+
+
+
+
+
+
+
+
+
+
+
+
 from pathlib import Path
 import sys
 import pandas as pd
