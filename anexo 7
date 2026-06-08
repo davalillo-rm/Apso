@@ -1,3 +1,78 @@
+
+
+Sub CopiarRepricing()
+
+    Dim wbDestino    As Workbook
+    Dim wbOrigen     As Workbook
+    Dim wsDestino    As Worksheet
+    Dim wsOrigen     As Worksheet
+    Dim fechaCelda   As Date
+    Dim mesCarpeta   As String
+    Dim anioCarpeta  As String
+    Dim rutaInputsRM As String
+    Dim archivoRep   As String
+
+    '--- 1. Tomar Inputs.xlsx abierto
+    On Error Resume Next
+    Set wbDestino = Workbooks("Inputs.xlsx")
+    On Error GoTo 0
+
+    If wbDestino Is Nothing Then
+        MsgBox "No se encontró Inputs.xlsx abierto.", vbCritical
+        Exit Sub
+    End If
+
+    '--- 2. Leer fecha de Recopilado C3
+    fechaCelda  = CDate(wbDestino.Sheets("Recopilado").Range("C3").Value)
+    mesCarpeta  = Format(Month(fechaCelda), "00")
+    anioCarpeta = Year(fechaCelda)
+
+    '--- 3. Construir ruta y buscar archivo
+    rutaInputsRM = "C:\Users\s7398771\OneDrive - The Bank of Nova Scotia\" & _
+                   "Documentos\anexo 7\" & anioCarpeta & "\" & mesCarpeta & "\Inputs RM\"
+
+    archivoRep = Dir(rutaInputsRM & "repricing*.xls*")
+
+    If archivoRep = "" Then
+        MsgBox "No se encontró archivo repricing en:" & vbCrLf & rutaInputsRM, vbCritical
+        Exit Sub
+    End If
+
+    '--- 4. Abrir origen
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+    Set wbOrigen  = Workbooks.Open(rutaInputsRM & archivoRep, ReadOnly:=True)
+    Set wsOrigen  = wbOrigen.Sheets("DATA")
+    Set wsDestino = wbDestino.Sheets("NMD")
+
+    '--- 5. Mapeo de rangos (solo valores)
+    wsDestino.Range("E3:E19").Value   = wsOrigen.Range("E1:E17").Value
+    wsDestino.Range("E20:E36").Value  = wsOrigen.Range("H1:H17").Value
+    wsDestino.Range("E37:E53").Value  = wsOrigen.Range("E21:E37").Value
+    wsDestino.Range("E54:E70").Value  = wsOrigen.Range("H21:H37").Value
+
+    wbOrigen.Close SaveChanges:=False
+
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+
+    MsgBox "Repricing copiado correctamente desde:" & vbCrLf & archivoRep, vbInformation
+
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
 Sub CopiarAnexosC1C2()
 
     Dim wbDestino  As Workbook
