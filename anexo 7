@@ -1,3 +1,111 @@
+
+Sub CopiarCarteraViva()
+
+    Dim wbDestino    As Workbook
+    Dim wbOrigen     As Workbook
+    Dim wsDestino    As Worksheet
+    Dim wsOrigen     As Worksheet
+    Dim fechaCelda   As Date
+    Dim mesCarpeta   As String
+    Dim anioCarpeta  As String
+    Dim rutaInputsRM As String
+    Dim archivoCV    As String
+    Dim ultimaFila   As Long
+    Dim i            As Long
+    Dim filaDest     As Long
+    Dim tipoInstr    As String
+    
+    '--- 1. Tomar Inputs.xlsx abierto
+    On Error Resume Next
+    Set wbDestino = Workbooks("Inputs.xlsx")
+    On Error GoTo 0
+    
+    If wbDestino Is Nothing Then
+        MsgBox "No se encontró Inputs.xlsx abierto.", vbCritical
+        Exit Sub
+    End If
+    
+    '--- 2. Leer fecha de Recopilado C3
+    fechaCelda  = CDate(wbDestino.Sheets("Recopilado").Range("C3").Value)
+    mesCarpeta  = Format(Month(fechaCelda), "00")
+    anioCarpeta = Year(fechaCelda)
+    
+    '--- 3. Construir ruta y buscar archivo Cartera_viva*
+    rutaInputsRM = "C:\Users\s7398771\OneDrive - The Bank of Nova Scotia\" & _
+                   "Documentos\anexo 7\" & anioCarpeta & "\" & mesCarpeta & "\Inputs RM\"
+    
+    archivoCV = Dir(rutaInputsRM & "Cartera_viva*.xls*")
+    
+    If archivoCV = "" Then
+        MsgBox "No se encontró archivo Cartera_viva en:" & vbCrLf & rutaInputsRM, vbCritical
+        Exit Sub
+    End If
+    
+    '--- 4. Abrir origen
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    
+    Set wbOrigen  = Workbooks.Open(rutaInputsRM & archivoCV, ReadOnly:=True)
+    Set wsOrigen  = wbOrigen.Sheets(1)
+    Set wsDestino = wbDestino.Sheets("Adeudos")
+    
+    ultimaFila = wsOrigen.Cells(wsOrigen.Rows.Count, "A").End(xlUp).Row
+    filaDest   = 4  ' empieza en B4
+    
+    '--- 5. Recorrer ADWK_LOCAL y ADWK_OS_BA
+    Dim tipos(1) As String
+    tipos(0) = "ADWK_LOCAL"
+    tipos(1) = "ADWK_OS_BA"
+    
+    Dim t As Integer
+    For t = 0 To 1
+        tipoInstr = tipos(t)
+        
+        For i = 1 To ultimaFila
+            If Trim(wsOrigen.Cells(i, "A").Value) = tipoInstr Then
+                
+                ' Col B = AD (Cliente)
+                wsDestino.Cells(filaDest, "B").Value = wsOrigen.Cells(i, "AD").Value
+                ' Col C = Z (Fecha Vencimiento)
+                wsDestino.Cells(filaDest, "C").Value = wsOrigen.Cells(i, "Z").Value
+                ' Col D = D (Moneda)
+                wsDestino.Cells(filaDest, "D").Value = wsOrigen.Cells(i, "D").Value
+                ' Col E = E (Monto)
+                wsDestino.Cells(filaDest, "E").Value = wsOrigen.Cells(i, "E").Value
+                ' Col F = Fixed Rate K = 0 -> SI, sino NO
+                If wsOrigen.Cells(i, "K").Value = 0 Then
+                    wsDestino.Cells(filaDest, "F").Value = "SI"
+                Else
+                    wsDestino.Cells(filaDest, "F").Value = "NO"
+                End If
+                
+                filaDest = filaDest + 1
+            End If
+        Next i
+    Next t
+    
+    wbOrigen.Close SaveChanges:=False
+    
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    
+    MsgBox "Cartera Viva copiada correctamente desde:" & vbCrLf & archivoCV, vbInformation
+
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Sub CopiarDatos1B()
 
     Dim wbDestino   As Workbook
