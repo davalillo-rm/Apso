@@ -6,6 +6,213 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+base_url       = "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend"
+url_deptos     = f"{base_url}/ubigeos/departamentos"
+url_provincias = f"{base_url}/ubigeos/provincias"
+url_distritos  = f"{base_url}/ubigeos/distritos"
+url_part       = f"{base_url}/resumen-general/participantes"
+url_totales    = f"{base_url}/resumen-general/totales"
+
+headers = {
+    "Accept": "*/*",
+    "Accept-Language": "es-419,es;q=0.9,es-ES;q=0.8,en;q=0.7,en-GB;q=0.6,en-US;q=0.5,es-MX;q=0.4,es-PE;q=0.3",
+    "Content-Type": "application/json",
+    "Host": "resultadosegundavuelta.onpe.gob.pe",
+    "Referer": "https://resultadosegundavuelta.onpe.gob.pe/main/resumen",
+    "Sec-Ch-Ua": '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0"
+}
+
+ambito         = "1"
+id_eleccion    = "10"
+system_proxies = {
+    "http":  "http://latam-proxy.glb.lnm.bns:8080",
+    "https": "http://latam-proxy.glb.lnm.bns:8080"
+}
+
+# ── PASO 1: AUTO-DETECTAR UBIGEO DEPARTAMENTO LIMA ───────────
+print("=" * 55)
+print("PASO 1: Detectando ubigeo de departamento LIMA...")
+print("=" * 55)
+
+resp_deptos = requests.get(
+    url_deptos,
+    params={"idEleccion": id_eleccion, "idAmbitoGeografico": ambito},
+    headers=headers, proxies=system_proxies, verify=False, timeout=10
+)
+
+deptos = resp_deptos.json().get('data', []) if resp_deptos.status_code == 200 else []
+
+ubigeo_lima_depto = None
+for d in deptos:
+    nombre = d.get('nombre', '').upper()
+    if 'LIMA' in nombre:
+        ubigeo_lima_depto = d.get('ubigeo')
+        print(f"  ✓ Departamento LIMA encontrado → ubigeo={ubigeo_lima_depto}")
+        break
+
+if not ubigeo_lima_depto:
+    print("  ✗ No se encontró el departamento LIMA. Departamentos disponibles:")
+    for d in deptos:
+        print(f"    {d.get('ubigeo')} → {d.get('nombre')}")
+    exit()
+
+# ── PASO 2: AUTO-DETECTAR UBIGEO PROVINCIA LIMA ──────────────
+print()
+print("=" * 55)
+print("PASO 2: Detectando ubigeo de provincia LIMA...")
+print("=" * 55)
+
+resp_prov = requests.get(
+    url_provincias,
+    params={
+        "idEleccion":           id_eleccion,
+        "idAmbitoGeografico":   ambito,
+        "idUbigeoDepartamento": ubigeo_lima_depto
+    },
+    headers=headers, proxies=system_proxies, verify=False, timeout=10
+)
+
+provincias = resp_prov.json().get('data', []) if resp_prov.status_code == 200 else []
+
+ubigeo_lima_prov = None
+for p in provincias:
+    nombre = p.get('nombre', '').upper()
+    if 'LIMA' in nombre:
+        ubigeo_lima_prov = p.get('ubigeo')
+        print(f"  ✓ Provincia LIMA encontrada → ubigeo={ubigeo_lima_prov}")
+        break
+
+if not ubigeo_lima_prov:
+    print("  ✗ No se encontró la provincia LIMA. Provincias disponibles:")
+    for p in provincias:
+        print(f"    {p.get('ubigeo')} → {p.get('nombre')}")
+    exit()
+
+# ── PASO 3: OBTENER DISTRITOS DE LIMA PROVINCIA ──────────────
+print()
+print("=" * 55)
+print("PASO 3: Obteniendo distritos de Lima provincia...")
+print("=" * 55)
+
+resp_dist = requests.get(
+    url_distritos,
+    params={
+        "idEleccion":           id_eleccion,
+        "idAmbitoGeografico":   ambito,
+        "idUbigeoDepartamento": ubigeo_lima_depto,
+        "idUbigeoProvincia":    ubigeo_lima_prov
+    },
+    headers=headers, proxies=system_proxies, verify=False, timeout=10
+)
+
+if resp_dist.status_code == 200:
+    distritos = resp_dist.json().get('data', [])
+    print(f"  ✓ {len(distritos)} distritos encontrados")
+else:
+    print(f"  ✗ Error HTTP {resp_dist.status_code}: {resp_dist.text[:200]}")
+    exit()
+
+if len(distritos) == 0:
+    print("  ✗ Lista de distritos vacía. Revisa los parámetros.")
+    print(f"    Response: {resp_dist.text[:300]}")
+    exit()
+
+# ── PASO 4: EXTRACCIÓN POR DISTRITO ──────────────────────────
+print()
+print("=" * 55)
+print("PASO 4: Extrayendo votos por distrito...")
+print("=" * 55)
+
+datos_consolidados = []
+
+for dist in distritos:
+    cod_dist    = dist.get('ubigeo')
+    nombre_dist = dist.get('nombre')
+
+    try:
+        params_data = {
+            "idEleccion":           id_eleccion,
+            "tipoFiltro":           "ubigeo_nivel_03",
+            "idAmbitoGeografico":   ambito,
+            "idUbigeoDepartamento": ubigeo_lima_depto,
+            "idUbigeoProvincia":    ubigeo_lima_prov,
+            "idUbigeoDistrito":     cod_dist
+        }
+
+        resp_part = requests.get(url_part, params=params_data, headers=headers,
+                                 proxies=system_proxies, verify=False, timeout=10)
+        votos = resp_part.json().get('data', []) if resp_part.status_code == 200 else []
+
+        resp_tot = requests.get(url_totales, params=params_data, headers=headers,
+                                proxies=system_proxies, verify=False, timeout=10)
+        totales = resp_tot.json().get('data', {}) if resp_tot.status_code == 200 else {}
+
+        fila = {
+            "Departamento":         "LIMA",
+            "Provincia":            "LIMA",
+            "Distrito":             nombre_dist,
+            "Ubigeo":               cod_dist,
+            "Total_Votos_Emitidos": totales.get('totalVotosEmitidos'),
+            "Actas_Contabilizadas": totales.get('actasContabilizadas'),
+            "Total_Actas":          totales.get('totalActas'),
+        }
+
+        # Columna dinámica por candidato/partido
+        for candidato in votos:
+            nombre_col = candidato.get('nombreAgrupacionPolitica', 'SIN_NOMBRE')
+            fila[f"Votos_{nombre_col}"] = candidato.get('totalVotosValidos')
+
+        datos_consolidados.append(fila)
+        print(f"  Extraído: {nombre_dist} | Votos emitidos: {totales.get('totalVotosEmitidos', 'N/A')}")
+
+    except Exception as e:
+        print(f"  Error en {nombre_dist}: {e}")
+        continue
+
+    time.sleep(0.3)
+
+# ── PASO 5: GUARDAR CSV ───────────────────────────────────────
+print()
+print("=" * 55)
+print("PASO 5: Guardando resultados...")
+print("=" * 55)
+
+if datos_consolidados:
+    df = pd.DataFrame(datos_consolidados)
+    archivo = "ONPE_SegundaVuelta_Lima_Distritos.csv"
+    df.to_csv(archivo, index=False, encoding='utf-8-sig')
+    print(f"  ✓ {len(df)} distritos guardados → {archivo}")
+    print()
+    print(df.to_string())
+else:
+    print("  ✗ Sin datos para guardar.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import requests
+import pandas as pd
+import time
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 base_url    = "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend"
 url_deptos  = f"{base_url}/ubigeos/departamentos"
 url_part    = f"{base_url}/resumen-general/participantes"
