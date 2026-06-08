@@ -1,3 +1,118 @@
+Sub CopiarAnexosC1C2()
+
+    Dim wbDestino  As Workbook
+    Dim wbC1       As Workbook
+    Dim wbC2       As Workbook
+    Dim wsDestino  As Worksheet
+    Dim wsC1       As Worksheet
+    Dim wsC2       As Worksheet
+    Dim fechaCelda As Date
+    Dim mesCarpeta As String
+    Dim anioCarpeta As String
+    Dim rutaInputsRM As String
+    Dim archivoC1  As String
+    Dim archivoC2  As String
+    Dim i          As Long
+    Dim filaDest   As Long
+    Dim ultimaFila As Long
+
+    '--- 1. Tomar Inputs.xlsx abierto
+    On Error Resume Next
+    Set wbDestino = Workbooks("Inputs.xlsx")
+    On Error GoTo 0
+
+    If wbDestino Is Nothing Then
+        MsgBox "No se encontró Inputs.xlsx abierto.", vbCritical
+        Exit Sub
+    End If
+
+    '--- 2. Leer fecha de Recopilado C3
+    fechaCelda   = CDate(wbDestino.Sheets("Recopilado").Range("C3").Value)
+    mesCarpeta   = Format(Month(fechaCelda), "00")
+    anioCarpeta  = Year(fechaCelda)
+
+    '--- 3. Construir ruta
+    rutaInputsRM = "C:\Users\s7398771\OneDrive - The Bank of Nova Scotia\" & _
+                   "Documentos\anexo 7\" & anioCarpeta & "\" & mesCarpeta & "\Inputs RM\"
+
+    '--- 4. Buscar archivos
+    archivoC1 = Dir(rutaInputsRM & "Anexo 1 C1*.xls*")
+    archivoC2 = Dir(rutaInputsRM & "Anexo 1 C2*.xls*")
+
+    If archivoC1 = "" Then
+        MsgBox "No se encontró Anexo 1 C1 en:" & vbCrLf & rutaInputsRM, vbCritical
+        Exit Sub
+    End If
+    If archivoC2 = "" Then
+        MsgBox "No se encontró Anexo 1 C2 en:" & vbCrLf & rutaInputsRM, vbCritical
+        Exit Sub
+    End If
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+    Set wsDestino = wbDestino.Sheets("Repos")
+
+    '========================================
+    '--- 5. COPIAR C1 → B4 (cols B,D,G,I,J)
+    '========================================
+    Set wbC1  = Workbooks.Open(rutaInputsRM & archivoC1, ReadOnly:=True)
+    Set wsC1  = wbC1.Sheets("Anexo 1C1_Sucave")
+
+    ultimaFila = wsC1.Cells(wsC1.Rows.Count, "B").End(xlUp).Row
+    filaDest   = 4
+
+    For i = 1 To ultimaFila
+        If Trim(wsC1.Cells(i, "B").Value) <> "" And _
+           Not IsEmpty(wsC1.Cells(i, "B").Value) And _
+           IsNumeric(wsC1.Cells(i, "B").Value) Then  ' solo filas de datos, no headers
+
+            wsDestino.Cells(filaDest, "B").Value = wsC1.Cells(i, "B").Value
+            wsDestino.Cells(filaDest, "C").Value = wsC1.Cells(i, "D").Value
+            wsDestino.Cells(filaDest, "D").Value = wsC1.Cells(i, "G").Value
+            wsDestino.Cells(filaDest, "E").Value = wsC1.Cells(i, "I").Value
+            wsDestino.Cells(filaDest, "F").Value = wsC1.Cells(i, "J").Value
+            filaDest = filaDest + 1
+        End If
+    Next i
+
+    wbC1.Close SaveChanges:=False
+
+    '========================================
+    '--- 6. COPIAR C2 → J4 (cols F,H,E)
+    '========================================
+    Set wbC2  = Workbooks.Open(rutaInputsRM & archivoC2, ReadOnly:=True)
+    Set wsC2  = wbC2.Sheets("Anexo 1-C2_MN")
+
+    ultimaFila = wsC2.Cells(wsC2.Rows.Count, "B").End(xlUp).Row
+    filaDest   = 4
+
+    For i = 1 To ultimaFila
+        If Trim(wsC2.Cells(i, "B").Value) <> "" And _
+           Not IsEmpty(wsC2.Cells(i, "B").Value) And _
+           IsNumeric(wsC2.Cells(i, "B").Value) Then  ' solo filas de datos, no headers
+
+            wsDestino.Cells(filaDest, "J").Value = wsC2.Cells(i, "F").Value
+            wsDestino.Cells(filaDest, "K").Value = wsC2.Cells(i, "H").Value
+            wsDestino.Cells(filaDest, "L").Value = wsC2.Cells(i, "E").Value
+            filaDest = filaDest + 1
+        End If
+    Next i
+
+    wbC2.Close SaveChanges:=False
+
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+
+    MsgBox "Anexos C1 y C2 copiados correctamente.", vbInformation
+
+End Sub
+
+
+
+
+
+
 
 Sub CopiarCarteraViva()
 
