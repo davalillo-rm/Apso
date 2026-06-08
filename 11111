@@ -5,6 +5,133 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+base_url    = "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend"
+url_deptos  = f"{base_url}/ubigeos/departamentos"
+url_part    = f"{base_url}/resumen-general/participantes"
+url_totales = f"{base_url}/resumen-general/totales"
+
+headers = {
+    "Accept": "*/*",
+    "Accept-Language": "es-419,es;q=0.9,es-ES;q=0.8,en;q=0.7,en-GB;q=0.6,en-US;q=0.5,es-MX;q=0.4,es-PE;q=0.3",
+    "Content-Type": "application/json",
+    "Host": "resultadosegundavuelta.onpe.gob.pe",
+    "Referer": "https://resultadosegundavuelta.onpe.gob.pe/main/resumen",
+    "Sec-Ch-Ua": '"Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0"
+}
+
+ambito = "1"
+system_proxies = {
+    "http":  "http://latam-proxy.glb.lnm.bns:8080",
+    "https": "http://latam-proxy.glb.lnm.bns:8080"
+}
+
+# ── AUTO-DETECCIÓN del id_eleccion correcto ──────────────────
+print("Detectando id_eleccion válido...")
+id_eleccion = None
+
+for test_id in ["1", "2", "3", "10", "11", "12", "20", "21", "22"]:
+    try:
+        r = requests.get(
+            url_deptos,
+            params={"idEleccion": test_id, "idAmbitoGeografico": ambito},
+            headers=headers, proxies=system_proxies, verify=False, timeout=10
+        )
+        if r.status_code == 200:
+            data = r.json().get('data', [])
+            if len(data) > 0:
+                print(f"  ✓ id_eleccion={test_id} → {len(data)} departamentos encontrados")
+                id_eleccion = test_id
+                deptos = data
+                break
+            else:
+                print(f"  ✗ id_eleccion={test_id} → 0 registros")
+        else:
+            print(f"  ✗ id_eleccion={test_id} → HTTP {r.status_code}")
+    except Exception as e:
+        print(f"  ✗ id_eleccion={test_id} → Error: {e}")
+
+if id_eleccion is None:
+    print("\nNo se encontró id_eleccion válido. Revisa el Network tab del browser.")
+    exit()
+
+# ── EXTRACCIÓN PRINCIPAL ──────────────────────────────────────
+print(f"\nIniciando extracción (id_eleccion={id_eleccion})...")
+datos_consolidados = []
+
+for depto in deptos:
+    cod_depto    = depto.get('ubigeo')
+    nombre_depto = depto.get('nombre')
+
+    try:
+        params_data = {
+            "idEleccion":           id_eleccion,
+            "tipoFiltro":           "ubigeo_nivel_01",
+            "idAmbitoGeografico":   ambito,
+            "idUbigeoDepartamento": cod_depto
+        }
+
+        resp_part = requests.get(url_part, params=params_data, headers=headers,
+                                 proxies=system_proxies, verify=False, timeout=10)
+        votos = resp_part.json().get('data', []) if resp_part.status_code == 200 else []
+
+        resp_tot = requests.get(url_totales, params=params_data, headers=headers,
+                                proxies=system_proxies, verify=False, timeout=10)
+        totales = resp_tot.json().get('data', {}) if resp_tot.status_code == 200 else {}
+
+        for candidato in votos:
+            fila = {
+                "Departamento":         nombre_depto,
+                "Ubigeo":               cod_depto,
+                "Candidato":            candidato.get('nombreAgrupacionPolitica'),
+                "Votos":                candidato.get('totalVotosValidos'),
+                "Total_Votos_Emitidos": totales.get('totalVotosEmitidos'),
+                "Actas_Contabilizadas": totales.get('actasContabilizadas'),
+                "Total_Actas":          totales.get('totalActas')
+            }
+            datos_consolidados.append(fila)
+
+        print(f"  Extraído: {nombre_depto} ({len(votos)} candidatos)")
+
+    except Exception as e:
+        print(f"  Error en {nombre_depto}: {e}")
+        continue
+
+    time.sleep(0.3)
+
+# ── GUARDAR ───────────────────────────────────────────────────
+if datos_consolidados:
+    df = pd.DataFrame(datos_consolidados)
+    df.to_csv("ONPE_SegundaVuelta_Departamental.csv", index=False, encoding='utf-8-sig')
+    print(f"\n¡Finalizado! {len(df)} registros → ONPE_SegundaVuelta_Departamental.csv")
+else:
+    print("\nSin datos para guardar.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import requests
+import pandas as pd
+import time
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 base_url = "https://resultadosegundavuelta.onpe.gob.pe/presentacion-backend"
 url_deptos = f"{base_url}/ubigeos/departamentos"
 url_part   = f"{base_url}/resumen-general/participantes"
