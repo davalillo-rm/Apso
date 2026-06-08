@@ -1,0 +1,68 @@
+Sub CopiarDatos1B()
+
+    Dim wbDestino   As Workbook
+    Dim wbOrigen    As Workbook
+    Dim wsRecopilado As Worksheet
+    Dim wsDestino   As Worksheet
+    Dim fechaCelda  As Date
+    Dim mesCarpeta  As String
+    Dim anioCarpeta As String
+    Dim rutaBase    As String
+    Dim rutaInputsRM As String
+    Dim archivoOrigen As String
+    Dim archivo1B   As String
+    
+    '--- 1. Tomar Inputs.xlsx (ya abierto)
+    On Error Resume Next
+    Set wbDestino = Workbooks("Inputs.xlsx")
+    On Error GoTo 0
+    
+    If wbDestino Is Nothing Then
+        MsgBox "No se encontró Inputs.xlsx abierto.", vbCritical
+        Exit Sub
+    End If
+    
+    '--- 2. Leer fecha de hoja Recopilado celda C3
+    Set wsRecopilado = wbDestino.Sheets("Recopilado")
+    fechaCelda = CDate(wsRecopilado.Range("C3").Value)
+    
+    mesCarpeta  = Format(Month(fechaCelda), "00")   ' "04"
+    anioCarpeta = Year(fechaCelda)                   ' "2026"
+    
+    '--- 3. Construir rutas
+    rutaBase     = "C:\Users\s7398771\OneDrive - The Bank of Nova Scotia\" & _
+                   "Documentos\anexo 7\" & anioCarpeta & "\" & mesCarpeta & "\"
+    rutaInputsRM = rutaBase & "Inputs RM\"
+    
+    '--- 4. Buscar archivo que empiece con "1-B"
+    archivo1B = Dir(rutaInputsRM & "1-B*.xls*")
+    
+    If archivo1B = "" Then
+        MsgBox "No se encontró archivo 1-B en:" & vbCrLf & rutaInputsRM, vbCritical
+        Exit Sub
+    End If
+    
+    archivoOrigen = rutaInputsRM & archivo1B
+    
+    '--- 5. Abrir origen, copiar, pegar valores, cerrar
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    
+    Set wbOrigen = Workbooks.Open(archivoOrigen, ReadOnly:=True)
+    
+    Dim rngOrigen As Range
+    Set rngOrigen = wbOrigen.Sheets(1).Range("A2:AK26")  ' ajusta nombre hoja si es necesario
+    
+    Set wsDestino = wbDestino.Sheets("Port_Inversiones")
+    
+    wsDestino.Range("A2").Resize(rngOrigen.Rows.Count, rngOrigen.Columns.Count).Value = _
+        rngOrigen.Value
+    
+    wbOrigen.Close SaveChanges:=False
+    
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    
+    MsgBox "Datos copiados correctamente desde:" & vbCrLf & archivo1B, vbInformation
+
+End Sub
