@@ -1,4 +1,26 @@
 
+def tabla_deriv(df: pd.DataFrame, buckets):
+    bucket_names = [b[0] for b in buckets]
+    rows = []
+    for b in bucket_names:
+        sub = df[df["Bucket"] == b]
+        cxc_pen = sub.loc[sub["Residual_PEN"] >= 0, "VM_Larga_PEN"].sum()
+        cxp_pen = sub.loc[sub["Residual_PEN"] <  0, "VM_Corta_PEN"].sum()
+        
+        # DEBUG temporal
+        print(f"{b}: total={len(sub)}, CxC_count={len(sub[sub['Residual_PEN']>=0])}, CxP_count={len(sub[sub['Residual_PEN']<0])}, CxC_PEN={cxc_pen:,.0f}, CxP_PEN={cxp_pen:,.0f}")
+        
+        rows.append({
+            "Banda":   b,
+            "CxC PEN": cxc_pen,
+            "CxP PEN": cxp_pen,
+            "CxC USD": cxc_pen / TC["USD"],
+            "CxP USD": cxp_pen / TC["USD"],
+        })
+    return pd.DataFrame(rows)
+
+
+
 
 
 # Montos originales para Deriv Delivery
