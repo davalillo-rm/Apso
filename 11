@@ -1,6 +1,44 @@
 
 
 
+# Montos originales para Deriv Delivery
+        # Larga siempre es la moneda extranjera (nominal), corta siempre es PEN
+        if "Compra" in compra_venta:
+            cap_rec_orig  = nominal           # recibe moneda extranjera
+            cap_pago_orig = vm_corta_pen      # entrega PEN (VM en PEN)
+            mon_rec_final = moneda_pac
+            mon_ent_final = "PEN"
+        else:
+            cap_rec_orig  = vm_larga_pen      # recibe PEN (VM en PEN)
+            cap_pago_orig = nominal           # entrega moneda extranjera
+            mon_rec_final = "PEN"
+            mon_ent_final = moneda_pac
+
+
+
+
+
+
+
+# VM en PEN desde Anexo 8 — columnas H y K
+        vm_larga_pen = pd.to_numeric(row.get(col_vm_larga), errors='coerce') if col_vm_larga else 0
+        vm_corta_pen = pd.to_numeric(row.get(col_vm_corta), errors='coerce') if col_vm_corta else 0
+        vm_larga_pen = vm_larga_pen if pd.notna(vm_larga_pen) else 0
+        vm_corta_pen = vm_corta_pen if pd.notna(vm_corta_pen) else 0
+
+        # Residual = VM_Pos_larga - VM_Pos_corta (signo determina CxC o CxP)
+        residual = vm_larga_pen - vm_corta_pen
+
+
+
+
+
+
+
+
+
+
+
 
 
 
