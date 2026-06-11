@@ -1,3 +1,343 @@
+"""
+Anexo 16 - Bucketeo Deriv
+Lee MTM 20260430.xlsx (Hoja1) y genera Excel con:
+  - Pestaña Data   : forwards Delivery con columnas calculadas
+  - Pestaña Deriv  : bucketeo CxC/CxP con formulas referenciando Data
+"""
+
+import pandas as pd
+import numpy as np
+from datetime import date, timedelta
+from dateutil.relativedelta import relativedelta
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
+# ─────────────────────────────────────────────
+# PARÁMETROS
+# ─────────────────────────────────────────────
+MTM_PATH    = "MTM 20260430.xlsx"
+FECHA_CORTE = date(2026, 4, 30)
+TC_USD      = 3.517
+
+# Buckets: (nombre, dias_ini_excl, dias_fin_incl)
+BUCKETS = [
+    ("7D",   0,    7),
+    ("15D",  7,    15),
+    ("30D",  15,   30),
+    ("2M",   30,   61),
+    ("3M",   61,   92),
+    ("6M",   92,   184),
+    ("12M",  184,  365),
+    ("2Y",   365,  731),
+    ("3Y",   731,  1096),
+    ("4Y",   1096, 1461),
+    ("5Y",   1461, 1826),
+    ("10Y",  1826, 3653),
+    ("20Y",  3653, 7305),
+    ("50Y",  7305, 22525),
+]
+
+COLS_NEEDED = [
+    "Compra_Venta",
+    "Forma_Pago",
+    "Moneda_Pactada",
+    "Nominal_Pactado",
+    "VM_Pos_larga",
+    "VM_Pos_corta",
+    "Fec_vencimiento_oper",
+    "TC_Spot_Pactado",
+]
+
+# ─────────────────────────────────────────────
+# ESTILOS
+# ─────────────────────────────────────────────
+H_FILL  = PatternFill("solid", start_color="1F4E79")
+T_FILL  = PatternFill("solid", start_color="BDD7EE")
+A_FILL  = PatternFill("solid", start_color="DEEAF1")
+W_FILL  = PatternFill("solid", start_color="FFFFFF")
+Y_FILL  = PatternFill("solid", start_color="FFFF00")
+H_FONT  = Font(bold=True, color="FFFFFF", name="Arial", size=10)
+B_FONT  = Font(bold=True, name="Arial", size=10)
+N_FONT  = Font(name="Arial", size=10)
+G_FONT  = Font(name="Arial", size=10, color="006400")  # verde para formulas
+NUM_FMT = '#,##0;(#,##0);"-"'
+NUM2    = '#,##0.00;(#,##0.00);"-"'
+DATE_FMT= 'DD/MM/YYYY'
+C_ALIGN = Alignment(horizontal="center", vertical="center")
+L_ALIGN = Alignment(horizontal="left",   vertical="center")
+_side   = Side(style="thin", color="BFBFBF")
+BORDER  = Border(left=_side, right=_side, top=_side, bottom=_side)
+
+def hdr(cell, text):
+    cell.value = text; cell.font = H_FONT; cell.fill = H_FILL
+    cell.alignment = C_ALIGN; cell.border = BORDER
+
+def num(cell, val, fmt=NUM_FMT, bold=False, fill=None, green=False):
+    cell.value = val
+    cell.number_format = fmt
+    cell.font = G_FONT if green else (B_FONT if bold else N_FONT)
+    cell.alignment = C_ALIGN; cell.border = BORDER
+    if fill: cell.fill = fill
+
+def lbl(cell, text, bold=False, fill=None, green=False):
+    cell.value = text
+    cell.font = G_FONT if green else (B_FONT if bold else N_FONT)
+    cell.alignment = L_ALIGN; cell.border = BORDER
+    if fill: cell.fill = fill
+
+def cw(ws, col, w):
+    ws.column_dimensions[col].width = w
+
+# ─────────────────────────────────────────────
+# LECTURA
+# ─────────────────────────────────────────────
+def leer_forwards(path):
+    df = pd.read_excel(path, sheet_name="Hoja1", header=0)
+    df.columns = df.columns.str.strip()
+
+    print(f"Total filas MTM: {len(df)}")
+
+    # Verificar columnas
+    missing = [c for c in COLS_NEEDED if c not in df.columns]
+    if missing:
+        print(f"ADVERTENCIA - Columnas no encontradas: {missing}")
+
+    # Filtrar Delivery
+    df["_forma"] = df["Forma_Pago"].astype(str).str.strip().str.upper()
+    fwd = df[df["_forma"] == "DELIVERY"].copy()
+    print(f"Forwards Delivery: {len(fwd)}")
+    return fwd
+
+# ─────────────────────────────────────────────
+# ESCRIBIR HOJA DATA
+# ─────────────────────────────────────────────
+def escribir_data(ws, df: pd.DataFrame, fc: date):
+    ws.freeze_panes = "A2"
+
+    # Encabezados originales + calculados
+    headers_orig = COLS_NEEDED
+    headers_calc = ["Dias_Vcto", "Bucket", "Residual_PEN"]
+    all_headers  = headers_orig + headers_calc
+
+    for j, h in enumerate(all_headers, 1):
+        c = ws.cell(1, j)
+        hdr(c, h)
+
+    # Índices de columnas calculadas
+    col_dias    = len(headers_orig) + 1  # I
+    col_bucket  = len(headers_orig) + 2  # J
+    col_resid   = len(headers_orig) + 3  # K
+
+    # Índices de columnas clave en el sheet
+    col_fecha   = headers_orig.index("Fec_vencimiento_oper") + 1  # col E → letra
+    col_vmlarga = headers_orig.index("VM_Pos_larga") + 1
+    col_vmcorta = headers_orig.index("VM_Pos_corta") + 1
+
+    col_fecha_l  = get_column_letter(col_fecha)
+    col_larga_l  = get_column_letter(col_vmlarga)
+    col_corta_l  = get_column_letter(col_vmcorta)
+    col_dias_l   = get_column_letter(col_dias)
+    col_bucket_l = get_column_letter(col_bucket)
+    col_resid_l  = get_column_letter(col_resid)
+
+    # Fecha de corte en una celda auxiliar (fila 1, col después de todo)
+    aux_col = len(all_headers) + 2
+    aux_l   = get_column_letter(aux_col)
+    ws.cell(1, aux_col).value = fc
+    ws.cell(1, aux_col).number_format = DATE_FMT
+    ws.cell(1, aux_col - 1).value = "Fecha Corte:"
+    ws.cell(1, aux_col - 1).font = B_FONT
+
+    # Fórmula bucket con IFS
+    def bucket_formula(dias_cell):
+        conditions = []
+        for nombre, d_ini, d_fin in BUCKETS:
+            conditions.append(f'AND({dias_cell}>{d_ini},{dias_cell}<={d_fin}),"{nombre}"')
+        return '=IFS(' + ','.join(conditions) + ',TRUE,"Sin Bucket")'
+
+    # Datos fila por fila
+    df_reset = df[headers_orig].reset_index(drop=True)
+
+    for i, row in df_reset.iterrows():
+        r = i + 2
+        fill = A_FILL if i % 2 == 0 else W_FILL
+
+        for j, col in enumerate(headers_orig, 1):
+            cell = ws.cell(r, j)
+            val  = row[col]
+            if col == "Fec_vencimiento_oper":
+                if pd.notna(val):
+                    cell.value = pd.to_datetime(val).date()
+                    cell.number_format = DATE_FMT
+                else:
+                    cell.value = None
+            elif col in ["VM_Pos_larga", "VM_Pos_corta", "Nominal_Pactado", "TC_Spot_Pactado"]:
+                cell.value = float(val) if pd.notna(val) else 0
+                cell.number_format = NUM_FMT
+            else:
+                cell.value = str(val) if pd.notna(val) else ""
+            cell.font = N_FONT; cell.fill = fill
+            cell.alignment = C_ALIGN; cell.border = BORDER
+
+        # Dias_Vcto
+        dc = ws.cell(r, col_dias)
+        dc.value = f"=IF({col_fecha_l}{r}=\"\",\"\",{col_fecha_l}{r}-${aux_l}$1)"
+        dc.number_format = "0"
+        dc.font = G_FONT; dc.fill = fill
+        dc.alignment = C_ALIGN; dc.border = BORDER
+
+        # Bucket
+        bc = ws.cell(r, col_bucket)
+        bc.value = bucket_formula(f"{col_dias_l}{r}")
+        bc.font = G_FONT; bc.fill = fill
+        bc.alignment = C_ALIGN; bc.border = BORDER
+
+        # Residual
+        rc = ws.cell(r, col_resid)
+        rc.value = f"={col_larga_l}{r}-{col_corta_l}{r}"
+        rc.number_format = NUM_FMT
+        rc.font = G_FONT; rc.fill = fill
+        rc.alignment = C_ALIGN; rc.border = BORDER
+
+    # Anchos
+    widths = [15, 12, 12, 15, 15, 15, 18, 14, 10, 10, 15]
+    for j, w in enumerate(widths, 1):
+        cw(ws, get_column_letter(j), w)
+
+    print(f"  Hoja Data: {len(df_reset)} filas escritas")
+    return col_bucket_l, col_resid_l, len(df_reset) + 1  # última fila con datos
+
+# ─────────────────────────────────────────────
+# ESCRIBIR HOJA DERIV
+# ─────────────────────────────────────────────
+def escribir_deriv(ws, col_bucket_l, col_resid_l, last_row, fc: date):
+    ws.freeze_panes = "B3"
+
+    # Título
+    ws.merge_cells("A1:E1")
+    c = ws["A1"]
+    c.value = f"Anexo 16 – Deriv | CxC y CxP Forwards | Corte: {fc}"
+    c.font = Font(bold=True, name="Arial", size=12, color="1F4E79")
+    c.alignment = C_ALIGN
+
+    # Encabezados
+    for j, h in enumerate(["Banda", "CxC PEN", "CxP PEN", "CxC USD", "CxP USD"], 1):
+        hdr(ws.cell(2, j), h)
+
+    # Nombre de hoja Data para referencias cruzadas
+    data_ref = "Data"
+
+    for i, (nombre, d_ini, d_fin) in enumerate(BUCKETS):
+        r = i + 3
+        fill = A_FILL if i % 2 == 0 else W_FILL
+
+        # Banda
+        lbl(ws.cell(r, 1), nombre, fill=fill)
+
+        # CxC PEN = SUMAR.SI.CONJUNTO donde bucket=nombre Y residual>=0, suma residual
+        cxc_formula = (
+            f"=SUMPRODUCT(("
+            f"'{data_ref}'!${col_bucket_l}$2:${col_bucket_l}${last_row}=\"{nombre}\")*"
+            f"('{data_ref}'!${col_resid_l}$2:${col_resid_l}${last_row}>=0)*"
+            f"'{data_ref}'!${col_resid_l}$2:${col_resid_l}${last_row})"
+        )
+
+        # CxP PEN = SUMPRODUCT donde bucket=nombre Y residual<0, suma ABS(residual)
+        cxp_formula = (
+            f"=SUMPRODUCT(("
+            f"'{data_ref}'!${col_bucket_l}$2:${col_bucket_l}${last_row}=\"{nombre}\")*"
+            f"('{data_ref}'!${col_resid_l}$2:${col_resid_l}${last_row}<0)*"
+            f"ABS('{data_ref}'!${col_resid_l}$2:${col_resid_l}${last_row}))"
+        )
+
+        c_cxc = ws.cell(r, 2)
+        c_cxc.value = cxc_formula
+        c_cxc.number_format = NUM_FMT
+        c_cxc.font = G_FONT; c_cxc.fill = fill
+        c_cxc.alignment = C_ALIGN; c_cxc.border = BORDER
+
+        c_cxp = ws.cell(r, 3)
+        c_cxp.value = cxp_formula
+        c_cxp.number_format = NUM_FMT
+        c_cxp.font = G_FONT; c_cxp.fill = fill
+        c_cxp.alignment = C_ALIGN; c_cxp.border = BORDER
+
+        # CxC USD
+        c_cxc_usd = ws.cell(r, 4)
+        c_cxc_usd.value = f"=B{r}/{TC_USD}"
+        c_cxc_usd.number_format = NUM_FMT
+        c_cxc_usd.font = G_FONT; c_cxc_usd.fill = fill
+        c_cxc_usd.alignment = C_ALIGN; c_cxc_usd.border = BORDER
+
+        # CxP USD
+        c_cxp_usd = ws.cell(r, 5)
+        c_cxp_usd.value = f"=C{r}/{TC_USD}"
+        c_cxp_usd.number_format = NUM_FMT
+        c_cxp_usd.font = G_FONT; c_cxp_usd.fill = fill
+        c_cxp_usd.alignment = C_ALIGN; c_cxp_usd.border = BORDER
+
+    # Totales
+    tr = len(BUCKETS) + 3
+    lbl(ws.cell(tr, 1), "TOTAL", bold=True, fill=T_FILL)
+    for j in range(2, 6):
+        cl = get_column_letter(j)
+        c  = ws.cell(tr, j)
+        c.value = f"=SUM({cl}3:{cl}{tr-1})"
+        c.number_format = NUM_FMT
+        c.font = B_FONT; c.fill = T_FILL
+        c.alignment = C_ALIGN; c.border = BORDER
+
+    for col, w in [("A",10),("B",20),("C",20),("D",20),("E",20)]:
+        cw(ws, col, w)
+
+# ─────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────
+def main():
+    print("=" * 50)
+    print("Anexo 16 v3 - Data + Deriv con fórmulas Excel")
+    print("=" * 50)
+
+    print(f"\nLeyendo {MTM_PATH}...")
+    df_fwd = leer_forwards(MTM_PATH)
+
+    print("\nGenerando Excel...")
+    wb = openpyxl.Workbook()
+    ws_data  = wb.active
+    ws_data.title = "Data"
+    ws_deriv = wb.create_sheet("Deriv")
+
+    col_bucket_l, col_resid_l, last_row = escribir_data(ws_data, df_fwd, FECHA_CORTE)
+
+    print(f"  col_bucket={col_bucket_l}, col_resid={col_resid_l}, last_row={last_row}")
+
+    escribir_deriv(ws_deriv, col_bucket_l, col_resid_l, last_row, FECHA_CORTE)
+
+    out = f"Anexo16_v3_{FECHA_CORTE.strftime('%Y%m%d')}.xlsx"
+    wb.save(out)
+    print(f"\n✅ Archivo generado: {out}")
+    print("   Abre el archivo, ve a la hoja Deriv y compara con el Anexo 16 real.")
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def tabla_deriv(df: pd.DataFrame, buckets):
     bucket_names = [b[0] for b in buckets]
