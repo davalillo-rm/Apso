@@ -1,3 +1,31 @@
+def asignar_bucket(fecha_vcto, buckets):
+    if pd.isna(fecha_vcto):
+        return None
+    # Convertir cualquier tipo (str, datetime, date, Timestamp) a date
+    if isinstance(fecha_vcto, str):
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y"):
+            try:
+                fv = pd.to_datetime(fecha_vcto, format=fmt).date()
+                break
+            except:
+                continue
+        else:
+            return None
+    elif hasattr(fecha_vcto, 'date'):
+        fv = fecha_vcto.date()
+    else:
+        fv = fecha_vcto
+    for nombre, ini, fin in buckets:
+        if ini < fv <= fin:
+            return nombre
+    return None
+
+
+
+
+
+
+
 """
 Anexo 16 - Bucketeo Deriv y Deriv Delivery
 Inputs:
