@@ -1,3 +1,451 @@
+
+
+
+
+
+
+"""
+Anexo 16 - Bucketeo Deriv y Deriv Delivery
+Input:  Anexo8_YYYYMMDD.xlsx (Hoja1)
+Output: Anexo16_Bucketeo_YYYYMMDD.xlsx con 2 hojas:
+        - Deriv          (CxC y CxP en PEN por banda temporal)
+        - Deriv_Delivery (flujos Larga/Corta por moneda pactada y banda)
+"""
+
+import pandas as pd
+import numpy as np
+from datetime import date, timedelta
+from dateutil.relativedelta import relativedelta
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
+# ─────────────────────────────────────────────
+# PARÁMETROS — modificar antes de ejecutar
+# ─────────────────────────────────────────────
+ANEXO8_PATH = "Anexo8_2026.04.30.xlsx"
+FECHA_CORTE = date(2026, 4, 30)
+
+TC = {
+    "USD": 3.517,
+    "EUR": 4.1250,
+    "JPY": 0.0225,
+    "CNY": 0.5151,
+    "CAD": 2.58413,
+    "PEN": 1.0,
+}
+
+# ─────────────────────────────────────────────
+# BANDAS TEMPORALES
+# ─────────────────────────────────────────────
+def get_buckets(fc: date):
+    return [
+        ("7D",   fc,                            fc + timedelta(days=7)),
+        ("15D",  fc + timedelta(days=7),        fc + timedelta(days=15)),
+        ("30D",  fc + timedelta(days=15),       fc + timedelta(days=30)),
+        ("2M",   fc + timedelta(days=30),       fc + relativedelta(months=2)),
+        ("3M",   fc + relativedelta(months=2),  fc + relativedelta(months=3)),
+        ("6M",   fc + relativedelta(months=3),  fc + relativedelta(months=6)),
+        ("12M",  fc + relativedelta(months=6),  fc + relativedelta(months=12)),
+        ("2Y",   fc + relativedelta(months=12), fc + relativedelta(years=2)),
+        ("3Y",   fc + relativedelta(years=2),   fc + relativedelta(years=3)),
+        ("4Y",   fc + relativedelta(years=3),   fc + relativedelta(years=4)),
+        ("5Y",   fc + relativedelta(years=4),   fc + relativedelta(years=5)),
+        ("10Y",  fc + relativedelta(years=5),   fc + relativedelta(years=10)),
+        ("20Y",  fc + relativedelta(years=10),  fc + relativedelta(years=20)),
+        ("50Y",  fc + relativedelta(years=20),  fc + relativedelta(years=50)),
+    ]
+
+def parse_fecha(valor):
+    """Convierte cualquier formato de fecha a date."""
+    if pd.isna(valor):
+        return None
+    if hasattr(valor, 'date'):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    if isinstance(valor, str):
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y", "%d-%m-%Y"):
+            try:
+                return pd.to_datetime(valor, format=fmt).date()
+            except:
+                continue
+    try:
+        return pd.to_datetime(valor).date()
+    except:
+        return None
+
+def asignar_bucket(fecha_vcto, buckets):
+    fv = parse_fecha(fecha_vcto)
+    if fv is None:
+        return None
+    for nombre, ini, fin in buckets:
+        if ini < fv <= fin:
+            return nombre
+    return None
+
+# ─────────────────────────────────────────────
+# LECTURA Y FILTRO DEL ANEXO 8
+# ─────────────────────────────────────────────
+def leer_forwards(path):
+    df = pd.read_excel(path, sheet_name="Hoja1", header=0)
+    df.columns = df.columns.str.strip()
+
+    print(f"  Total filas Anexo 8: {len(df)}")
+    print(f"  Columnas: {list(df.columns)}")
+
+    # Filtrar solo Delivery
+    col_forma = next((c for c in df.columns if "Forma" in c and "Pago" in c), None)
+    if col_forma is None:
+        raise ValueError("No se encontró columna Forma_Pago en Anexo 8")
+
+    df["_forma"] = df[col_forma].astype(str).str.strip().str.upper()
+    forwards = df[df["_forma"] == "DELIVERY"].copy()
+    print(f"  Forwards (Delivery): {len(forwards)}")
+    return forwards
+
+# ─────────────────────────────────────────────
+# MAPEO DE COLUMNAS FLEXIBLE
+# ─────────────────────────────────────────────
+def get_col(df, candidatos):
+    """Devuelve el primer nombre de columna que exista en df."""
+    for c in candidatos:
+        if c in df.columns:
+            return c
+    # Búsqueda parcial
+    for c in candidatos:
+        matches = [col for col in df.columns if c.lower() in col.lower()]
+        if matches:
+            return matches[0]
+    return None
+
+# ─────────────────────────────────────────────
+# PROCESAR FORWARDS
+# ─────────────────────────────────────────────
+def procesar_forwards(df: pd.DataFrame, buckets):
+    # Mapear columnas
+    col_compra_venta  = get_col(df, ["Compra_Venta", "Compra_Vent"])
+    col_moneda_pac    = get_col(df, ["Moneda_Pactada", "Moneda_Pac"])
+    col_nominal       = get_col(df, ["Nominal_Pactado", "Nominal_Pac"])
+    col_mon_rec       = get_col(df, ["Mon_Recibida_oper", "Mon_Recibida"])
+    col_mon_ent       = get_col(df, ["Mon_Entregada_oper", "Mon_Entregada"])
+    col_fecha_vcto    = get_col(df, ["Fec_vencimiento_oper", "Fecha_Vcto", "Fec_vencimie"])
+    col_tc_pactado    = get_col(df, ["TC_Spot_Pactado", "TC_Spot_Pac"])
+    col_vm_larga      = get_col(df, ["VM_Pos_larga", "VM_Pos_Larga"])
+    col_vm_corta      = get_col(df, ["VM_Pos_corta", "VM_Pos_Corta"])
+
+    print(f"\n  Columnas mapeadas:")
+    print(f"    Compra/Venta : {col_compra_venta}")
+    print(f"    Moneda Pac   : {col_moneda_pac}")
+    print(f"    Nominal      : {col_nominal}")
+    print(f"    Mon Recibida : {col_mon_rec}")
+    print(f"    Mon Entregada: {col_mon_ent}")
+    print(f"    Fecha Vcto   : {col_fecha_vcto}")
+    print(f"    TC Pactado   : {col_tc_pactado}")
+    print(f"    VM Larga     : {col_vm_larga}")
+    print(f"    VM Corta     : {col_vm_corta}")
+
+    registros = []
+    sin_bucket = 0
+
+    for _, row in df.iterrows():
+        fecha_vcto = row.get(col_fecha_vcto) if col_fecha_vcto else None
+        bucket     = asignar_bucket(fecha_vcto, buckets)
+
+        if bucket is None:
+            sin_bucket += 1
+            continue
+
+        compra_venta  = str(row.get(col_compra_venta, "")).strip() if col_compra_venta else ""
+        moneda_pac    = str(row.get(col_moneda_pac,   "")).strip().upper() if col_moneda_pac else "USD"
+        mon_rec       = str(row.get(col_mon_rec,      "")).strip().upper() if col_mon_rec else ""
+        mon_ent       = str(row.get(col_mon_ent,      "")).strip().upper() if col_mon_ent else ""
+        nominal       = pd.to_numeric(row.get(col_nominal),    errors='coerce') or 0
+        tc_pactado    = pd.to_numeric(row.get(col_tc_pactado), errors='coerce') or TC.get(moneda_pac, 1.0)
+
+        # VM en PEN desde Anexo 8 (ya vienen calculados)
+        vm_larga_pen  = pd.to_numeric(row.get(col_vm_larga), errors='coerce') if col_vm_larga else 0
+        vm_corta_pen  = pd.to_numeric(row.get(col_vm_corta), errors='coerce') if col_vm_corta else 0
+        vm_larga_pen  = vm_larga_pen if pd.notna(vm_larga_pen) else 0
+        vm_corta_pen  = vm_corta_pen if pd.notna(vm_corta_pen) else 0
+
+        # Si no tenemos VM directamente, calculamos desde nominal
+        tc_cierre = TC.get(moneda_pac, 1.0)
+        if vm_larga_pen == 0 and nominal != 0:
+            if "Compra" in compra_venta:
+                # Forward compra: recibe USD (moneda extranjera), entrega PEN
+                vm_larga_pen = nominal * tc_cierre          # USD → PEN a TC cierre
+                vm_corta_pen = nominal * tc_pactado         # PEN a TC pactado
+            else:
+                # Forward venta: recibe PEN, entrega USD
+                vm_larga_pen = nominal * tc_pactado         # PEN a TC pactado
+                vm_corta_pen = nominal * tc_cierre          # USD → PEN a TC cierre
+
+        residual = vm_larga_pen - vm_corta_pen
+
+        # Montos en moneda original para Deriv Delivery
+        if "Compra" in compra_venta:
+            cap_rec_orig  = nominal                    # recibe moneda extranjera
+            cap_pago_orig = nominal * tc_pactado       # entrega PEN
+            mon_rec_final = moneda_pac
+            mon_ent_final = "PEN"
+        else:
+            cap_rec_orig  = nominal * tc_pactado       # recibe PEN
+            cap_pago_orig = nominal                    # entrega moneda extranjera
+            mon_rec_final = "PEN"
+            mon_ent_final = moneda_pac
+
+        registros.append({
+            "Compra_Venta":   compra_venta,
+            "Moneda_Pactada": moneda_pac,
+            "Mon_REC":        mon_rec if mon_rec else mon_rec_final,
+            "Mon_PAGO":       mon_ent if mon_ent else mon_ent_final,
+            "Nominal":        nominal,
+            "TC_Pactado":     tc_pactado,
+            "TC_Cierre":      tc_cierre,
+            "Cap_REC_orig":   cap_rec_orig,
+            "Cap_PAGO_orig":  cap_pago_orig,
+            "VM_Larga_PEN":   vm_larga_pen,
+            "VM_Corta_PEN":   vm_corta_pen,
+            "Residual_PEN":   residual,
+            "Fecha_Vcto":     parse_fecha(fecha_vcto),
+            "Bucket":         bucket,
+        })
+
+    print(f"  Registros con bucket: {len(registros)}")
+    print(f"  Registros sin bucket: {sin_bucket}")
+    return pd.DataFrame(registros)
+
+# ─────────────────────────────────────────────
+# TABLA DERIV (CxC / CxP)
+# ─────────────────────────────────────────────
+def tabla_deriv(df: pd.DataFrame, buckets):
+    bucket_names = [b[0] for b in buckets]
+    rows = []
+    for b in bucket_names:
+        sub = df[df["Bucket"] == b]
+        cxc_pen = sub.loc[sub["Residual_PEN"] >= 0, "VM_Larga_PEN"].sum()
+        cxp_pen = sub.loc[sub["Residual_PEN"] <  0, "VM_Corta_PEN"].sum()
+        rows.append({
+            "Banda":   b,
+            "CxC PEN": cxc_pen,
+            "CxP PEN": cxp_pen,
+            "CxC USD": cxc_pen / TC["USD"],
+            "CxP USD": cxp_pen / TC["USD"],
+        })
+    return pd.DataFrame(rows)
+
+# ─────────────────────────────────────────────
+# TABLA DERIV DELIVERY
+# ─────────────────────────────────────────────
+def tabla_deriv_delivery(df: pd.DataFrame, buckets):
+    bucket_names = [b[0] for b in buckets]
+    monedas = sorted(df["Moneda_Pactada"].unique())
+    rows = []
+
+    for mon in monedas:
+        sub_mon = df[df["Moneda_Pactada"] == mon]
+        tc = TC.get(mon, 1.0)
+
+        larga_row = {"Moneda Pactada": mon, "Mon": f"Larga ({mon})", "Tipo": "Larga"}
+        corta_row = {"Moneda Pactada": mon, "Mon": "Corta (PEN)",    "Tipo": "Corta"}
+
+        for b in bucket_names:
+            sub = sub_mon[sub_mon["Bucket"] == b]
+            # Larga en moneda extranjera original
+            larga_row[b] = sub["Cap_REC_orig"].sum() if mon != "PEN" else sub["VM_Larga_PEN"].sum()
+            # Corta en PEN
+            corta_row[b] = sub["Cap_PAGO_orig"].sum()
+
+        rows.append(larga_row)
+        rows.append(corta_row)
+
+    # Totales consolidados
+    for label, col in [
+        ("PEN Larga", "VM_Larga_PEN"),
+        ("PEN Corta", "VM_Corta_PEN"),
+    ]:
+        tot = {"Moneda Pactada": "TOTAL", "Mon": label, "Tipo": "Total"}
+        for b in bucket_names:
+            sub = df[df["Bucket"] == b]
+            tot[b] = sub[col].sum()
+        rows.append(tot)
+
+    for label, col in [
+        ("USD Larga", "VM_Larga_PEN"),
+        ("USD Corta", "VM_Corta_PEN"),
+    ]:
+        tot = {"Moneda Pactada": "TOTAL", "Mon": label, "Tipo": "Total"}
+        for b in bucket_names:
+            sub = df[df["Bucket"] == b]
+            tot[b] = sub[col].sum() / TC["USD"]
+        rows.append(tot)
+
+    return pd.DataFrame(rows)
+
+# ─────────────────────────────────────────────
+# ESTILOS
+# ─────────────────────────────────────────────
+H_FILL  = PatternFill("solid", start_color="1F4E79")
+T_FILL  = PatternFill("solid", start_color="BDD7EE")
+A_FILL  = PatternFill("solid", start_color="DEEAF1")
+W_FILL  = PatternFill("solid", start_color="FFFFFF")
+H_FONT  = Font(bold=True, color="FFFFFF", name="Arial", size=10)
+B_FONT  = Font(bold=True, name="Arial", size=10)
+N_FONT  = Font(name="Arial", size=10)
+NUM_FMT = '#,##0;(#,##0);"-"'
+C_ALIGN = Alignment(horizontal="center", vertical="center")
+L_ALIGN = Alignment(horizontal="left",   vertical="center")
+_side   = Side(style="thin", color="BFBFBF")
+BORDER  = Border(left=_side, right=_side, top=_side, bottom=_side)
+
+def hdr(cell, text):
+    cell.value = text; cell.font = H_FONT; cell.fill = H_FILL
+    cell.alignment = C_ALIGN; cell.border = BORDER
+
+def num(cell, val, bold=False, fill=None):
+    v = float(val) if pd.notna(val) else 0.0
+    cell.value = v; cell.number_format = NUM_FMT
+    cell.font = B_FONT if bold else N_FONT
+    cell.alignment = C_ALIGN; cell.border = BORDER
+    if fill: cell.fill = fill
+
+def lbl(cell, text, bold=False, fill=None):
+    cell.value = text
+    cell.font = B_FONT if bold else N_FONT
+    cell.alignment = L_ALIGN; cell.border = BORDER
+    if fill: cell.fill = fill
+
+def cw(ws, col, w):
+    ws.column_dimensions[col].width = w
+
+# ─────────────────────────────────────────────
+# ESCRIBIR HOJA DERIV
+# ─────────────────────────────────────────────
+def escribir_deriv(ws, df: pd.DataFrame, fc: date):
+    ws.freeze_panes = "B3"
+    ws.merge_cells("A1:E1")
+    c = ws["A1"]
+    c.value = f"Anexo 16 – Deriv | CxC y CxP Forwards | Corte: {fc}"
+    c.font = Font(bold=True, name="Arial", size=12, color="1F4E79")
+    c.alignment = C_ALIGN
+
+    for j, h in enumerate(["Banda", "CxC PEN", "CxP PEN", "CxC USD", "CxP USD"], 1):
+        hdr(ws.cell(2, j), h)
+
+    for i, row in df.iterrows():
+        r = i + 3
+        fill = A_FILL if i % 2 == 0 else W_FILL
+        lbl(ws.cell(r, 1), row["Banda"], fill=fill)
+        for j, col in enumerate(["CxC PEN", "CxP PEN", "CxC USD", "CxP USD"], 2):
+            num(ws.cell(r, j), row[col], fill=fill)
+
+    tr = len(df) + 3
+    lbl(ws.cell(tr, 1), "TOTAL", bold=True, fill=T_FILL)
+    for j in range(2, 6):
+        cl = get_column_letter(j)
+        c  = ws.cell(tr, j)
+        c.value = f"=SUM({cl}3:{cl}{tr-1})"
+        c.number_format = NUM_FMT; c.font = B_FONT
+        c.fill = T_FILL; c.alignment = C_ALIGN; c.border = BORDER
+
+    for col, w in [("A",10),("B",18),("C",18),("D",18),("E",18)]:
+        cw(ws, col, w)
+
+# ─────────────────────────────────────────────
+# ESCRIBIR HOJA DERIV DELIVERY
+# ─────────────────────────────────────────────
+def escribir_deriv_delivery(ws, df: pd.DataFrame, buckets, fc: date):
+    bnames   = [b[0] for b in buckets]
+    last_col = get_column_letter(3 + len(bnames))
+    ws.freeze_panes = "C3"
+
+    ws.merge_cells(f"A1:{last_col}1")
+    c = ws["A1"]
+    c.value = f"Anexo 16 – Deriv Delivery | Flujos por Moneda y Bucket | Corte: {fc}"
+    c.font = Font(bold=True, name="Arial", size=12, color="1F4E79")
+    c.alignment = C_ALIGN
+
+    hdr(ws.cell(2, 1), "Moneda Pactada")
+    hdr(ws.cell(2, 2), "Mon Recibida / Entregada")
+    for j, b in enumerate(bnames, 3):
+        hdr(ws.cell(2, j), b)
+
+    TOTALES = {"PEN Larga", "PEN Corta", "USD Larga", "USD Corta"}
+    for i, row in df.iterrows():
+        r       = i + 3
+        is_tot  = row["Mon"] in TOTALES
+        is_corp = row["Tipo"] == "Corta"
+        fill    = T_FILL if is_tot else (A_FILL if i % 2 == 0 else W_FILL)
+
+        lbl(ws.cell(r, 1), row["Moneda Pactada"], bold=is_tot, fill=fill)
+        lbl(ws.cell(r, 2), row["Mon"],            bold=is_tot, fill=fill)
+        for j, b in enumerate(bnames, 3):
+            num(ws.cell(r, j), row.get(b, 0), bold=is_tot, fill=fill)
+
+    cw(ws, "A", 16); cw(ws, "B", 28)
+    for j in range(3, 3 + len(bnames)):
+        cw(ws, get_column_letter(j), 15)
+
+# ─────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────
+def main():
+    print("=" * 50)
+    print("Anexo 16 - Bucketeo Deriv y Deriv Delivery")
+    print("=" * 50)
+
+    print(f"\nLeyendo Anexo 8: {ANEXO8_PATH}")
+    forwards_raw = leer_forwards(ANEXO8_PATH)
+
+    buckets = get_buckets(FECHA_CORTE)
+
+    print("\nProcesando forwards...")
+    df_fwd = procesar_forwards(forwards_raw, buckets)
+
+    if df_fwd.empty:
+        print("ERROR: No se encontraron forwards con bucket asignado.")
+        return
+
+    print("\nResumen por moneda pactada:")
+    print(df_fwd.groupby("Moneda_Pactada")["Nominal"].count().to_string())
+
+    print("\nResumen por bucket:")
+    print(df_fwd.groupby("Bucket")["Nominal"].count().to_string())
+
+    print("\nConstruyendo tablas...")
+    df_deriv    = tabla_deriv(df_fwd, buckets)
+    df_delivery = tabla_deriv_delivery(df_fwd, buckets)
+
+    print("Generando Excel...")
+    wb = openpyxl.Workbook()
+    ws1 = wb.active; ws1.title = "Deriv"
+    ws2 = wb.create_sheet("Deriv_Delivery")
+
+    escribir_deriv(ws1, df_deriv, FECHA_CORTE)
+    escribir_deriv_delivery(ws2, df_delivery, buckets, FECHA_CORTE)
+
+    out = f"Anexo16_Bucketeo_{FECHA_CORTE.strftime('%Y%m%d')}.xlsx"
+    wb.save(out)
+    print(f"\n✅ Archivo generado: {out}")
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def asignar_bucket(fecha_vcto, buckets):
     if pd.isna(fecha_vcto):
         return None
