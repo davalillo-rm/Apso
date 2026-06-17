@@ -1,4 +1,69 @@
 
+-- ============================================================
+-- TEMPLATE: Creación de tabla en SQL Server
+-- Base de datos: [NombreDB]
+-- Autor: [Nombre]
+-- Fecha: [YYYY-MM-DD]
+-- ============================================================
+
+USE [NombreDB];
+GO
+
+-- Eliminar si ya existe
+IF OBJECT_ID('dbo.NombreTabla', 'U') IS NOT NULL
+    DROP TABLE dbo.NombreTabla;
+GO
+
+CREATE TABLE dbo.NombreTabla (
+
+    -- PK con identidad
+    ID              INT             NOT NULL IDENTITY(1,1),
+
+    -- Tipos de texto
+    Codigo          VARCHAR(20)     NOT NULL,
+    Descripcion     NVARCHAR(255)       NULL,
+
+    -- Tipos numéricos
+    Cantidad        INT                 NULL,
+    Monto           DECIMAL(18,4)       NULL,
+    Tasa            FLOAT               NULL,
+
+    -- Tipos de fecha
+    FechaCreacion   DATE            NOT NULL DEFAULT GETDATE(),
+    FechaHora       DATETIME2(3)        NULL,
+
+    -- Tipo bit (booleano)
+    Activo          BIT             NOT NULL DEFAULT 1,
+
+    -- FK a otra tabla
+    ID_Referencia   INT                 NULL,
+
+    -- PK
+    CONSTRAINT PK_NombreTabla PRIMARY KEY CLUSTERED (ID ASC),
+
+    -- FK
+    CONSTRAINT FK_NombreTabla_TablaRef
+        FOREIGN KEY (ID_Referencia)
+        REFERENCES dbo.TablaReferencia (ID),
+
+    -- CHECK
+    CONSTRAINT CK_NombreTabla_Monto
+        CHECK (Monto >= 0)
+);
+GO
+
+-- Índice no clusterizado en columna frecuentemente consultada
+CREATE NONCLUSTERED INDEX IX_NombreTabla_Codigo
+    ON dbo.NombreTabla (Codigo ASC);
+GO
+
+-- Índice compuesto (si aplica)
+CREATE NONCLUSTERED INDEX IX_NombreTabla_Fecha_Activo
+    ON dbo.NombreTabla (FechaCreacion DESC, Activo ASC);
+GO
+
+
+
 
 
 
