@@ -1,3 +1,37 @@
+rngCopia.Copy
+
+    ' Forzamos formato HTML para que se pegue como celdas reales,
+    ' no como objeto/imagen vinculada (que es lo que causaba el problema)
+    wsTemp.Activate
+    wsTemp.Range("A1").Select
+
+    On Error Resume Next
+    wsTemp.PasteSpecial Format:="HTML"
+    If Err.Number <> 0 Then
+        Err.Clear
+        wsTemp.PasteSpecial Format:="Unicode Text"
+    End If
+    On Error GoTo 0
+
+    ' Por seguridad, eliminamos cualquier objeto/imagen residual
+    ' que se haya pegado además del texto
+    Dim shp As Object
+    For Each shp In wsTemp.Shapes
+        shp.Delete
+    Next shp
+
+    Application.CutCopyMode = False
+
+
+
+
+
+
+
+
+
+
+
 
 rngCopia.Copy
 
