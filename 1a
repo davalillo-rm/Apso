@@ -1,3 +1,30 @@
+'==========================================================
+' Devuelve la fecha T-1 (día hábil anterior), saltando
+' sábados y domingos. Si hoy es lunes, regresa el viernes.
+'==========================================================
+Function ObtenerFechaT1(fechaHoy As Date) As Date
+    Dim f As Date
+    f = fechaHoy - 1
+    Select Case Weekday(f, vbSunday)
+        Case 1 ' domingo
+            f = f - 2
+        Case 7 ' sábado
+            f = f - 1
+    End Select
+    ObtenerFechaT1 = f
+End Function
+
+
+
+
+
+
+
+
+
+
+
+
 Option Explicit
 
 '==========================================================
