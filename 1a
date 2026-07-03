@@ -1,0 +1,147 @@
+Option Explicit
+
+'==========================================================
+' MACRO: ImportarEoD
+' Busca el correo "EoD dd.mm.yy" de HOY en Outlook, copia
+' todas las tablas del cuerpo del correo (desde la primera
+' hasta la última, respetando los espacios entre ellas),
+' detecta si es Formato A o B, aplica las operaciones
+' correspondientes y pega los resultados en las hojas
+' "Tablas" y "Correo" de este libro (Overview.xlsm).
+'==========================================================
+
+Sub ImportarEoD()
+
+    Dim olApp As Object, olNS As Object, olInbox As Object, olItems As Object, olMail As Object
+    Dim wsTemp As Worksheet, wsTablas As Worksheet, wsCorreo As Worksheet
+    Dim fechaBuscar As String
+    Dim encontrado As Boolean
+    Dim i As Long
+    Dim insp As Object, doc As Object, rngCopia As Object
+    Dim esFormatoA As Boolean
+    Dim found As Range
+
+    fechaBuscar = "EoD " & Format(Date, "dd.mm.yy")
+
+    ' --- Conectar a Outlook (usa la sesión abierta si existe) ---
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    On Error GoTo 0
+    If olApp Is Nothing Then
+        Set olApp = CreateObject("Outlook.Application")
+    End If
+
+    Set olNS = olApp.GetNamespace("MAPI")
+    Set olInbox = olNS.GetDefaultFolder(6) ' 6 = olFolderInbox
+    Set olItems = olInbox.Items
+    olItems.Sort "[ReceivedTime]", True ' más reciente primero
+
+    ' --- Buscar el correo de hoy por asunto ---
+    encontrado = False
+    For i = 1 To olItems.Count
+        If olItems(i).Class = 43 Then ' 43 = olMail
+            If InStr(1, olItems(i).Subject, fechaBuscar, vbTextCompare) > 0 Then
+                Set olMail = olItems(i)
+                encontrado = True
+                Exit For
+            End If
+        End If
+    Next i
+
+    If Not encontrado Then
+        MsgBox "No se encontró el correo '" & fechaBuscar & "' en la bandeja de entrada.", vbExclamation, "EoD no encontrado"
+        Exit Sub
+    End If
+
+    ' --- Preparar hoja temporal ---
+    Application.DisplayAlerts = False
+    On Error Resume Next
+    ThisWorkbook.Sheets("Temp_EoD").Delete
+    On Error GoTo 0
+    Application.DisplayAlerts = True
+
+    Set wsTemp = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+    wsTemp.Name = "Temp_EoD"
+
+    ' --- Abrir el correo y copiar TODAS las tablas del cuerpo ---
+    Set insp = olMail.GetInspector
+    Set doc = insp.WordEditor
+
+    If doc.Tables.Count = 0 Then
+        MsgBox "El correo no contiene ninguna tabla reconocible.", vbExclamation
+        insp.Close 1 ' 1 = olDiscard, no guarda cambios en el correo
+        GoTo Limpieza
+    End If
+
+    ' Rango desde el inicio de la 1ra tabla hasta el final de la última,
+    ' preservando los espacios en blanco entre tablas
+    Set rngCopia = doc.Range(Start:=doc.Tables(1).Range.Start, _
+                              End:=doc.Tables(doc.Tables.Count).Range.End)
+    rngCopia.Copy
+
+    wsTemp.Range("A1").PasteSpecial Paste:=xlPasteAll
+    Application.CutCopyMode = False
+
+    insp.Close 1 ' cerrar sin guardar cambios en el correo original
+
+    ' --- Detectar formato ---
+    ' Ancla: "P&L FX @" solo aparece en Formato A (el número de tipo de cambio varía a diario)
+    esFormatoA = False
+    Set found = wsTemp.Cells.Find(What:="P&L FX @", LookAt:=xlPart, MatchCase:=False)
+    If Not found Is Nothing Then esFormatoA = True
+
+    Set wsTablas = ThisWorkbook.Sheets("Tablas")
+    Set wsCorreo = ThisWorkbook.Sheets("Correo")
+
+    If esFormatoA Then
+        ' ---------- FORMATO A ----------
+        wsTablas.Range("AF41").Value = LimpiarNumero(wsTemp.Range("D24").Value) / 1000
+        wsTablas.Range("AF42").Value = (LimpiarNumero(wsTemp.Range("F24").Value) + LimpiarNumero(wsTemp.Range("E65").Value)) / 1000
+        wsTablas.Range("AF43").Value = LimpiarNumero(wsTemp.Range("E24").Value) / 1000
+        wsTablas.Range("L67").Value = (LimpiarNumero(wsTemp.Range("D31").Value) + LimpiarNumero(wsTemp.Range("D32").Value)) / 1000
+
+        wsCorreo.Range("F7").Value = LimpiarNumero(wsTemp.Range("C65").Value)
+        wsCorreo.Range("F8").Value = LimpiarNumero(wsTemp.Range("C41").Value)
+        wsCorreo.Range("F9").Value = LimpiarNumero(wsTemp.Range("C24").Value)
+    Else
+        ' ---------- FORMATO B ----------
+        wsTablas.Range("AF41").Value = LimpiarNumero(wsTemp.Range("C37").Value) / 1000000
+        wsTablas.Range("AF42").Value = (LimpiarNumero(wsTemp.Range("E37").Value) + LimpiarNumero(wsTemp.Range("D62").Value)) / 1000000
+        wsTablas.Range("AF43").Value = LimpiarNumero(wsTemp.Range("D37").Value) / 1000000
+        wsTablas.Range("L67").Value = (LimpiarNumero(wsTemp.Range("C13").Value) + LimpiarNumero(wsTemp.Range("C14").Value)) / 1000000
+
+        wsCorreo.Range("F7").Value = LimpiarNumero(wsTemp.Range("B62").Value)
+        wsCorreo.Range("F8").Value = LimpiarNumero(wsTemp.Range("B20").Value)
+        wsCorreo.Range("F9").Value = LimpiarNumero(wsTemp.Range("B37").Value)
+    End If
+
+    MsgBox "Datos de '" & fechaBuscar & "' (" & IIf(esFormatoA, "Formato A", "Formato B") & ") importados correctamente.", vbInformation, "Importación completa"
+
+Limpieza:
+    Application.DisplayAlerts = False
+    On Error Resume Next
+    wsTemp.Delete
+    On Error GoTo 0
+    Application.DisplayAlerts = True
+
+End Sub
+
+'==========================================================
+' Convierte a Double un valor de celda que puede venir con
+' espacios entre el signo y el número (ej. "-            31529")
+' o con espacios no-rompibles pegados desde Outlook/Word.
+'==========================================================
+Function LimpiarNumero(valorCelda As Variant) As Double
+    Dim s As String
+    s = CStr(valorCelda)
+    s = Trim(s)
+    s = Replace(s, Chr(160), "")   ' espacio no-rompible
+    s = Replace(s, " ", "")        ' espacios normales
+    s = Replace(s, ",", "")        ' separador de miles, si lo hubiera
+
+    If s = "" Or s = "-" Or s = "." Then
+        LimpiarNumero = 0
+    Else
+        LimpiarNumero = Val(s)
+    End If
+End Function
