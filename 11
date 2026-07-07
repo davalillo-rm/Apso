@@ -1,3 +1,141 @@
+'==========================================================
+' MACRO: ImportarLibroDiarioGCM
+' Busca el correo "Libro Diario GCM yyyymmdd" (T-1) en
+' Outlook, abre el adjunto de Excel (evitando confundirlo
+' con otros adjuntos como imágenes de firma), copia como
+' VALOR ciertas celdas de la hoja "Face" hacia la hoja
+' "Tablas" de este libro, y borra el adjunto temporal.
+'==========================================================
+
+Sub ImportarLibroDiarioGCM()
+
+    Dim olApp As Object, olNS As Object, olInbox As Object, olItems As Object, olMail As Object
+    Dim fechaT1 As Date, asuntoBuscar As String
+    Dim encontrado As Boolean
+    Dim i As Long, j As Integer, k As Integer
+    Dim rutaTemp As String
+    Dim wbAdj As Workbook
+    Dim wsFace As Worksheet, wsTablas As Worksheet
+    Dim extsValidas As Variant
+    Dim extAdj As String
+    Dim attExcel As Object
+
+    fechaT1 = ObtenerFechaT1(Date)
+    asuntoBuscar = "Libro Diario GCM " & Format(fechaT1, "yyyymmdd")
+
+    ' --- Conectar a Outlook ---
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    On Error GoTo 0
+    If olApp Is Nothing Then
+        Set olApp = CreateObject("Outlook.Application")
+    End If
+
+    Set olNS = olApp.GetNamespace("MAPI")
+    Set olInbox = olNS.GetDefaultFolder(6) ' olFolderInbox
+    Set olItems = olInbox.Items
+    olItems.Sort "[ReceivedTime]", True
+
+    ' --- Buscar el correo por asunto ---
+    encontrado = False
+    For i = 1 To olItems.Count
+        If olItems(i).Class = 43 Then ' olMail
+            If InStr(1, olItems(i).Subject, asuntoBuscar, vbTextCompare) > 0 Then
+                Set olMail = olItems(i)
+                encontrado = True
+                Exit For
+            End If
+        End If
+    Next i
+
+    If Not encontrado Then
+        MsgBox "No se encontró el correo '" & asuntoBuscar & "'.", vbExclamation
+        Exit Sub
+    End If
+
+    If olMail.Attachments.Count = 0 Then
+        MsgBox "El correo no tiene ningún archivo adjunto.", vbExclamation
+        Exit Sub
+    End If
+
+    ' --- Buscar el primer adjunto que sea realmente un archivo de Excel ---
+    ' (evita tomar por error una imagen de firma u otro adjunto)
+    extsValidas = Array(".xlsx", ".xlsm", ".xlsb", ".xls")
+    Set attExcel = Nothing
+
+    For j = 1 To olMail.Attachments.Count
+        extAdj = LCase(Right(olMail.Attachments(j).FileName, 5))
+        For k = 0 To UBound(extsValidas)
+            If InStr(extAdj, extsValidas(k)) > 0 Then
+                Set attExcel = olMail.Attachments(j)
+                Exit For
+            End If
+        Next k
+        If Not attExcel Is Nothing Then Exit For
+    Next j
+
+    If attExcel Is Nothing Then
+        MsgBox "No se encontró ningún adjunto con extensión de Excel en el correo.", vbExclamation
+        Exit Sub
+    End If
+
+    rutaTemp = Environ("TEMP") & "\" & attExcel.FileName
+    attExcel.SaveAsFile rutaTemp
+
+    ' --- Abrir el adjunto en modo solo lectura ---
+    Application.ScreenUpdating = False
+    Set wbAdj = Workbooks.Open(rutaTemp, UpdateLinks:=0, ReadOnly:=True)
+
+    On Error Resume Next
+    Set wsFace = wbAdj.Sheets("Face")
+    On Error GoTo 0
+
+    If wsFace Is Nothing Then
+        Dim nombresHojas As String
+        Dim sh As Object
+        For Each sh In wbAdj.Sheets
+            nombresHojas = nombresHojas & sh.Name & vbNewLine
+        Next sh
+        MsgBox "El adjunto '" & attExcel.FileName & "' no tiene una hoja llamada 'Face'." & vbNewLine & vbNewLine & _
+               "Hojas encontradas:" & vbNewLine & nombresHojas, vbExclamation
+        wbAdj.Close SaveChanges:=False
+        GoTo LimpiezaArchivo
+    End If
+
+    ' --- Copiar valores a la hoja Tablas ---
+    Set wsTablas = ThisWorkbook.Sheets("Tablas")
+
+    wsTablas.Range("AJ7").Value = wsFace.Range("P485").Value
+    wsTablas.Range("AK7").Value = wsFace.Range("AB485").Value
+    wsTablas.Range("AL7").Value = wsFace.Range("AC485").Value
+    wsTablas.Range("AM7").Value = wsFace.Range("AD485").Value
+    wsTablas.Range("AN7").Value = wsFace.Range("AE485").Value
+    wsTablas.Range("AO7").Value = wsFace.Range("AF485").Value
+    wsTablas.Range("AP7").Value = wsFace.Range("AG485").Value
+    wsTablas.Range("AQ7").Value = wsFace.Range("AH485").Value
+    wsTablas.Range("AR7").Value = wsFace.Range("AI485").Value
+    wsTablas.Range("AS7").Value = wsFace.Range("AJ485").Value
+    wsTablas.Range("AT7").Value = wsFace.Range("AO485").Value
+
+    wbAdj.Close SaveChanges:=False
+
+    MsgBox "Libro Diario GCM (" & Format(fechaT1, "dd/mm/yyyy") & ") importado correctamente.", vbInformation
+
+LimpiezaArchivo:
+    Application.ScreenUpdating = True
+    On Error Resume Next
+    Kill rutaTemp
+    On Error GoTo 0
+
+End Sub
+
+
+
+
+
+
+
+
 
 
 
