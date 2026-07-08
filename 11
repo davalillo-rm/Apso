@@ -1,4 +1,220 @@
 
+
+import pandas as pd
+import re
+from datetime import date
+from datetime import datetime
+import os
+
+
+fecha_analisis = date(2026, 7, 6)
+
+
+pd.set_option("display.float_format", lambda x: f"{x:.10f}".rstrip("0").rstrip("."))
+
+from datetime import date, timedelta
+
+def ajustar_a_laborable(fecha):
+    while fecha.weekday() >= 5:  # sábado o domingo
+        fecha -= timedelta(days=1)
+    return fecha
+
+def restar_dias_laborables(fecha, n):
+    resultado = fecha
+    cont = 0
+    while cont < n:
+        resultado -= timedelta(days=1)
+        if resultado.weekday() < 5:
+            cont += 1
+    return resultado
+
+def formatear_fecha_ddmmyy(fecha):
+    return fecha.strftime("%y%m%d")
+
+def crear_variables_archivos(fecha_analisis, prefijo_archivo, nombre_variable_base, cantidad=5):
+    """
+    Crea variables tipo:
+    archivo_VaR1 = "VaR260226.csv"
+    archivo_VaR2 = "VaR260225.csv"
+    """
+
+    fecha_base = ajustar_a_laborable(fecha_analisis)
+
+    for i in range(1, cantidad + 1):
+        fecha_i = restar_dias_laborables(fecha_base, i - 1)
+        fecha_str = formatear_fecha_ddmmyy(fecha_i)
+
+        nombre_variable = f"{nombre_variable_base}{i}"
+        nombre_archivo = f"{prefijo_archivo}{fecha_str}.csv"
+
+        globals()[nombre_variable] = nombre_archivo
+
+
+crear_variables_archivos(fecha_analisis, "VaR", "archivo_VaR")
+crear_variables_archivos(fecha_analisis, "fxVaR", "archivo_fxVaR")
+crear_variables_archivos(fecha_analisis, "intVaR", "archivo_intVaR")
+
+
+def clasificar_tipo_producto(df: pd.DataFrame) -> pd.DataFrame:
+    def tipo_producto(row):
+        deal = str(row.get("Deal", "")).upper()
+        currency = str(row.get("Currency", "")).upper()
+
+        if deal.endswith("FXSPT"):
+            return "CASH"
+        if deal.startswith("CD"):
+            return "CD"
+        if deal.startswith("KONDORPERU.CCS"):
+            return "CCS"
+        if "KONDORPERU.FX" in deal:
+            return "Forward"
+        if "KONDORPERU.IRS" in deal:
+            return "IRS_USD" if currency == "USD" else "IRS_PEN"
+        if "KONDORPERU.SP" in deal:
+            return "Spot"
+        if deal.startswith("PERUGB"):
+            return "SOBERANOS"
+        if deal.startswith("PERU") and not deal.startswith("PERUGB"):
+            return "Global"
+        return "OTRO"
+
+    df["Tipo de Producto"] = df.apply(tipo_producto, axis=1)
+
+    # --- Revisión especial de Forwards con alguna pata en moneda distinta de USD/PEN ---
+    es_forward = df["Tipo de Producto"] == "Forward"
+    if es_forward.any():
+        forwards = df.loc[es_forward].copy()
+        forwards["Deal_base"] = forwards["Deal"].astype(str).str.upper().str.replace(
+            r"_(PAY|REC)$", "", regex=True
+        )
+        forwards["Currency"] = forwards["Currency"].astype(str).str.upper()
+
+        # True = alguna pata del deal no es USD ni PEN
+        monedas_por_deal = forwards.groupby("Deal_base")["Currency"].apply(
+            lambda monedas: not monedas.isin(["USD", "PEN"]).all()
+        )
+
+        deals_otra_moneda = monedas_por_deal[monedas_por_deal].index
+
+        deal_base_full = df["Deal"].astype(str).str.upper().str.replace(
+            r"_(PAY|REC)$", "", regex=True
+        )
+        mask_otra_moneda = es_forward & deal_base_full.isin(deals_otra_moneda)
+
+        df.loc[mask_otra_moneda, "Tipo de Producto"] = "Forward Otra Moneda"
+
+    cols = df.columns.tolist()
+    cols.insert(1, cols.pop(cols.index("Tipo de Producto")))
+    df = df[cols]
+
+    return df
+
+
+def cuarta_fecha_menor_total(path_csv):
+    df = pd.read_csv(path_csv)
+    patron_fecha = re.compile(r"\d{2}/\d{2}/\d{4}")
+    columnas_fechas = [col for col in df.columns if patron_fecha.fullmatch(str(col))]
+
+    if len(columnas_fechas) < 4:
+        raise ValueError("No hay al menos 4 columnas de fechas")
+
+    df[columnas_fechas] = df[columnas_fechas].apply(pd.to_numeric, errors="coerce")
+
+    totales = df[columnas_fechas].sum()
+
+    totales_ordenados = totales.sort_values()
+
+    cuarta_fecha = totales_ordenados.index[3]
+
+    return cuarta_fecha
+
+
+os.chdir(r"R:/RScripts/VaR Report/inputs")
+
+fecha_VaR = cuarta_fecha_menor_total(archivo_VaR1)  # 4to peor
+print(fecha_VaR)
+
+
+portafolio = pd.read_csv(archivo_VaR1)  # MOVA
+VaR_total = clasificar_tipo_producto(portafolio)
+VaR_FX = pd.read_csv(archivo_fxVaR1)
+VaR_FX = clasificar_tipo_producto(VaR_FX)  # MOVA
+VaR_FI = pd.read_csv(archivo_intVaR1)
+VaR_FI = clasificar_tipo_producto(VaR_FI)  # MOVA
+
+VaR_2 = VaR_total.loc[:, ["Portfolio", "Type", "Tipo de Producto", fecha_VaR]].copy()
+VaR_2.columns = ["Portfolio", "Type", "Tipo de Producto", "VaR_total"]
+VaR_2["VaR_total"] = pd.to_numeric(VaR_2["VaR_total"], errors="coerce").fillna(0)
+VaR_3 = VaR_2.groupby(["Portfolio", "Type", "Tipo de Producto"], as_index=False).agg(VaR_total=("VaR_total", "sum"))
+
+VaR_FX2 = VaR_FX.loc[:, ["Portfolio", "Type", "Tipo de Producto", fecha_VaR]].copy()
+VaR_FX2.columns = ["Portfolio", "Type", "Tipo de Producto", "VaR_factor_FX"]
+VaR_FX2["VaR_factor_FX"] = pd.to_numeric(VaR_FX2["VaR_factor_FX"], errors="coerce").fillna(0)
+VaR_FX3 = VaR_FX2.groupby(["Portfolio", "Type", "Tipo de Producto"], as_index=False).agg(VaR_factor_FX=("VaR_factor_FX", "sum"))
+
+VaR_FI2 = VaR_FI.loc[:, ["Portfolio", "Type", "Tipo de Producto", fecha_VaR]].copy()
+VaR_FI2.columns = ["Portfolio", "Type", "Tipo de Producto", "VaR_factor_FI"]
+VaR_FI2["VaR_factor_FI"] = pd.to_numeric(VaR_FI2["VaR_factor_FI"], errors="coerce").fillna(0)
+VaR_FI3 = VaR_FI2.groupby(["Portfolio", "Type", "Tipo de Producto"], as_index=False).agg(VaR_factor_FI=("VaR_factor_FI", "sum"))
+
+VaR_Factor = VaR_3.merge(VaR_FI3, on=["Portfolio", "Type", "Tipo de Producto"], how="left")
+VaR_Factor = VaR_Factor.merge(VaR_FX3, on=["Portfolio", "Type", "Tipo de Producto"], how="left")
+VaR_Factor["VaR_factor_FI"] = VaR_Factor["VaR_factor_FI"].fillna(0)
+VaR_Factor["VaR_factor_FX"] = VaR_Factor["VaR_factor_FX"].fillna(0)
+VaR_Factor1 = VaR_Factor.copy()
+VaR_Factor1["VaR_otros_factores"] = VaR_Factor1["VaR_total"] - VaR_Factor1["VaR_factor_FI"] - VaR_Factor1["VaR_factor_FX"]
+VaR_Factor1["Fecha"] = datetime.strptime(re.search(r"\d{6}", archivo_VaR1).group(0), "%y%m%d").date()
+
+
+# ============================================================
+# === Evidencia para Renato: detalle por Deal, Forward Otra Moneda ===
+# ============================================================
+detalle_fi = VaR_FI.loc[
+    VaR_FI["Tipo de Producto"] == "Forward Otra Moneda",
+    ["Deal", "Portfolio", "Type", fecha_VaR]
+].copy()
+
+detalle_fi["Deal_base"] = detalle_fi["Deal"].astype(str).str.upper().str.replace(
+    r"_(PAY|REC)$", "", regex=True
+)
+
+resumen_por_deal = detalle_fi.groupby("Deal_base", as_index=False)[fecha_VaR].sum()
+resumen_por_deal.columns = ["Deal", f"VaR_FI_neto_{fecha_VaR}"]
+resumen_por_deal = resumen_por_deal.sort_values(
+    by=f"VaR_FI_neto_{fecha_VaR}", ascending=False
+).reset_index(drop=True)
+
+fila_total = pd.DataFrame({
+    "Deal": ["TOTAL (suma que sale en el reporte agregado)"],
+    f"VaR_FI_neto_{fecha_VaR}": [resumen_por_deal[f"VaR_FI_neto_{fecha_VaR}"].sum()]
+})
+resumen_por_deal_final = pd.concat([resumen_por_deal, fila_total], ignore_index=True)
+
+
+os.chdir(r"R:/RScripts/VaR Report")
+
+with pd.ExcelWriter("TRIP Weekly VaR_.xlsx", engine="openpyxl") as writer:
+    VaR_Factor1.to_excel(writer, sheet_name="VaR_Factor1", index=False)
+    resumen_por_deal_final.to_excel(
+        writer, sheet_name="Detalle_FI_ForwardOtraMoneda", index=False
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ============================================================
 # === DIAGNÓSTICO NIVEL 2: valor crudo en archivo FI ===
 # ============================================================
