@@ -1,4 +1,31 @@
 
+# ============================================================
+# === DIAGNÓSTICO NIVEL 2: valor crudo en archivo FI ===
+# ============================================================
+print("Columna fecha_VaR usada:", repr(fecha_VaR))
+
+deals_otra_moneda_fi = VaR_FI.loc[
+    VaR_FI["Tipo de Producto"] == "Forward Otra Moneda",
+    ["Deal", "Portfolio", "Type", fecha_VaR]
+]
+print("=== Filas 'Forward Otra Moneda' en archivo FI, columna fecha_VaR ===")
+print(deals_otra_moneda_fi)
+
+print("=== Mismas filas, todas las columnas (para ver si hay más de una columna de fecha parecida) ===")
+print(VaR_FI.loc[VaR_FI["Tipo de Producto"] == "Forward Otra Moneda"].to_string())
+# ============================================================
+
+
+
+
+
+
+
+
+
+
+
+
 
 import pandas as pd
 import re
