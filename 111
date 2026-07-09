@@ -1,0 +1,269 @@
+/* ============================================================
+   SCRIPT: Consolidación de jerarquía de cuentas contables
+   OBJETIVO: Eliminar los CASE duplicados entre "vista balance" y
+             "vista resumen" reemplazándolos por una tabla de
+             referencia única (dbo.CuentaJerarquia).
+
+   ⚠️ IMPORTANTE — LEE ANTES DE EJECUTAR:
+   Esta tabla la armé con TODO lo que se alcanza a leer en tus
+   capturas. Pero el bloque de Nivel_4_Desc se corta en la foto
+   (justo antes de "4. NUEVO: El Semáforo DAX") y no tengo el
+   texto completo de tu "vista resumen" ni de "Comparación
+   Créditos". Es decir: es MUY probable que falten filas de
+   Nivel_4 que no llegué a ver.
+
+   Antes de reemplazar tus vistas originales:
+   1. Corre el script de validación al final de este archivo
+      (compara COUNT de WHEN originales vs filas insertadas aquí).
+   2. Si hay diferencia, mándame el resto de las fotos de
+      Nivel_4_Desc y Rol_Jerarquia y te actualizo los INSERT.
+   ============================================================ */
+
+-- ------------------------------------------------------------
+-- 1. TABLA DE JERARQUÍA
+-- ------------------------------------------------------------
+IF OBJECT_ID('dbo.CuentaJerarquia', 'U') IS NOT NULL
+    DROP TABLE dbo.CuentaJerarquia;
+
+CREATE TABLE dbo.CuentaJerarquia (
+    Prefijo           VARCHAR(20)   NOT NULL,   -- código o patrón a matchear
+    LargoMatch        INT           NOT NULL,   -- longitud del prefijo (para desempate)
+    Moneda_Grupo      CHAR(3)       NOT NULL,   -- 'PEN', 'USD', 'AMB' (aplica a ambos)
+    Nivel_1_Desc      VARCHAR(20)   NULL,       -- ACTIVO / PASIVO
+    Nivel_2_Codigo    VARCHAR(4)    NULL,       -- '1100', '1200', etc.
+    Nivel_2_Desc      VARCHAR(80)   NULL,       -- '1100 - DISPONIBLE'
+    Nivel_Resumen     VARCHAR(60)   NULL,       -- version colapsada (16-19, 28-29)
+    Nivel_3_Codigo    VARCHAR(4)    NULL,
+    Nivel_3_Desc_Base VARCHAR(80)   NULL,       -- solo el nombre, sin código
+    Nivel_4_Codigo    VARCHAR(20)   NULL,
+    Nivel_4_Desc_Base VARCHAR(100)  NULL,
+    Rol_Jerarquia     VARCHAR(10)   NULL,       -- Padre / Hijo / Normal
+    PRIMARY KEY (Prefijo, Moneda_Grupo)
+);
+GO
+
+-- ------------------------------------------------------------
+-- 2. NIVEL 2 / NIVEL RESUMEN (prefijo de 2 dígitos)
+--    Confirmado en ambas queries (vista balance y vista resumen)
+-- ------------------------------------------------------------
+INSERT INTO dbo.CuentaJerarquia (Prefijo, LargoMatch, Moneda_Grupo, Nivel_1_Desc, Nivel_2_Codigo, Nivel_2_Desc, Nivel_Resumen)
+VALUES
+('11', 2, 'AMB', 'ACTIVO', '1100', '1100 - DISPONIBLE',                       'DISPONIBLE'),
+('12', 2, 'AMB', 'ACTIVO', '1200', '1200 - FDOS INTERBANCARIOS',              'FONDOS INTERBANCARIOS'),
+('13', 2, 'AMB', 'ACTIVO', '1300', '1300 - INVERSIONES NEG Y A VENCIMIENTO',  'INVERSIONES NEG Y A VENCIMIENTO'),
+('14', 2, 'AMB', 'ACTIVO', '1400', '1400 - CREDITOS',                        'CREDITOS'),
+('15', 2, 'AMB', 'ACTIVO', '1500', '1500 - CUENTAS POR COBRAR',              'CUENTAS POR COBRAR'),
+('16', 2, 'AMB', 'ACTIVO', '1600', '1600 - BIENES REALIZABLES',              'OTROS ACTIVOS'),
+('17', 2, 'AMB', 'ACTIVO', '1700', '1700 - INV EN SUBSIDIARIAS Y ASOCIADAS', 'OTROS ACTIVOS'),
+('18', 2, 'AMB', 'ACTIVO', '1800', '1800 - INMUEBLES MOBILIARIO Y EQUIPO',   'OTROS ACTIVOS'),
+('19', 2, 'AMB', 'ACTIVO', '1900', '1900 - OTROS ACTIVOS',                   'OTROS ACTIVOS'),
+('21', 2, 'AMB', 'PASIVO', '2100', '2100 - OBLIGACIONES CON EL PUBLICO',     'OBLIGACIONES CON EL PUBLICO'),
+('22', 2, 'AMB', 'PASIVO', '2200', '2200 - FDOS INTERBANCARIOS',             'FDOS INTERBANCARIOS'),
+('23', 2, 'AMB', 'PASIVO', '2300', '2300 - DEP EMP SIST FIN Y ORG FIN INTERNA','DEP EMP SIST FIN Y ORG FIN INTERNA'),
+('24', 2, 'AMB', 'PASIVO', '2400', '2400 - ADEUDOS Y OBLIG FINANC A C/PLAZO','ADEUDOS Y OBLIG FINANC A C/PLAZO'),
+('25', 2, 'AMB', 'PASIVO', '2500', '2500 - CUENTAS POR PAGAR',               'CUENTAS POR PAGAR'),
+('26', 2, 'AMB', 'PASIVO', '2600', '2600 - ADEUDOS Y OBLIG FINANC A L/PLAZO','ADEUDOS Y OBLIG FINANC A L/PLAZO'),
+('27', 2, 'AMB', 'PASIVO', '2700', '2700 - PROVISIONES',                    'PROVISIONES'),
+('28', 2, 'AMB', 'PASIVO', '2800', '2800 - VAL TITULOS-OBLIGAC EN CIRCULACION','OTROS PASIVOS'),
+('29', 2, 'AMB', 'PASIVO', '2900', '2900 - OTROS PASIVOS',                  'OTROS PASIVOS');
+GO
+
+-- ------------------------------------------------------------
+-- 3. NIVEL 3 (prefijo de 4 dígitos, par PEN/USD -> misma descripción)
+--    Se guarda UNA fila por código real (PEN y USD distintos),
+--    ambas apuntando al mismo Nivel_3_Desc_Base.
+-- ------------------------------------------------------------
+INSERT INTO dbo.CuentaJerarquia (Prefijo, LargoMatch, Moneda_Grupo, Nivel_3_Codigo, Nivel_3_Desc_Base)
+VALUES
+('1111', 4, 'PEN', '1111', 'CAJA'), ('1121', 4, 'USD', '1111', 'CAJA'),
+('1112', 4, 'PEN', '1112', 'BCO CTRAL RESERVA DEL PERU'), ('1122', 4, 'USD', '1112', 'BCO CTRAL RESERVA DEL PERU'),
+('1113', 4, 'PEN', '1113', 'BCOS Y OTRAS EMP SIST FIN PAIS'), ('1123', 4, 'USD', '1113', 'BCOS Y OTRAS EMP SIST FIN PAIS'),
+('1114', 4, 'PEN', '1114', 'BCOS Y OT INST FIN DEL EXTERIOR'), ('1124', 4, 'USD', '1114', 'BCOS Y OT INST FIN DEL EXTERIOR'),
+('1115', 4, 'PEN', '1115', 'CANJE'), ('1125', 4, 'USD', '1115', 'CANJE'),
+('1117', 4, 'PEN', '1117', 'DISPONIBLE RESTRINGIDO'), ('1127', 4, 'USD', '1117', 'DISPONIBLE RESTRINGIDO'),
+('1118', 4, 'PEN', '1118', 'REND DEV DEL DISPONIBLE'), ('1128', 4, 'USD', '1118', 'REND DEV DEL DISPONIBLE'),
+('1312', 4, 'PEN', '1312', 'INV VALOR RAZONABLE CR DPV DEUDA'), ('1322', 4, 'USD', '1312', 'INV VALOR RAZONABLE CR DPV DEUDA'),
+('1313', 4, 'PEN', '1313', 'INV VALOR RAZONABLE DPV CAPITAL'), ('1323', 4, 'USD', '1313', 'INV VALOR RAZONABLE DPV CAPITAL'),
+('1314', 4, 'PEN', '1314', 'INV DPV INSTR REPRESEN DEUDA'), ('1324', 4, 'USD', '1314', 'INV DPV INSTR REPRESEN DEUDA'),
+('1411', 4, 'PEN', '1411', 'CREDITOS VIGENTES'), ('1421', 4, 'USD', '1411', 'CREDITOS VIGENTES'),
+('1414', 4, 'PEN', '1414', 'REFINANCIADOS'), ('1424', 4, 'USD', '1414', 'REFINANCIADOS'),
+('1415', 4, 'PEN', '1415', 'CREDITOS VENCIDOS'), ('1425', 4, 'USD', '1415', 'CREDITOS VENCIDOS'),
+('1416', 4, 'PEN', '1416', 'CRED EN COBRANZA JUDICIAL'), ('1426', 4, 'USD', '1416', 'CRED EN COBRANZA JUDICIAL'),
+('1418', 4, 'PEN', '1418', 'REND DEV DE CRED VIGENTES'), ('1428', 4, 'USD', '1418', 'REND DEV DE CRED VIGENTES'),
+('1419', 4, 'PEN', '1419', 'PROVISIONES PARA CREDITOS'), ('1429', 4, 'USD', '1419', 'PROVISIONES PARA CREDITOS'),
+('1512', 4, 'PEN', '1512', 'CTXCOB DE PROD FINANC DERIV NEGOCI'), ('1522', 4, 'USD', '1512', 'CTXCOB DE PROD FINANC DERIV NEGOCI'),
+('1514', 4, 'PEN', '1514', 'CTAS X COB VTA BS SERV Y FIDEICO'), ('1524', 4, 'USD', '1514', 'CTAS X COB VTA BS SERV Y FIDEICO'),
+('1515', 4, 'PEN', '1515', 'CTAS X COB PGOS EFECT CTA TERCE'), ('1525', 4, 'USD', '1515', 'CTAS X COB PGOS EFECT CTA TERCE'),
+('1516', 4, 'PEN', '1516', 'COMISIONES POR COBRAR'), ('1526', 4, 'USD', '1516', 'COMISIONES POR COBRAR'),
+('1517', 4, 'PEN', '1517', 'CTAS POR COBRAR DIVERSAS'), ('1527', 4, 'USD', '1517', 'CTAS POR COBRAR DIVERSAS'),
+('1519', 4, 'PEN', '1519', 'PROVIS PARA CTAS X COBRAR'), ('1529', 4, 'USD', '1519', 'PROVIS PARA CTAS X COBRAR'),
+('2113', 4, 'PEN', '2113', 'OBLIGAC POR CUENTAS A PLAZO'), ('2123', 4, 'USD', '2113', 'OBLIGAC POR CUENTAS A PLAZO'),
+('2512', 4, 'PEN', '2512', 'CXP PRODUCT FINANC DERIVADOS NEGOC'), ('2522', 4, 'USD', '2512', 'CXP PRODUCT FINANC DERIVADOS NEGOC'),
+('2514', 4, 'PEN', '2514', 'CUENTAS POR PAGAR DIVERSAS'), ('2524', 4, 'USD', '2514', 'CUENTAS POR PAGAR DIVERSAS');
+GO
+
+/* Caso especial 1918/1928 (Tesorería vs Trámite) — depende del
+   sufijo .07.04.07, NO solo del prefijo de 4. Este caso NO se
+   puede resolver con match simple de prefijo; hay que mantenerlo
+   como excepción explícita en la vista (ver sección 6). */
+
+-- ------------------------------------------------------------
+-- 4. NIVEL 4 (prefijos largos, 7/10/13/19 dígitos)
+--    ⚠️ INCOMPLETO: esto es solo lo que se alcanza a leer antes
+--    de que se corte la foto. Revisa el bloque "DISPONIBLE (11)"
+--    hasta "REPOS DE PASIVOS" — probablemente falten más filas
+--    de CUENTAS POR COBRAR, PASIVOS, etc. que no llegué a ver.
+-- ------------------------------------------------------------
+INSERT INTO dbo.CuentaJerarquia (Prefijo, LargoMatch, Moneda_Grupo, Nivel_4_Codigo, Nivel_4_Desc_Base)
+VALUES
+-- DISPONIBLE (11)
+('1112.01', 7, 'PEN', '1112.01', 'BCR CTA ORD'), ('1122.01', 7, 'USD', '1112.01', 'BCR CTA ORD'),
+('1112.04', 7, 'PEN', '1112.04', 'BCR DEPOSITOS OVERNIGHT'), ('1122.04', 7, 'USD', '1112.04', 'BCR DEPOSITOS OVERNIGHT'),
+('1112.09', 7, 'PEN', '1112.09', 'BCR DEPOSITOS A PLAZO'), ('1122.09', 7, 'USD', '1112.09', 'BCR DEPOSITOS A PLAZO'),
+('1117.02.09', 10, 'PEN', '1117.02.09', 'DISP RESTRIG OTROS FONDOS'), ('1127.02.09', 10, 'USD', '1117.02.09', 'DISP RESTRIG OTROS FONDOS'),
+('1117.02.09.05', 13, 'PEN', '1117.02.09.05', 'DISP RESTRIG OTROS FONDOS GTIA CCE'), ('1127.02.09.05', 13, 'USD', '1117.02.09.05', 'DISP RESTRIG OTROS FONDOS GTIA CCE'),
+-- INVERSIONES (13)
+('1312.01.01', 10, 'PEN', '1312.01.01', 'BONOS SOBERANOS'), ('1322.01.01', 10, 'USD', '1312.01.01', 'BONOS SOBERANOS'),
+('1312.01.01.02', 13, 'PEN', '1312.01.01.02', 'BONOS TESOROS AMERICANOS'), ('1322.01.01.02', 13, 'USD', '1312.01.01.02', 'BONOS TESOROS AMERICANOS'),
+('1312.02', 7, 'PEN', '1312.02', 'VAL-TIT EMIT POR BCOS CENTRALES'), ('1322.02', 7, 'USD', '1312.02', 'VAL-TIT EMIT POR BCOS CENTRALES'),
+('1314.01', 7, 'PEN', '1314.01', 'VAL Y TIT EMITIDOS POR GOBIERNOS'), ('1324.01', 7, 'USD', '1314.01', 'VAL Y TIT EMITIDOS POR GOBIERNOS'),
+('1314.02', 7, 'PEN', '1314.02', 'VAL-TIT EMIT POR BCOS CENTRALES'), ('1324.02', 7, 'USD', '1314.02', 'VAL-TIT EMIT POR BCOS CENTRALES'),
+('1314.10', 7, 'PEN', '1314.10', 'OPERACIONES DE REPORTE'), ('1324.10', 7, 'USD', '1314.10', 'OPERACIONES DE REPORTE'),
+-- CREDITOS (14)
+('1411.02', 7, 'PEN', '1411.02', 'COLOCACIONES MICROEMPRESAS'), ('1421.02', 7, 'USD', '1411.02', 'COLOCACIONES MICROEMPRESAS'),
+('1411.03', 7, 'PEN', '1411.03', 'COLOCACIONES CONSUMO'), ('1421.03', 7, 'USD', '1411.03', 'COLOCACIONES CONSUMO'),
+('1411.04', 7, 'PEN', '1411.04', 'COLOCACIONES HIPOTECARIOS'), ('1421.04', 7, 'USD', '1411.04', 'COLOCACIONES HIPOTECARIOS'),
+('1411.07', 7, 'PEN', '1411.07', 'COLOCACIONES SECTOR PUBLICO'), ('1421.07', 7, 'USD', '1411.07', 'COLOCACIONES SECTOR PUBLICO'),
+('1411.08', 7, 'PEN', '1411.08', 'COLOCACIONES INTERMEDIARIO DE VAL'), ('1421.08', 7, 'USD', '1411.08', 'COLOCACIONES INTERMEDIARIO DE VAL'),
+('1411.09', 7, 'PEN', '1411.09', 'PRESTAMOS A SISTEMA FINANCIERO'), ('1421.09', 7, 'USD', '1411.09', 'PRESTAMOS A SISTEMA FINANCIERO'),
+('1411.10', 7, 'PEN', '1411.10', 'COLOCACIONES CORPORATIVOS'), ('1421.10', 7, 'USD', '1411.10', 'COLOCACIONES CORPORATIVOS'),
+('1411.11', 7, 'PEN', '1411.11', 'COLOCACIONES GRANDES EMPRESAS'), ('1421.11', 7, 'USD', '1411.11', 'COLOCACIONES GRANDES EMPRESAS'),
+('1411.12', 7, 'PEN', '1411.12', 'COLOCACIONES MEDIANAS EMPRESAS'), ('1421.12', 7, 'USD', '1411.12', 'COLOCACIONES MEDIANAS EMPRESAS'),
+('1411.13', 7, 'PEN', '1411.13', 'COLOCACIONES PEQUEÑAS EMPRESAS'), ('1421.13', 7, 'USD', '1411.13', 'COLOCACIONES PEQUEÑAS EMPRESAS'),
+-- CUENTAS POR COBRAR (15)
+('1512.01', 7, 'PEN', '1512.01', 'DERIVADOS EN MONEDA EXTRANJERA'), ('1522.01', 7, 'USD', '1512.01', 'DERIVADOS EN MONEDA EXTRANJERA'),
+('1517.11', 7, 'PEN', '1517.11', 'CTAS X COB REPO'), ('1527.11', 7, 'USD', '1517.11', 'CTAS X COB REPO'),
+('1517.19.28', 10, 'PEN', '1517.19.28', 'CTAS X INVERSIONES TRADING'), ('1527.19.28', 10, 'USD', '1517.19.28', 'CTAS X INVERSIONES TRADING'),
+-- PASIVOS
+('2113.05', 7, 'PEN', '2113.05', 'DEP COMPENSAC TIEMPO DE SERVICIOS'), ('2123.05', 7, 'USD', '2113.05', 'DEP COMPENSAC TIEMPO DE SERVICIOS'),
+('2512.01', 7, 'PEN', '2512.01', 'COMPRAS A FUTURO DE ME'), ('2522.01', 7, 'USD', '2512.01', 'COMPRAS A FUTURO DE ME'),
+('2514.12', 7, 'PEN', '2514.12', 'VENTAS EN CORTO (INVERSIONES)'), ('2524.12', 7, 'USD', '2514.12', 'VENTAS EN CORTO (INVERSIONES)'),
+('2514.19.28', 10, 'PEN', '2514.19.28', 'CXP INVERSIONES DE TRADING'), ('2524.19.28', 10, 'USD', '2514.19.28', 'CXP INVERSIONES DE TRADING'),
+-- REPOS DE PASIVOS (longitudes largas)
+('2514.11.01.01.02.01', 19, 'PEN', '2514.11.01.01.02.01', 'OPERAC VTA Y COMP RECOMP CREDITOS'), ('2524.11.01.01.02.01', 19, 'USD', '2514.11.01.01.02.01', 'OPERAC VTA Y COMP RECOMP CREDITOS'),
+('2514.11.01.01.02.02', 19, 'PEN', '2514.11.01.01.02.02', 'OPERAC VTA Y COMP RECOMP REACTIVA'), ('2524.11.01.01.02.02', 19, 'USD', '2514.11.01.01.02.02', 'OPERAC VTA Y COMP RECOMP REACTIVA'),
+('2514.11.01.01.01.04', 19, 'PEN', '2514.11.01.01.01.04', 'REPO VALORES CON EL BCRP'), ('2524.11.01.01.01.04', 19, 'USD', '2514.11.01.01.01.04', 'REPO VALORES CON EL BCRP'),
+('2514.11.09.01.01', 16, 'PEN', '2514.11.09.01.01', 'REPO VALORES CON OTRAS CONTRAPARTES'), ('2524.11.09.01.01', 16, 'USD', '2514.11.09.01.01', 'REPO VALORES CON OTRAS CONTRAPARTES'),
+('2514.11.02.01.01.04', 19, 'PEN', '2514.11.02.01.01.04', 'OPERAC VTA Y COMP RECOMP SF BONOS'), ('2524.11.02.01.01.04', 19, 'USD', '2514.11.02.01.01.04', 'OPERAC VTA Y COMP RECOMP SF BONOS'),
+('2514.11.02.01.01.01', 19, 'PEN', '2514.11.02.01.01.01', 'OPERAC VTA Y COMP RECOMP SF CERT D'), ('2524.11.02.01.01.01', 19, 'USD', '2514.11.02.01.01.01', 'OPERAC VTA Y COMP RECOMP SF CERT D'),
+('2514.11.01.03.01', 19, 'PEN', '2514.11.01.03.01', 'REPO MONEDAS'), ('2524.11.01.03.01', 19, 'USD', '2514.11.01.03.01', 'REPO MONEDAS');
+GO
+
+-- ------------------------------------------------------------
+-- 5. ROL_JERARQUIA (Padre / Hijo) — prefijos de 4 dígitos que
+--    tienen desglose. Confirmado en tu query original.
+-- ------------------------------------------------------------
+;WITH PadresHijos AS (
+    SELECT v FROM (VALUES
+        ('1112'),('1122'),('1117'),('1127'),('1312'),('1322'),('1314'),('1324'),
+        ('1411'),('1421'),('1512'),('1522'),('1517'),('1527'),
+        ('2113'),('2123'),('2512'),('2522'),('2514'),('2524')
+    ) AS x(v)
+)
+UPDATE cj
+SET Rol_Jerarquia = 'Hijo'
+FROM dbo.CuentaJerarquia cj
+JOIN PadresHijos ph ON cj.Prefijo LIKE ph.v + '.%';
+
+UPDATE dbo.CuentaJerarquia
+SET Rol_Jerarquia = 'Padre'
+WHERE LargoMatch = 4
+  AND Prefijo IN ('1112','1122','1117','1127','1312','1322','1314','1324',
+                   '1411','1421','1512','1522','1517','1527',
+                   '2113','2123','2512','2522','2514','2524');
+
+UPDATE dbo.CuentaJerarquia
+SET Rol_Jerarquia = 'Normal'
+WHERE Rol_Jerarquia IS NULL;
+GO
+
+-- ------------------------------------------------------------
+-- 6. VISTA REESCRITA (reemplaza tanto "vista balance" como
+--    "vista resumen" usando la misma tabla de origen)
+--    Usa CROSS APPLY con TOP 1 para que el match más largo/
+--    específico gane sobre el más corto (ej. Nivel_4 le gana a Nivel_3).
+-- ------------------------------------------------------------
+IF OBJECT_ID('dbo.vw_Balance_Jerarquizado', 'V') IS NOT NULL
+    DROP VIEW dbo.vw_Balance_Jerarquizado;
+GO
+
+CREATE VIEW dbo.vw_Balance_Jerarquizado AS
+SELECT
+    b.Fecha,
+    b.[Cuenta Moneda] AS Cuenta_Contable,
+    b.Descripcion     AS Nombre_Cuenta,
+
+    CASE WHEN b.Moneda = 0 THEN 'PEN'
+         WHEN b.Moneda = 91 THEN 'USD (91)'
+         WHEN b.Moneda = 92 THEN 'USD_Convertido_PEN 92'
+         ELSE 'OTRO' END                       AS Etiqueta_Moneda,
+
+    ((b.[Saldo Final] * -1.0) / 1000000.0)      AS Saldo_Millones,
+
+    n2.Nivel_1_Desc,
+    n2.Nivel_2_Desc,
+    n2.Nivel_Resumen,
+
+    -- Caso especial 1918/1928 Tesorería vs Trámite (no resuelto por tabla)
+    CASE WHEN SUBSTRING(b.[Cuenta Moneda],1,4) IN ('1918','1928') THEN
+            CASE WHEN b.[Cuenta Moneda] LIKE '____.07.04.07%'
+                 THEN '1918 - OPERACIONES DE TESORERIA'
+                 ELSE '1918 - OPERACIONES EN TRAMITE' END
+         ELSE
+            CASE WHEN b.Moneda = 91
+                 THEN STUFF(SUBSTRING(b.[Cuenta Moneda],1,4),3,1,'1') + ' - ' + n3.Nivel_3_Desc_Base
+                 ELSE SUBSTRING(b.[Cuenta Moneda],1,4) + ' - ' + n3.Nivel_3_Desc_Base END
+    END                                          AS Nivel_3_Desc,
+
+    n4.Nivel_4_Codigo + ' - ' + n4.Nivel_4_Desc_Base AS Nivel_4_Desc,
+
+    COALESCE(n4.Rol_Jerarquia, n3.Rol_Jerarquia, 'Normal') AS Rol_Jerarquia
+
+FROM dbo.RM_Balance_Historico b
+
+-- Nivel 2 / Resumen: match por 2 dígitos
+LEFT JOIN dbo.CuentaJerarquia n2
+    ON n2.Prefijo = SUBSTRING(b.[Cuenta Moneda],1,2)
+    AND n2.LargoMatch = 2
+
+-- Nivel 3: match por 4 dígitos, separado por moneda
+LEFT JOIN dbo.CuentaJerarquia n3
+    ON n3.Prefijo = SUBSTRING(b.[Cuenta Moneda],1,4)
+    AND n3.LargoMatch = 4
+
+-- Nivel 4: match del prefijo MÁS LARGO disponible (7/10/13/16/19)
+OUTER APPLY (
+    SELECT TOP 1 cj.Nivel_4_Codigo, cj.Nivel_4_Desc_Base, cj.Rol_Jerarquia
+    FROM dbo.CuentaJerarquia cj
+    WHERE cj.LargoMatch >= 7
+      AND LEFT(b.[Cuenta Moneda], cj.LargoMatch) = cj.Prefijo
+    ORDER BY cj.LargoMatch DESC
+) n4
+
+WHERE b.Moneda IN (0, 91);
+GO
+
+-- ------------------------------------------------------------
+-- 7. VALIDACIÓN — corre esto ANTES de borrar tus vistas viejas
+-- ------------------------------------------------------------
+-- 7a. Compara conteo de filas: vista vieja vs vista nueva (deben ser iguales)
+-- SELECT COUNT(*) FROM dbo.vw_Balance_Jerarquizado;
+-- SELECT COUNT(*) FROM dbo.[TU_VISTA_BALANCE_ORIGINAL];
+
+-- 7b. Busca cuentas que no encontraron match en Nivel_2 (no debería haber ninguna)
+-- SELECT DISTINCT [Cuenta Moneda] FROM dbo.RM_Balance_Historico b
+-- WHERE Moneda IN (0,91)
+--   AND NOT EXISTS (SELECT 1 FROM dbo.CuentaJerarquia n2 WHERE n2.Prefijo = SUBSTRING(b.[Cuenta Moneda],1,2) AND n2.LargoMatch=2);
+
+-- 7c. Compara los totales de Saldo_Millones agrupados por Nivel_Resumen,
+--     vista vieja vs vista nueva — deben cuadrar exactamente.
