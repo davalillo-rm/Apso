@@ -1,3 +1,135 @@
+"""
+Script lineal (sin funciones) que replica el SQL sobre base_depositos_validar_v4.
+No modifica el archivo de entrada, solo lo lee.
+
+DIFERENCIA vs. la versión anterior: aquí SÍ se aplica el filtro que en el SQL
+original estaba comentado:
+    --and left([cuenta contable],6) in (211109,212109) filtro para sacar los depositos vencidos
+
+Se aplica de forma LITERAL, es decir el resultado se queda SOLO con las filas
+donde left(cuenta contable,6) esté en (211109, 212109).
+"""
+
+import pandas as pd
+
+# =========================================================
+# RUTA DEL ARCHIVO - reemplaza con la ruta real en tu equipo
+# =========================================================
+RUTA_TXT = r""  # <-- coloca aquí la ruta completa a Envio_SBS.txt
+
+DELIMITADOR = "|"
+
+# -------------------------------------------------------------
+# PASO 1: Leer el .txt (intenta UTF-8, si falla usa latin-1)
+# -------------------------------------------------------------
+try:
+    df = pd.read_csv(RUTA_TXT, sep=DELIMITADOR, dtype=str, encoding="utf-8")
+except UnicodeDecodeError:
+    df = pd.read_csv(RUTA_TXT, sep=DELIMITADOR, dtype=str, encoding="latin-1")
+
+print("Filas leídas:", len(df))
+print("Columnas encontradas:", list(df.columns))
+
+# -------------------------------------------------------------
+# PASO 2: Nombres de columnas EXACTOS tal como están en el .txt
+# -------------------------------------------------------------
+col_cuenta = "Cuenta contable"
+col_moneda = "Moneda"
+col_saldo = "Saldo de los depositos"
+col_tc = "Tipo de cambio"
+col_id_depositante = "Identificador del depositante"
+col_tipo_contraparte = "Tipo de contraparte"
+col_detalle_pj = "Detalle de persona juridica"
+
+# -------------------------------------------------------------
+# PASO 3: FILTRO WHERE (aquí se aplica el filtro que estaba comentado)
+# WHERE 1=1
+# and left([cuenta contable],6) in (211109,212109)
+# -------------------------------------------------------------
+filas_antes = len(df)
+df = df[df[col_cuenta].str[:6].isin(["211109", "212109"])]
+print("Filas antes del filtro:", filas_antes)
+print("Filas después del filtro (left(cuenta,6) in 211109,212109):", len(df))
+
+# -------------------------------------------------------------
+# PASO 4: MONEDA
+# CASE WHEN [Moneda] = 1 THEN 'PEN' ELSE 'USD' END
+# -------------------------------------------------------------
+df["MONEDA"] = "USD"
+df.loc[df[col_moneda].str.strip() == "1", "MONEDA"] = "PEN"
+
+# -------------------------------------------------------------
+# PASO 5: PRODUCTO
+# CASE WHEN evaluado en orden (la primera condición que se cumpla gana)
+# -------------------------------------------------------------
+left4 = df[col_cuenta].str[:4]
+left6 = df[col_cuenta].str[:6]
+
+# Empezamos con PRODUCTO vacío (None), igual que un CASE sin ELSE -> NULL
+df["PRODUCTO"] = None
+
+# when left(cuenta,4) in ('2111','2121','2311','2321') -> 'VISTA'
+mask_vista = left4.isin(["2111", "2121", "2311", "2321"])
+df.loc[mask_vista & df["PRODUCTO"].isna(), "PRODUCTO"] = "VISTA"
+
+# when left(cuenta,4) in ('2112','2122','2312','2322') -> 'AHORRO'
+mask_ahorro = left4.isin(["2112", "2122", "2312", "2322"])
+df.loc[mask_ahorro & df["PRODUCTO"].isna(), "PRODUCTO"] = "AHORRO"
+
+# when left(cuenta,4) in ('2113','2123','2313','2323')
+#      and left(cuenta,6) not in ('211305','212305') -> 'PLAZO'
+mask_plazo = left4.isin(["2113", "2123", "2313", "2323"]) & ~left6.isin(["211305", "212305"])
+df.loc[mask_plazo & df["PRODUCTO"].isna(), "PRODUCTO"] = "PLAZO"
+
+# when left(cuenta,6) in ('211305','212305') -> 'CTS'
+mask_cts = left6.isin(["211305", "212305"])
+df.loc[mask_cts & df["PRODUCTO"].isna(), "PRODUCTO"] = "CTS"
+
+# when left(cuenta,4) in ('2117','2127') -> 'Restringidos'
+mask_restringidos = left4.isin(["2117", "2127"])
+df.loc[mask_restringidos & df["PRODUCTO"].isna(), "PRODUCTO"] = "Restringidos"
+
+# -------------------------------------------------------------
+# PASO 6: SALDO = CAST(saldo AS FLOAT) * CAST(tipo de cambio AS FLOAT)
+# -------------------------------------------------------------
+saldo_float = pd.to_numeric(df[col_saldo], errors="coerce")
+tc_float = pd.to_numeric(df[col_tc], errors="coerce")
+df["SALDO_CALC"] = saldo_float * tc_float
+
+# -------------------------------------------------------------
+# PASO 7: GROUP BY MONEDA, PRODUCTO, tipo de contraparte, detalle de persona juridica
+# SUM(SALDO_CALC) AS SALDO, COUNT(1) AS cant, COUNT(DISTINCT identificador) AS cant_cli
+# -------------------------------------------------------------
+grupo = df.groupby(
+    ["MONEDA", "PRODUCTO", col_tipo_contraparte, col_detalle_pj],
+    dropna=False,
+)
+
+saldo_por_grupo = grupo["SALDO_CALC"].sum()
+cant_por_grupo = grupo.size()
+cant_cli_por_grupo = grupo[col_id_depositante].nunique()
+
+resultado = pd.DataFrame({
+    "SALDO": saldo_por_grupo,
+    "cant": cant_por_grupo,
+    "cant_cli": cant_cli_por_grupo,
+}).reset_index()
+
+print(resultado)
+
+# Descomenta si quieres exportar el resultado:
+# resultado.to_excel(r"RUTA_DE_SALIDA.xlsx", index=False)
+
+
+
+
+
+
+
+
+
+
+
 
 """
 Script lineal (sin funciones) que replica el SQL sobre base_depositos_validar_v4.
