@@ -1,4 +1,162 @@
 
+"""
+Replica en Python el script SQL de clasificación de depósitos (base_depositos_validar_v4).
+
+Lógica replicada del SQL (WHERE 1=1, sin el filtro comentado de depósitos vencidos):
+
+    MONEDA:
+        Moneda = 1  -> 'PEN'
+        else        -> 'USD'
+
+    PRODUCTO (evaluado en este orden, como un CASE WHEN de SQL Server -
+    se aplica la PRIMERA condición que se cumpla):
+        left(cuenta contable,4) in (2111,2121,2311,2321)                                  -> 'VISTA'
+        left(cuenta contable,4) in (2112,2122,2312,2322)                                  -> 'AHORRO'
+        left(cuenta contable,4) in (2113,2123,2313,2323)
+            and left(cuenta contable,6) not in (211305,212305)                            -> 'PLAZO'
+        left(cuenta contable,6) in (211305,212305)                                        -> 'CTS'
+        left(cuenta contable,4) in (2117,2127)                                            -> 'Restringidos'
+        (ninguna condición cumplida)                                                      -> None (NULL en SQL)
+
+    SALDO   = SUM( CAST([saldo de los depositos] AS FLOAT) * CAST([Tipo de cambio] AS FLOAT) )
+    cant    = COUNT(1)                                              -> número de filas por grupo
+    cant_cli= COUNT(DISTINCT [identificador del depositante])       -> depositantes únicos por grupo
+
+    GROUP BY MONEDA, PRODUCTO, [tipo de contraparte], [detalle de persona juridica]
+
+Nota: el filtro
+    --and left([cuenta contable],6) in (211109,212109) filtro para sacar los depositos vencidos
+está comentado en el SQL original, por lo tanto NO se aplica aquí tampoco.
+"""
+
+import pandas as pd
+
+# =========================================================
+# RUTA DEL ARCHIVO - reemplaza con la ruta real en tu equipo
+# =========================================================
+RUTA_TXT = r""  # <-- coloca aquí la ruta completa a Envio_SBS.txt
+
+DELIMITADOR = "|"
+
+# Nombres de columnas EXACTOS tal como aparecen en el SQL / encabezado del txt
+COL_CUENTA = "cuenta contable"
+COL_MONEDA = "Moneda"
+COL_SALDO = "saldo de los depositos"
+COL_TC = "Tipo de cambio"
+COL_ID_DEPOSITANTE = "identificador del depositante"
+COL_TIPO_CONTRAPARTE = "tipo de contraparte"
+COL_DETALLE_PJ = "detalle de persona juridica"
+
+
+def leer_txt(ruta: str) -> pd.DataFrame:
+    """
+    Lee el .txt delimitado por '|'. Intenta UTF-8 primero;
+    si falla, reintenta con latin-1 (Windows-1252 fallback).
+    No modifica el archivo original, solo lo lee.
+    """
+    try:
+        df = pd.read_csv(
+            ruta,
+            sep=DELIMITADOR,
+            dtype=str,  # se leen todas las columnas como texto, igual que el CASE trabaja sobre texto (left())
+            encoding="utf-8",
+        )
+    except UnicodeDecodeError:
+        df = pd.read_csv(
+            ruta,
+            sep=DELIMITADOR,
+            dtype=str,
+            encoding="latin-1",
+        )
+    return df
+
+
+def clasificar_moneda(serie_moneda: pd.Series) -> pd.Series:
+    """CASE WHEN [Moneda] = 1 THEN 'PEN' ELSE 'USD' END"""
+    return serie_moneda.apply(lambda x: "PEN" if str(x).strip() == "1" else "USD")
+
+
+def clasificar_producto(serie_cuenta: pd.Series) -> pd.Series:
+    """
+    Replica el CASE WHEN de PRODUCTO evaluando las condiciones en el
+    mismo orden que el SQL (la primera condición verdadera gana).
+    """
+    left4 = serie_cuenta.str[:4]
+    left6 = serie_cuenta.str[:6]
+
+    vista_set = {"2111", "2121", "2311", "2321"}
+    ahorro_set = {"2112", "2122", "2312", "2322"}
+    plazo_4_set = {"2113", "2123", "2313", "2323"}
+    plazo_excl_6_set = {"211305", "212305"}
+    cts_set = {"211305", "212305"}
+    restringidos_set = {"2117", "2127"}
+
+    def _clasificar(l4, l6):
+        if l4 in vista_set:
+            return "VISTA"
+        if l4 in ahorro_set:
+            return "AHORRO"
+        if l4 in plazo_4_set and l6 not in plazo_excl_6_set:
+            return "PLAZO"
+        if l6 in cts_set:
+            return "CTS"
+        if l4 in restringidos_set:
+            return "Restringidos"
+        return None  # sin ELSE en el SQL -> NULL
+
+    return [
+        _clasificar(l4, l6) for l4, l6 in zip(left4, left6)
+    ]
+
+
+def main():
+    df = leer_txt(RUTA_TXT)
+
+    # --- Columnas derivadas (equivalentes al SELECT del SQL) ---
+    df["MONEDA"] = clasificar_moneda(df[COL_MONEDA])
+    df["PRODUCTO"] = clasificar_producto(df[COL_CUENTA])
+
+    # CAST(... AS FLOAT) * CAST(... AS FLOAT)
+    saldo_float = pd.to_numeric(df[COL_SALDO], errors="coerce")
+    tc_float = pd.to_numeric(df[COL_TC], errors="coerce")
+    df["_SALDO_CALC"] = saldo_float * tc_float
+
+    # --- GROUP BY MONEDA, PRODUCTO, tipo de contraparte, detalle de persona juridica ---
+    grupo = df.groupby(
+        ["MONEDA", "PRODUCTO", COL_TIPO_CONTRAPARTE, COL_DETALLE_PJ],
+        dropna=False,
+    )
+
+    resultado = grupo.agg(
+        SALDO=("_SALDO_CALC", "sum"),
+        cant=("_SALDO_CALC", "size"),  # COUNT(1) -> cuenta filas del grupo
+        cant_cli=(COL_ID_DEPOSITANTE, "nunique"),  # COUNT(DISTINCT identificador del depositante)
+    ).reset_index()
+
+    print(resultado)
+    return resultado
+
+
+if __name__ == "__main__":
+    resultado = main()
+    # Descomenta si quieres exportar el resultado:
+    # resultado.to_excel(r"RUTA_DE_SALIDA.xlsx", index=False)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import pandas as pd
 import re
