@@ -1,3 +1,49 @@
+
+Sub CopiarRangoComoImagenAFace()
+
+    Dim wsOrigen As Worksheet
+    Dim wsDestino As Worksheet
+    Dim rngOrigen As Range
+    Dim celdaDestino As Range
+    Dim shp As Shape
+    
+    ' Hoja activa donde está el rango a copiar (ajusta si es necesario)
+    Set wsOrigen = ActiveSheet
+    Set rngOrigen = wsOrigen.Range("A1:M18")
+    
+    Set wsDestino = ThisWorkbook.Sheets("Face")
+    Set celdaDestino = wsDestino.Range("B28")
+    
+    ' Elimina una imagen previa pegada en la misma posición (opcional, evita duplicados)
+    For Each shp In wsDestino.Shapes
+        If shp.TopLeftCell.Address = celdaDestino.Address Then
+            shp.Delete
+        End If
+    Next shp
+    
+    ' Copia el rango como imagen
+    rngOrigen.CopyPicture Appearance:=xlScreen, Format:=xlPicture
+    
+    ' Pega en la hoja Face
+    wsDestino.Paste Destination:=celdaDestino
+    
+    ' Posiciona la imagen exactamente en la celda B28
+    With wsDestino.Shapes(wsDestino.Shapes.Count)
+        .Top = celdaDestino.Top
+        .Left = celdaDestino.Left
+    End With
+    
+    Application.CutCopyMode = False
+    
+    MsgBox "Imagen pegada correctamente en Face!B28", vbInformation
+
+End Sub
+
+
+
+
+
+
 """
 Script lineal (sin funciones) que replica el SQL sobre base_depositos_validar_v4.
 No modifica el archivo de entrada, solo lo lee.
