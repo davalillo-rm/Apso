@@ -5,6 +5,63 @@ Sub CopiarRangoComoImagenAFace()
     Dim wsDestino As Worksheet
     Dim rngOrigen As Range
     Dim celdaDestino As Range
+    Dim rngAncho As Range
+    Dim shp As Shape
+    Dim anchoObjetivo As Double
+    Dim proporcion As Double
+    
+    ' Hoja activa donde está el rango a copiar (ajusta si es necesario)
+    Set wsOrigen = ActiveSheet
+    Set rngOrigen = wsOrigen.Range("A1:M18")
+    
+    Set wsDestino = ThisWorkbook.Sheets("Face")
+    Set celdaDestino = wsDestino.Range("B28")
+    
+    ' Rango que define el ancho deseado (columnas B a K)
+    Set rngAncho = wsDestino.Range("B28:K28")
+    anchoObjetivo = rngAncho.Width
+    
+    ' Elimina una imagen previa pegada en la misma posición (evita duplicados)
+    For Each shp In wsDestino.Shapes
+        If shp.TopLeftCell.Address = celdaDestino.Address Then
+            shp.Delete
+        End If
+    Next shp
+    
+    ' Copia el rango como imagen
+    rngOrigen.CopyPicture Appearance:=xlScreen, Format:=xlPicture
+    
+    ' Pega en la hoja Face
+    wsDestino.Paste Destination:=celdaDestino
+    
+    ' Ajusta tamaño y posición manteniendo proporción
+    With wsDestino.Shapes(wsDestino.Shapes.Count)
+        .Top = celdaDestino.Top
+        .Left = celdaDestino.Left
+        
+        proporcion = .Height / .Width   ' guarda proporción original antes de cambiar
+        .Width = anchoObjetivo
+        .Height = anchoObjetivo * proporcion
+    End With
+    
+    Application.CutCopyMode = False
+    
+    MsgBox "Imagen pegada y ajustada entre columnas B y K en Face!B28", vbInformation
+
+End Sub
+
+
+
+
+
+
+
+Sub CopiarRangoComoImagenAFace()
+
+    Dim wsOrigen As Worksheet
+    Dim wsDestino As Worksheet
+    Dim rngOrigen As Range
+    Dim celdaDestino As Range
     Dim shp As Shape
     
     ' Hoja activa donde está el rango a copiar (ajusta si es necesario)
