@@ -1,4 +1,49 @@
 
+Sub AjustarImagenReportManual()
+
+    Dim ws As Worksheet
+    Dim shp As Shape
+    Dim respuesta As String
+    Dim nuevoAncho As Double
+    Dim nuevoLeft As Double
+
+    Set ws = ThisWorkbook.Sheets("Report")
+    
+    If ws.Shapes.Count = 0 Then
+        MsgBox "No hay ninguna imagen en Report para ajustar."
+        Exit Sub
+    End If
+    
+    Set shp = ws.Shapes(1)  ' asume que la imagen es el primer/único shape
+
+    Do
+        respuesta = InputBox("Posición actual:" & vbCrLf & _
+            "Left = " & Round(shp.Left, 1) & vbCrLf & _
+            "Width = " & Round(shp.Width, 1) & vbCrLf & _
+            "Right edge = " & Round(shp.Left + shp.Width, 1) & vbCrLf & vbCrLf & _
+            "Escribe nuevo ANCHO (Width) para probar, o 'salir' para terminar:", _
+            "Ajuste manual de imagen", shp.Width)
+
+        If respuesta = "" Or LCase(respuesta) = "salir" Then Exit Do
+
+        If IsNumeric(respuesta) Then
+            Dim proporcion As Double
+            proporcion = shp.Height / shp.Width
+            shp.Width = CDbl(respuesta)
+            shp.Height = CDbl(respuesta) * proporcion
+        End If
+    Loop
+
+    MsgBox "Valores finales:" & vbCrLf & _
+        "Left = " & Round(shp.Left, 2) & vbCrLf & _
+        "Width = " & Round(shp.Width, 2), vbInformation
+
+End Sub
+
+
+
+
+
 
 Sub ExportarTresHojasComoPDF()
 
