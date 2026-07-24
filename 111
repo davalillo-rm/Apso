@@ -1,3 +1,75 @@
+
+Sub AlinearFilasADerechaTabla()
+    Dim wsTabla As Worksheet
+    Dim wsGraficos As Worksheet
+    Dim cht As ChartObject
+    Dim bordeTabla As Double
+    Dim topsUnicos As Collection
+    Dim topActual As Double
+    Dim existeTop As Boolean
+    Dim i As Long
+    Dim bordeActualFila As Double
+    Dim desplazamiento As Double
+    Dim tolerancia As Double
+    
+    Set wsTabla = ThisWorkbook.Sheets("LCS")
+    Set wsGraficos = ThisWorkbook.Sheets("Report")
+    
+    ' Borde derecho real de la tabla en LCS (ajusta "K1" si tu tabla termina en otra columna)
+    bordeTabla = wsTabla.Range("K1").Left + wsTabla.Range("K1").Width
+    
+    tolerancia = 5   ' puntos de margen para considerar que dos gráficos están en la "misma fila"
+    
+    ' 1. Identifica los distintos "Top" (filas) que existen entre los gráficos
+    Set topsUnicos = New Collection
+    On Error Resume Next
+    For Each cht In wsGraficos.ChartObjects
+        existeTop = False
+        For i = 1 To topsUnicos.Count
+            If Abs(topsUnicos(i) - cht.Top) < tolerancia Then
+                existeTop = True
+                Exit For
+            End If
+        Next i
+        If Not existeTop Then
+            topsUnicos.Add cht.Top
+        End If
+    Next cht
+    On Error GoTo 0
+    
+    ' 2. Para cada fila (grupo de Top similar), calcula su borde derecho actual y desplaza en bloque
+    For i = 1 To topsUnicos.Count
+        topActual = topsUnicos(i)
+        bordeActualFila = 0
+        
+        ' Encuentra el borde derecho actual de esta fila
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then
+                If (cht.Left + cht.Width) > bordeActualFila Then
+                    bordeActualFila = cht.Left + cht.Width
+                End If
+            End If
+        Next cht
+        
+        desplazamiento = bordeTabla - bordeActualFila
+        
+        ' Aplica el desplazamiento a todos los gráficos de esa fila
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then
+                cht.Left = cht.Left + desplazamiento
+            End If
+        Next cht
+    Next i
+    
+    MsgBox "Cada fila de gráficos fue alineada al borde derecho de la tabla en LCS.", vbInformation
+
+End Sub
+
+
+
+
+
+
 Sub AlinearGraficosADerechaTabla()
     Dim wsTabla As Worksheet
     Dim wsGraficos As Worksheet
