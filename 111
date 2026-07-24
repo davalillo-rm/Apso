@@ -1,3 +1,216 @@
+Sub ExportarTresHojasComoPDF()
+
+    Dim rutaCarpeta As String
+    Dim rutaArchivo As String
+    Dim tempLibro As Workbook
+    Dim hojaTemp As Worksheet
+    Dim rango As Range
+    Dim ancho As Double, alto As Double
+    Dim nombresHojas As Variant
+    Dim i As Integer
+    Dim fechaFiltro As Date
+    Dim nombreArchivo As String
+    Dim anio As String
+    Dim fso As Object
+
+    '========================================
+    ' PASO 1: ALINEAR GRÁFICOS EN "Report" (archivo original)
+    '========================================
+    Call AlinearGraficosReport
+
+    '========================================
+    ' PASO 2: ALINEAR ELEMENTOS EN "Face" (archivo original)
+    '========================================
+    Call AlinearElementosFace
+
+    '========================================
+    ' PASO 3: PREPARAR NOMBRE Y RUTA DEL PDF
+    '========================================
+    fechaFiltro = ThisWorkbook.Sheets("LCS").Range("Q2").Value
+    anio = Format(fechaFiltro, "yyyy")
+    nombreArchivo = "GBM Peru_Market Risk Limit Report_" & Format(fechaFiltro, "dd-mm-yyyy") & ".pdf"
+
+    rutaCarpeta = "R:\Históricos\LCS\" & anio
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(rutaCarpeta) Then
+        fso.CreateFolder rutaCarpeta
+    End If
+
+    rutaArchivo = rutaCarpeta & "\" & nombreArchivo
+
+    '========================================
+    ' PASO 4: CREAR LIBRO TEMPORAL Y COPIAR HOJAS
+    '========================================
+    Set tempLibro = Workbooks.Add
+
+    nombresHojas = Array("Report", "Face", "LCS")
+
+    For i = LBound(nombresHojas) To UBound(nombresHojas)
+        ThisWorkbook.Sheets(nombresHojas(i)).Copy After:=tempLibro.Sheets(tempLibro.Sheets.Count)
+        tempLibro.Sheets(tempLibro.Sheets.Count).Name = nombresHojas(i)
+    Next i
+
+    Application.DisplayAlerts = False
+    tempLibro.Sheets(1).Delete
+    Application.DisplayAlerts = True
+
+    '========================================
+    ' PASO 5: CONFIGURAR CADA HOJA CON RANGO FIJO (sin autodetección)
+    '========================================
+    For i = 1 To tempLibro.Sheets.Count
+        Set hojaTemp = tempLibro.Sheets(i)
+
+        Select Case hojaTemp.Name
+            Case "Report"
+                Set rango = hojaTemp.Range("B2:O44")
+            Case "Face"
+                Set rango = hojaTemp.Range("A1:M38")
+            Case "LCS"
+                Set rango = hojaTemp.Range("A3:K60")
+            Case Else
+                Set rango = hojaTemp.Range("A1:L49")
+        End Select
+
+        ancho = rango.Width
+        alto = rango.Height
+
+        With hojaTemp.PageSetup
+            .PrintArea = rango.Address
+            .Zoom = False
+            .FitToPagesWide = 1
+            .FitToPagesTall = False
+            .PaperSize = xlPaperA4
+            If ancho > alto Then
+                .Orientation = xlLandscape
+            Else
+                .Orientation = xlPortrait
+            End If
+            .TopMargin = Application.InchesToPoints(0.2)
+            .BottomMargin = Application.InchesToPoints(0.2)
+            .LeftMargin = Application.InchesToPoints(0.2)
+            .RightMargin = Application.InchesToPoints(0.2)
+            .CenterHorizontally = True
+            .CenterVertically = False
+        End With
+    Next i
+
+    '========================================
+    ' PASO 6: EXPORTAR COMO PDF
+    '========================================
+    On Error GoTo ErrorHandler
+    tempLibro.ExportAsFixedFormat Type:=xlTypePDF, Filename:=rutaArchivo, _
+        Quality:=xlQualityStandard, IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, OpenAfterPublish:=True
+
+    tempLibro.Close SaveChanges:=False
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error al exportar el PDF: " & Err.Description, vbCritical
+    If Not tempLibro Is Nothing Then tempLibro.Close SaveChanges:=False
+
+End Sub
+
+
+'========================================
+' SUB: Alinea cada FILA de gráficos en "Report" al borde derecho de la tabla en "LCS"
+'========================================
+Sub AlinearGraficosReport()
+
+    Dim wsTabla As Worksheet
+    Dim wsGraficos As Worksheet
+    Dim cht As ChartObject
+    Dim bordeTabla As Double
+    Dim topsUnicos As Collection
+    Dim topActual As Double
+    Dim existeTop As Boolean
+    Dim i As Long
+    Dim bordeActualFila As Double
+    Dim desplazamiento As Double
+    Dim tolerancia As Double
+
+    Set wsTabla = ThisWorkbook.Sheets("LCS")
+    Set wsGraficos = ThisWorkbook.Sheets("Report")
+
+    bordeTabla = wsTabla.Range("K1").Left + wsTabla.Range("K1").Width
+    tolerancia = 5
+
+    Set topsUnicos = New Collection
+    On Error Resume Next
+    For Each cht In wsGraficos.ChartObjects
+        existeTop = False
+        For i = 1 To topsUnicos.Count
+            If Abs(topsUnicos(i) - cht.Top) < tolerancia Then
+                existeTop = True
+                Exit For
+            End If
+        Next i
+        If Not existeTop Then topsUnicos.Add cht.Top
+    Next cht
+    On Error GoTo 0
+
+    For i = 1 To topsUnicos.Count
+        topActual = topsUnicos(i)
+        bordeActualFila = 0
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then
+                If (cht.Left + cht.Width) > bordeActualFila Then bordeActualFila = cht.Left + cht.Width
+            End If
+        Next cht
+        desplazamiento = bordeTabla - bordeActualFila
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then cht.Left = cht.Left + desplazamiento
+        Next cht
+    Next i
+
+End Sub
+
+
+'========================================
+' SUB: Alinea EN BLOQUE (juntos, sin cambiar posición relativa entre ellos)
+' las barras (VaR/Stress Test) y la imagen del encabezado azul en "Face"
+' al borde derecho de la tabla en "LCS"
+'========================================
+Sub AlinearElementosFace()
+
+    Dim wsTabla As Worksheet
+    Dim wsFace As Worksheet
+    Dim shp As Shape
+    Dim bordeTabla As Double
+    Dim bordeActualGrupo As Double
+    Dim desplazamiento As Double
+
+    Set wsTabla = ThisWorkbook.Sheets("LCS")
+    Set wsFace = ThisWorkbook.Sheets("Face")
+
+    bordeTabla = wsTabla.Range("K1").Left + wsTabla.Range("K1").Width
+
+    ' Encuentra el borde derecho actual del conjunto completo de shapes en Face
+    ' (incluye barras Rect_Limite/Rect_Uso/Rect_LimiteST/Rect_UsoST, labels, y la imagen pegada)
+    bordeActualGrupo = 0
+    For Each shp In wsFace.Shapes
+        If (shp.Left + shp.Width) > bordeActualGrupo Then
+            bordeActualGrupo = shp.Left + shp.Width
+        End If
+    Next shp
+
+    desplazamiento = bordeTabla - bordeActualGrupo
+
+    ' Mueve TODOS los shapes de Face el mismo desplazamiento (mantiene posición relativa entre ellos)
+    For Each shp In wsFace.Shapes
+        shp.Left = shp.Left + desplazamiento
+    Next shp
+
+End Sub
+
+
+
+
+
+
+
+
 
 For i = 1 To tempLibro.Sheets.Count
     Set hojaTemp = tempLibro.Sheets(i)
