@@ -1,3 +1,154 @@
+
+Sub ExportarTresHojasComoPDF()
+
+    Dim rutaCarpeta As String
+    Dim rutaArchivo As String
+    Dim tempLibro As Workbook
+    Dim nombresHojas As Variant
+    Dim i As Integer
+    Dim fechaFiltro As Date
+    Dim nombreArchivo As String
+    Dim anio As String
+    Dim fso As Object
+    Dim hojaTemp As Worksheet
+    Dim rango As Range
+    Dim ancho As Double, alto As Double
+
+    fechaFiltro = ThisWorkbook.Sheets("LCS").Range("Q2").Value
+    anio = Format(fechaFiltro, "yyyy")
+    nombreArchivo = "GBM Peru_Market Risk Limit Report_" & Format(fechaFiltro, "dd-mm-yyyy") & ".pdf"
+    rutaCarpeta = "R:\Históricos\LCS\" & anio
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(rutaCarpeta) Then fso.CreateFolder rutaCarpeta
+    rutaArchivo = rutaCarpeta & "\" & nombreArchivo
+
+    ' Crear libro temporal y copiar hojas (el ARCHIVO ORIGINAL queda intacto)
+    Set tempLibro = Workbooks.Add
+    nombresHojas = Array("Report", "Face", "LCS")
+    For i = LBound(nombresHojas) To UBound(nombresHojas)
+        ThisWorkbook.Sheets(nombresHojas(i)).Copy After:=tempLibro.Sheets(tempLibro.Sheets.Count)
+        tempLibro.Sheets(tempLibro.Sheets.Count).Name = nombresHojas(i)
+    Next i
+
+    Application.DisplayAlerts = False
+    tempLibro.Sheets(1).Delete
+    Application.DisplayAlerts = True
+
+    ' Convierte Report y Face a imagen alineada EXACTA a los bordes de la tabla (izq y der)
+    ' Solo afecta las copias del libro temporal, nunca el original
+    Call ConvertirHojaAImagenAlineada(tempLibro, "Report", "B7:O44", "LCS", "B1", "K1")
+    Call ConvertirHojaAImagenAlineada(tempLibro, "Face", "A1:M38", "LCS", "B1", "K1")
+
+    ' Configurar impresión de cada hoja con rango fijo
+    For i = 1 To tempLibro.Sheets.Count
+        Set hojaTemp = tempLibro.Sheets(i)
+        Select Case hojaTemp.Name
+            Case "Report"
+                Set rango = hojaTemp.Range("A1:P46")
+            Case "Face"
+                Set rango = hojaTemp.Range("A1:N40")
+            Case "LCS"
+                Set rango = hojaTemp.Range("A3:K60")
+            Case Else
+                Set rango = hojaTemp.Range("A1:L49")
+        End Select
+
+        ancho = rango.Width
+        alto = rango.Height
+
+        With hojaTemp.PageSetup
+            .PrintArea = rango.Address
+            .Zoom = False
+            .FitToPagesWide = 1
+            .FitToPagesTall = False
+            .PaperSize = xlPaperA4
+            If ancho > alto Then
+                .Orientation = xlLandscape
+            Else
+                .Orientation = xlPortrait
+            End If
+            .TopMargin = Application.InchesToPoints(0.2)
+            .BottomMargin = Application.InchesToPoints(0.2)
+            .LeftMargin = Application.InchesToPoints(0.2)
+            .RightMargin = Application.InchesToPoints(0.2)
+            .CenterHorizontally = True
+            .CenterVertically = False
+        End With
+    Next i
+
+    On Error GoTo ErrorHandler
+    tempLibro.ExportAsFixedFormat Type:=xlTypePDF, Filename:=rutaArchivo, _
+        Quality:=xlQualityStandard, IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, OpenAfterPublish:=True
+
+    tempLibro.Close SaveChanges:=False
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error al exportar el PDF: " & Err.Description, vbCritical
+    If Not tempLibro Is Nothing Then tempLibro.Close SaveChanges:=False
+
+End Sub
+
+
+'========================================
+' Captura una hoja (con sus gráficos/shapes) como UNA imagen,
+' y la estira/reposiciona para que empiece y termine exacto
+' en los bordes izq/der de la tabla de referencia
+'========================================
+Sub ConvertirHojaAImagenAlineada(libroTemp As Workbook, nombreHoja As String, rangoCaptura As String, _
+                                   nombreHojaTabla As String, celdaIzq As String, celdaDer As String)
+
+    Dim wsOrigen As Worksheet
+    Dim wsTabla As Worksheet
+    Dim shp As Shape
+    Dim bordeIzqTabla As Double, bordeDerTabla As Double
+    Dim anchoObjetivo As Double
+    Dim proporcion As Double
+    Dim topDestino As Double
+
+    Set wsOrigen = libroTemp.Sheets(nombreHoja)
+    Set wsTabla = libroTemp.Sheets(nombreHojaTabla)
+
+    bordeIzqTabla = wsTabla.Range(celdaIzq).Left
+    bordeDerTabla = wsTabla.Range(celdaDer).Left + wsTabla.Range(celdaDer).Width
+    anchoObjetivo = bordeDerTabla - bordeIzqTabla
+
+    If wsOrigen.Shapes.Count > 0 Then
+        topDestino = wsOrigen.Shapes(1).Top
+    Else
+        topDestino = wsOrigen.Range(rangoCaptura).Top
+    End If
+
+    ' Copia el rango (incluye gráficos/shapes visualmente superpuestos) como imagen
+    wsOrigen.Range(rangoCaptura).CopyPicture Appearance:=xlScreen, Format:=xlPicture
+
+    ' Elimina los shapes/gráficos originales de ESTA COPIA (no toca el archivo original)
+    For Each shp In wsOrigen.Shapes
+        shp.Delete
+    Next shp
+
+    wsOrigen.Paste Destination:=wsOrigen.Range("A1")
+
+    With wsOrigen.Shapes(wsOrigen.Shapes.Count)
+        proporcion = .Height / .Width
+        .Left = bordeIzqTabla
+        .Top = topDestino
+        .Width = anchoObjetivo
+        .Height = anchoObjetivo * proporcion
+    End With
+
+    Application.CutCopyMode = False
+
+End Sub
+
+
+
+
+
+
+
 Sub ExportarTresHojasComoPDF()
 
     Dim rutaCarpeta As String
