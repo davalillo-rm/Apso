@@ -1,3 +1,32 @@
+Sub AlinearGraficosADerechaTabla()
+    Dim wsTabla As Worksheet
+    Dim wsGraficos As Worksheet
+    Dim cht As ChartObject
+    Dim bordeTabla As Double
+    
+    Set wsTabla = ThisWorkbook.Sheets("LCS")
+    Set wsGraficos = ThisWorkbook.Sheets("Report")
+    
+    ' Ajusta "K" a la columna real donde termina tu tabla en LCS
+    bordeTabla = wsTabla.Range("K1").Left + wsTabla.Range("K1").Width
+    
+    Debug.Print "Borde derecho de la tabla en LCS: "; bordeTabla
+    
+    For Each cht In wsGraficos.ChartObjects
+        Debug.Print cht.Name, "Left+Width actual = "; (cht.Left + cht.Width)
+        cht.Left = bordeTabla - cht.Width
+    Next cht
+    
+    MsgBox "Gráficos alineados al borde derecho de la tabla en LCS", vbInformation
+End Sub
+
+
+
+
+
+
+
+
 /* ============================================================
    SCRIPT: Consolidación de jerarquía de cuentas contables
    OBJETIVO: Eliminar los CASE duplicados entre "vista balance" y
