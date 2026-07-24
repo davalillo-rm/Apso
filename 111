@@ -1,4 +1,46 @@
 
+For i = 1 To tempLibro.Sheets.Count
+    Set hojaTemp = tempLibro.Sheets(i)
+    
+    ' Rango específico según el nombre real de cada hoja
+    Select Case hojaTemp.Name
+        Case "Report"
+            Set rango = hojaTemp.Range("A1:N58")   ' ajusta N58 al final real de tus gráficos
+        Case "Face"
+            Set rango = hojaTemp.Range("A1:M40")   ' ajusta según el final real de esa hoja
+        Case "LCS"
+            Set rango = hojaTemp.Range("A1:L60")   ' ajusta según el final real de esa hoja
+        Case Else
+            Set rango = hojaTemp.Range("A1:L49")
+    End Select
+    
+    ancho = rango.Width
+    alto = rango.Height
+    
+    With hojaTemp.PageSetup
+        .PrintArea = rango.Address
+        .Zoom = False
+        .FitToPagesWide = 1
+        .FitToPagesTall = False
+        .PaperSize = xlPaperA4
+        If ancho > alto Then
+            .Orientation = xlLandscape
+        Else
+            .Orientation = xlPortrait
+        End If
+        .TopMargin = Application.InchesToPoints(0.2)
+        .BottomMargin = Application.InchesToPoints(0.2)
+        .LeftMargin = Application.InchesToPoints(0.2)
+        .RightMargin = Application.InchesToPoints(0.2)
+        .CenterHorizontally = True
+        .CenterVertically = False
+    End With
+Next i
+
+
+
+
+
 Sub AlinearFilasYConfigurarImpresion()
 
     Dim wsTabla As Worksheet
