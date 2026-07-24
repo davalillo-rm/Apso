@@ -1,3 +1,123 @@
+
+Sub AlinearFilasYConfigurarImpresion()
+
+    Dim wsTabla As Worksheet
+    Dim wsGraficos As Worksheet
+    Dim cht As ChartObject
+    Dim bordeTabla As Double
+    Dim topsUnicos As Collection
+    Dim topActual As Double
+    Dim existeTop As Boolean
+    Dim i As Long
+    Dim bordeActualFila As Double
+    Dim desplazamiento As Double
+    Dim tolerancia As Double
+    Dim minLeft As Double, minTop As Double
+    Dim maxRight As Double, maxBottom As Double
+    Dim celdaInicio As Range, celdaFinal As Range
+    
+    Set wsTabla = ThisWorkbook.Sheets("LCS")
+    Set wsGraficos = ThisWorkbook.Sheets("Report")
+    
+    bordeTabla = wsTabla.Range("K1").Left + wsTabla.Range("K1").Width
+    tolerancia = 5
+    
+    Set topsUnicos = New Collection
+    On Error Resume Next
+    For Each cht In wsGraficos.ChartObjects
+        existeTop = False
+        For i = 1 To topsUnicos.Count
+            If Abs(topsUnicos(i) - cht.Top) < tolerancia Then
+                existeTop = True
+                Exit For
+            End If
+        Next i
+        If Not existeTop Then topsUnicos.Add cht.Top
+    Next cht
+    On Error GoTo 0
+    
+    For i = 1 To topsUnicos.Count
+        topActual = topsUnicos(i)
+        bordeActualFila = 0
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then
+                If (cht.Left + cht.Width) > bordeActualFila Then bordeActualFila = cht.Left + cht.Width
+            End If
+        Next cht
+        desplazamiento = bordeTabla - bordeActualFila
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then cht.Left = cht.Left + desplazamiento
+        Next cht
+    Next i
+    
+    '========================================
+    ' ÁREA DE IMPRESIÓN: DESDE DONDE EMPIEZA EL CONTENIDO REAL, NO DESDE A1
+    '========================================
+    
+    minLeft = 999999: minTop = 999999
+    maxRight = 0: maxBottom = 0
+    
+    For Each cht In wsGraficos.ChartObjects
+        If cht.Left < minLeft Then minLeft = cht.Left
+        If cht.Top < minTop Then minTop = cht.Top
+        If (cht.Left + cht.Width) > maxRight Then maxRight = cht.Left + cht.Width
+        If (cht.Top + cht.Height) > maxBottom Then maxBottom = cht.Top + cht.Height
+    Next cht
+    
+    ' También considera texto/títulos ya existentes en celdas (como "GBM Peru Market Risk Report")
+    Dim ultimaFilaTexto As Long, ultimaColTexto As Long, primeraColTexto As Long
+    On Error Resume Next
+    ultimaFilaTexto = wsGraficos.Cells.Find(What:="*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    ultimaColTexto = wsGraficos.Cells.Find(What:="*", SearchOrder:=xlByColumns, SearchDirection:=xlPrevious).Column
+    primeraColTexto = wsGraficos.Cells.Find(What:="*", SearchOrder:=xlByColumns, SearchDirection:=xlNext).Column
+    On Error GoTo 0
+    
+    ' Encuentra la celda de inicio (columna más a la izquierda entre gráficos y texto)
+    Dim colInicio As Long
+    colInicio = 1
+    Do While wsGraficos.Cells(1, colInicio).Left < minLeft And colInicio < primeraColTexto
+        colInicio = colInicio + 1
+    Loop
+    If primeraColTexto > 0 And primeraColTexto < colInicio Then colInicio = primeraColTexto
+    If colInicio > 1 Then colInicio = colInicio - 1  ' un pequeño margen
+    
+    Set celdaInicio = wsGraficos.Cells(1, colInicio)
+    
+    Set celdaFinal = wsGraficos.Cells(1, 1)
+    Do While celdaFinal.Left < maxRight
+        Set celdaFinal = celdaFinal.Offset(0, 1)
+    Loop
+    Dim filaFinal As Range
+    Set filaFinal = wsGraficos.Cells(1, 1)
+    Do While filaFinal.Top < maxBottom
+        Set filaFinal = filaFinal.Offset(1, 0)
+    Loop
+    If ultimaFilaTexto > filaFinal.Row Then Set filaFinal = wsGraficos.Cells(ultimaFilaTexto, 1)
+    
+    wsGraficos.PageSetup.PrintArea = wsGraficos.Cells(1, colInicio).Address & ":" & wsGraficos.Cells(filaFinal.Row, celdaFinal.Column).Address
+    
+    With wsGraficos.PageSetup
+        .Orientation = xlLandscape
+        .Zoom = False
+        .FitToPagesWide = 1
+        .FitToPagesTall = False
+        .LeftMargin = Application.InchesToPoints(0.3)
+        .RightMargin = Application.InchesToPoints(0.3)
+        .TopMargin = Application.InchesToPoints(0.4)
+        .BottomMargin = Application.InchesToPoints(0.4)
+        .CenterHorizontally = True
+        .CenterVertically = False
+        .PaperSize = xlPaperA4
+    End With
+    
+    MsgBox "Área de impresión: " & wsGraficos.PageSetup.PrintArea, vbInformation
+
+End Sub
+
+
+
+
+
 Sub AlinearFilasYConfigurarImpresion()
 
     Dim wsTabla As Worksheet
