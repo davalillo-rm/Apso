@@ -1,3 +1,109 @@
+Sub AlinearFilasYConfigurarImpresion()
+
+    Dim wsTabla As Worksheet
+    Dim wsGraficos As Worksheet
+    Dim cht As ChartObject
+    Dim bordeTabla As Double
+    Dim topsUnicos As Collection
+    Dim topActual As Double
+    Dim existeTop As Boolean
+    Dim i As Long
+    Dim bordeActualFila As Double
+    Dim desplazamiento As Double
+    Dim tolerancia As Double
+    Dim ultimaFila As Long
+    Dim ultimaColumna As Long
+    Dim ultimaCelda As String
+    
+    Set wsTabla = ThisWorkbook.Sheets("LCS")
+    Set wsGraficos = ThisWorkbook.Sheets("Report")
+    
+    '========================================
+    ' PARTE 1: ALINEAR GRÁFICOS POR FILA
+    '========================================
+    
+    ' Borde derecho real de la tabla en LCS (ajusta "K1" si tu tabla termina en otra columna)
+    bordeTabla = wsTabla.Range("K1").Left + wsTabla.Range("K1").Width
+    
+    tolerancia = 5   ' puntos de margen para considerar que dos gráficos están en la "misma fila"
+    
+    ' 1. Identifica los distintos "Top" (filas) que existen entre los gráficos
+    Set topsUnicos = New Collection
+    On Error Resume Next
+    For Each cht In wsGraficos.ChartObjects
+        existeTop = False
+        For i = 1 To topsUnicos.Count
+            If Abs(topsUnicos(i) - cht.Top) < tolerancia Then
+                existeTop = True
+                Exit For
+            End If
+        Next i
+        If Not existeTop Then
+            topsUnicos.Add cht.Top
+        End If
+    Next cht
+    On Error GoTo 0
+    
+    ' 2. Para cada fila (grupo de Top similar), calcula su borde derecho actual y desplaza en bloque
+    For i = 1 To topsUnicos.Count
+        topActual = topsUnicos(i)
+        bordeActualFila = 0
+        
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then
+                If (cht.Left + cht.Width) > bordeActualFila Then
+                    bordeActualFila = cht.Left + cht.Width
+                End If
+            End If
+        Next cht
+        
+        desplazamiento = bordeTabla - bordeActualFila
+        
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then
+                cht.Left = cht.Left + desplazamiento
+            End If
+        Next cht
+    Next i
+    
+    '========================================
+    ' PARTE 2: CONFIGURAR IMPRESIÓN / PDF
+    '========================================
+    
+    With wsGraficos
+        ' Detecta automáticamente el rango real de contenido usado
+        ultimaFila = .Cells.Find(What:="*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+        ultimaColumna = .Cells.Find(What:="*", SearchOrder:=xlByColumns, SearchDirection:=xlPrevious).Column
+        ultimaCelda = .Cells(ultimaFila, ultimaColumna).Address
+        
+        .PageSetup.PrintArea = "$A$1:" & ultimaCelda
+        
+        With .PageSetup
+            .Orientation = xlLandscape
+            .Zoom = False
+            .FitToPagesWide = 1
+            .FitToPagesTall = False
+            .LeftMargin = Application.InchesToPoints(0.3)
+            .RightMargin = Application.InchesToPoints(0.3)
+            .TopMargin = Application.InchesToPoints(0.4)
+            .BottomMargin = Application.InchesToPoints(0.4)
+            .HeaderMargin = Application.InchesToPoints(0.2)
+            .FooterMargin = Application.InchesToPoints(0.2)
+            .CenterHorizontally = True
+            .CenterVertically = False
+            .PaperSize = xlPaperA4
+        End With
+    End With
+    
+    MsgBox "Gráficos alineados por fila y configuración de impresión aplicada en 'Report'.", vbInformation
+
+End Sub
+
+
+
+
+
+
 
 Sub AlinearFilasADerechaTabla()
     Dim wsTabla As Worksheet
