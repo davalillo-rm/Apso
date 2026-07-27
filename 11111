@@ -1,4 +1,67 @@
 
+
+
+Sub AlinearGraficosReport(wb As Workbook)
+    Dim wsTabla As Worksheet, wsGraficos As Worksheet
+    Dim cht As ChartObject
+    Dim bordeTabla As Double, topsUnicos As Collection
+    Dim topActual As Double, existeTop As Boolean, i As Long
+    Dim bordeActualFila As Double, desplazamiento As Double, tolerancia As Double
+
+    Set wsTabla = wb.Sheets("LCS")
+    Set wsGraficos = wb.Sheets("Report")
+    bordeTabla = wsTabla.Range("K1").Left + wsTabla.Range("K1").Width
+    tolerancia = 5
+
+    Set topsUnicos = New Collection
+    On Error Resume Next
+    For Each cht In wsGraficos.ChartObjects
+        existeTop = False
+        For i = 1 To topsUnicos.Count
+            If Abs(topsUnicos(i) - cht.Top) < tolerancia Then existeTop = True: Exit For
+        Next i
+        If Not existeTop Then topsUnicos.Add cht.Top
+    Next cht
+    On Error GoTo 0
+
+    For i = 1 To topsUnicos.Count
+        topActual = topsUnicos(i)
+        bordeActualFila = 0
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then
+                If (cht.Left + cht.Width) > bordeActualFila Then bordeActualFila = cht.Left + cht.Width
+            End If
+        Next cht
+        desplazamiento = bordeTabla - bordeActualFila
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then cht.Left = cht.Left + desplazamiento
+        Next cht
+    Next i
+End Sub
+
+Sub AlinearElementosFace(wb As Workbook)
+    Dim wsTabla As Worksheet, wsFace As Worksheet, shp As Shape
+    Dim bordeTabla As Double, bordeActualGrupo As Double, desplazamiento As Double
+
+    Set wsTabla = wb.Sheets("LCS")
+    Set wsFace = wb.Sheets("Face")
+    bordeTabla = wsTabla.Range("K1").Left + wsTabla.Range("K1").Width
+
+    bordeActualGrupo = 0
+    For Each shp In wsFace.Shapes
+        If (shp.Left + shp.Width) > bordeActualGrupo Then bordeActualGrupo = shp.Left + shp.Width
+    Next shp
+
+    desplazamiento = bordeTabla - bordeActualGrupo
+    For Each shp In wsFace.Shapes
+        shp.Left = shp.Left + desplazamiento
+    Next shp
+End Sub
+
+
+
+
+
 import requests
 import pandas as pd
 import time
