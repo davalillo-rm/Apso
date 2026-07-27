@@ -2,6 +2,82 @@ Sub ExportarTresHojasComoPDF()
 
     Dim rutaCarpeta As String
     Dim rutaArchivo As String
+    Dim fechaFiltro As Date
+    Dim nombreArchivo As String
+    Dim anio As String
+    Dim fso As Object
+    Dim hojaTemp As Worksheet
+    Dim nombresHojas As Variant
+    Dim i As Integer
+
+    fechaFiltro = ThisWorkbook.Sheets("LCS").Range("Q2").Value
+    anio = Format(fechaFiltro, "yyyy")
+    nombreArchivo = "GBM Peru_Market Risk Limit Report_" & Format(fechaFiltro, "dd-mm-yyyy") & ".pdf"
+    rutaCarpeta = "R:\Históricos\LCS\" & anio
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(rutaCarpeta) Then fso.CreateFolder rutaCarpeta
+    rutaArchivo = rutaCarpeta & "\" & nombreArchivo
+
+    ' Alinear gráficos/shapes directamente en el archivo ORIGINAL
+    ' (esto significa que quedan alineados permanentemente, no solo para el PDF)
+    Call AlinearGraficosReport(ThisWorkbook)
+    Call AlinearElementosFace(ThisWorkbook)
+
+    ' Configurar impresión de cada hoja, en el archivo original
+    nombresHojas = Array("Report", "Face", "LCS")
+    For i = LBound(nombresHojas) To UBound(nombresHojas)
+        Set hojaTemp = ThisWorkbook.Sheets(nombresHojas(i))
+        With hojaTemp.PageSetup
+            .FitToPagesWide = False
+            .FitToPagesTall = False
+            .PaperSize = xlPaperA4
+            .Orientation = xlLandscape
+            .TopMargin = Application.InchesToPoints(0.2)
+            .BottomMargin = Application.InchesToPoints(0.2)
+            .LeftMargin = Application.InchesToPoints(0.2)
+            .RightMargin = Application.InchesToPoints(0.2)
+            .CenterHorizontally = True
+            .CenterVertically = False
+
+            Select Case hojaTemp.Name
+                Case "Report"
+                    .PrintArea = "$A$2:$L$44"   ' bajé 2 filas para evitar la página en blanco
+                    .Zoom = 58
+                Case "LCS"
+                    .PrintArea = "$A$2:$L$50"
+                    .Zoom = 52
+                Case "Face"
+                    .PrintArea = "$A$2:$L$38"
+                    .Zoom = 60
+            End Select
+        End With
+    Next i
+
+    ' Seleccionar las 3 hojas juntas y exportarlas como un solo PDF, directamente desde el original
+    ThisWorkbook.Sheets(Array("Report", "Face", "LCS")).Select
+
+    On Error GoTo ErrorHandler
+    ThisWorkbook.ActiveSheet.ExportAsFixedFormat Type:=xlTypePDF, Filename:=rutaArchivo, _
+        Quality:=xlQualityStandard, IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, OpenAfterPublish:=True
+
+    ThisWorkbook.Sheets("LCS").Select   ' vuelve a una hoja normal al terminar
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error al exportar el PDF: " & Err.Description, vbCritical
+
+End Sub
+
+
+
+
+
+Sub ExportarTresHojasComoPDF()
+
+    Dim rutaCarpeta As String
+    Dim rutaArchivo As String
     Dim tempLibro As Workbook
     Dim nombresHojas As Variant
     Dim i As Integer
