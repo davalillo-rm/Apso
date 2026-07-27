@@ -36,6 +36,154 @@ Sub ExportarTresHojasComoPDF()
     Call AlinearGraficosReport(tempLibro)
     Call AlinearElementosFace(tempLibro)
 
+    ' Configurar impresión: área de impresión fija + % de zoom fijo, ambos verificados a mano
+    For i = 1 To tempLibro.Sheets.Count
+        Set hojaTemp = tempLibro.Sheets(i)
+
+        With hojaTemp.PageSetup
+            .FitToPagesWide = False
+            .FitToPagesTall = False
+            .PaperSize = xlPaperA4
+            .Orientation = xlLandscape
+            .TopMargin = Application.InchesToPoints(0.2)
+            .BottomMargin = Application.InchesToPoints(0.2)
+            .LeftMargin = Application.InchesToPoints(0.2)
+            .RightMargin = Application.InchesToPoints(0.2)
+            .CenterHorizontally = True
+            .CenterVertically = False
+
+            Select Case hojaTemp.Name
+                Case "Report"
+                    .PrintArea = "$A$2:$L$46"
+                    .Zoom = 58
+                Case "LCS"
+                    .PrintArea = "$A$2:$L$50"
+                    .Zoom = 52
+                Case "Face"
+                    .PrintArea = "$A$2:$L$38"
+                    .Zoom = 60
+            End Select
+        End With
+    Next i
+
+    On Error GoTo ErrorHandler
+    tempLibro.ExportAsFixedFormat Type:=xlTypePDF, Filename:=rutaArchivo, _
+        Quality:=xlQualityStandard, IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, OpenAfterPublish:=True
+
+    tempLibro.Close SaveChanges:=False
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error al exportar el PDF: " & Err.Description, vbCritical
+    If Not tempLibro Is Nothing Then tempLibro.Close SaveChanges:=False
+
+End Sub
+
+
+Sub AlinearGraficosReport(wb As Workbook)
+    Dim wsTabla As Worksheet, wsGraficos As Worksheet
+    Dim cht As ChartObject
+    Dim bordeTabla As Double, topsUnicos As Collection
+    Dim topActual As Double, existeTop As Boolean, i As Long
+    Dim bordeActualFila As Double, desplazamiento As Double, tolerancia As Double
+
+    Set wsTabla = wb.Sheets("LCS")
+    Set wsGraficos = wb.Sheets("Report")
+    bordeTabla = wsTabla.Range("K1").Left + wsTabla.Range("K1").Width
+    tolerancia = 5
+
+    Set topsUnicos = New Collection
+    On Error Resume Next
+    For Each cht In wsGraficos.ChartObjects
+        existeTop = False
+        For i = 1 To topsUnicos.Count
+            If Abs(topsUnicos(i) - cht.Top) < tolerancia Then existeTop = True: Exit For
+        Next i
+        If Not existeTop Then topsUnicos.Add cht.Top
+    Next cht
+    On Error GoTo 0
+
+    For i = 1 To topsUnicos.Count
+        topActual = topsUnicos(i)
+        bordeActualFila = 0
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then
+                If (cht.Left + cht.Width) > bordeActualFila Then bordeActualFila = cht.Left + cht.Width
+            End If
+        Next cht
+        desplazamiento = bordeTabla - bordeActualFila
+        For Each cht In wsGraficos.ChartObjects
+            If Abs(cht.Top - topActual) < tolerancia Then cht.Left = cht.Left + desplazamiento
+        Next cht
+    Next i
+End Sub
+
+
+Sub AlinearElementosFace(wb As Workbook)
+    Dim wsTabla As Worksheet, wsFace As Worksheet, shp As Shape
+    Dim bordeTabla As Double, bordeActualGrupo As Double, desplazamiento As Double
+
+    Set wsTabla = wb.Sheets("LCS")
+    Set wsFace = wb.Sheets("Face")
+    bordeTabla = wsTabla.Range("K1").Left + wsTabla.Range("K1").Width
+
+    bordeActualGrupo = 0
+    For Each shp In wsFace.Shapes
+        If (shp.Left + shp.Width) > bordeActualGrupo Then bordeActualGrupo = shp.Left + shp.Width
+    Next shp
+
+    desplazamiento = bordeTabla - bordeActualGrupo
+    For Each shp In wsFace.Shapes
+        shp.Left = shp.Left + desplazamiento
+    Next shp
+End Sub
+
+
+
+
+
+
+
+
+Sub ExportarTresHojasComoPDF()
+
+    Dim rutaCarpeta As String
+    Dim rutaArchivo As String
+    Dim tempLibro As Workbook
+    Dim nombresHojas As Variant
+    Dim i As Integer
+    Dim fechaFiltro As Date
+    Dim nombreArchivo As String
+    Dim anio As String
+    Dim fso As Object
+    Dim hojaTemp As Worksheet
+
+    fechaFiltro = ThisWorkbook.Sheets("LCS").Range("Q2").Value
+    anio = Format(fechaFiltro, "yyyy")
+    nombreArchivo = "GBM Peru_Market Risk Limit Report_" & Format(fechaFiltro, "dd-mm-yyyy") & ".pdf"
+    rutaCarpeta = "R:\Históricos\LCS\" & anio
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(rutaCarpeta) Then fso.CreateFolder rutaCarpeta
+    rutaArchivo = rutaCarpeta & "\" & nombreArchivo
+
+    ' Crear libro temporal y copiar hojas (el ARCHIVO ORIGINAL queda intacto)
+    Set tempLibro = Workbooks.Add
+    nombresHojas = Array("Report", "Face", "LCS")
+    For i = LBound(nombresHojas) To UBound(nombresHojas)
+        ThisWorkbook.Sheets(nombresHojas(i)).Copy After:=tempLibro.Sheets(tempLibro.Sheets.Count)
+        tempLibro.Sheets(tempLibro.Sheets.Count).Name = nombresHojas(i)
+    Next i
+
+    Application.DisplayAlerts = False
+    tempLibro.Sheets(1).Delete
+    Application.DisplayAlerts = True
+
+    ' Alinear gráficos/shapes DENTRO del libro temporal (no toca el archivo original)
+    Call AlinearGraficosReport(tempLibro)
+    Call AlinearElementosFace(tempLibro)
+
     ' Configurar impresión con % fijo verificado a mano para cada hoja
     For i = 1 To tempLibro.Sheets.Count
         Set hojaTemp = tempLibro.Sheets(i)
