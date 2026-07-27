@@ -1,4 +1,86 @@
 
+Sub IgualarAnchosYAlinear(wb As Workbook)
+
+    Dim wsLCS As Worksheet, wsReport As Worksheet, wsFace As Worksheet
+    Dim col As Integer
+    Dim bordeDerecho As Double
+
+    Set wsLCS = wb.Sheets("LCS")
+    Set wsReport = wb.Sheets("Report")
+    Set wsFace = wb.Sheets("Face")
+
+    ' 1. Copiar anchos de columna A:L de LCS hacia Report y Face
+    For col = 1 To 12   ' A=1 ... L=12
+        wsReport.Columns(col).ColumnWidth = wsLCS.Columns(col).ColumnWidth
+        wsFace.Columns(col).ColumnWidth = wsLCS.Columns(col).ColumnWidth
+    Next col
+
+    ' 2. Borde derecho objetivo = fin de la columna L (ahora idéntico en las 3 hojas)
+    bordeDerecho = wsLCS.Range("L1").Left + wsLCS.Range("L1").Width
+
+    ' 3. Alinear filas de gráficos de Report a ese borde (misma lógica que ya funciona)
+    Call AlinearFilasADerecha(wsReport, bordeDerecho)
+
+    ' 4. Alinear el bloque completo de Face a ese borde (en bloque, sin cambiar posiciones relativas)
+    Call AlinearBloqueADerecha(wsFace, bordeDerecho)
+
+End Sub
+
+
+Sub AlinearFilasADerecha(ws As Worksheet, bordeDerecho As Double)
+    Dim cht As ChartObject
+    Dim topsUnicos As Collection
+    Dim topActual As Double, existeTop As Boolean
+    Dim i As Long, bordeFila As Double, desplaz As Double
+    Const tol As Double = 5
+
+    Set topsUnicos = New Collection
+    On Error Resume Next
+    For Each cht In ws.ChartObjects
+        existeTop = False
+        For i = 1 To topsUnicos.Count
+            If Abs(topsUnicos(i) - cht.Top) < tol Then existeTop = True: Exit For
+        Next i
+        If Not existeTop Then topsUnicos.Add cht.Top
+    Next cht
+    On Error GoTo 0
+
+    For i = 1 To topsUnicos.Count
+        topActual = topsUnicos(i)
+        bordeFila = 0
+        For Each cht In ws.ChartObjects
+            If Abs(cht.Top - topActual) < tol Then
+                If (cht.Left + cht.Width) > bordeFila Then bordeFila = cht.Left + cht.Width
+            End If
+        Next cht
+        desplaz = bordeDerecho - bordeFila
+        For Each cht In ws.ChartObjects
+            If Abs(cht.Top - topActual) < tol Then cht.Left = cht.Left + desplaz
+        Next cht
+    Next i
+End Sub
+
+
+Sub AlinearBloqueADerecha(ws As Worksheet, bordeDerecho As Double)
+    Dim shp As Shape
+    Dim bordeGrupo As Double, desplaz As Double
+
+    bordeGrupo = 0
+    For Each shp In ws.Shapes
+        If (shp.Left + shp.Width) > bordeGrupo Then bordeGrupo = shp.Left + shp.Width
+    Next shp
+
+    desplaz = bordeDerecho - bordeGrupo
+    For Each shp In ws.Shapes
+        shp.Left = shp.Left + desplaz
+    Next shp
+End Sub
+
+
+
+
+
+
 Sub Paso1_CrearHojaTemporal()
 
     Dim wsTemp As Worksheet
