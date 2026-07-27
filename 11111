@@ -1,3 +1,86 @@
+Sub IgualarAnchosYAlinear(wb As Workbook)
+
+    Dim wsLCS As Worksheet, wsReport As Worksheet, wsFace As Worksheet
+    Dim anchoLCS As Double
+    Dim bordeDerecho As Double
+
+    Set wsLCS = wb.Sheets("LCS")
+    Set wsReport = wb.Sheets("Report")
+    Set wsFace = wb.Sheets("Face")
+
+    ' Ancho total en puntos de A:L en LCS (la referencia)
+    anchoLCS = wsLCS.Range("A1:L1").Width
+
+    ' Ajusta SOLO la columna L de Report y Face para que su ancho total A:L
+    ' sea idéntico al de LCS, sin deformar las demás columnas (donde vive el contenido)
+    Call AjustarUltimaColumna(wsReport, anchoLCS)
+    Call AjustarUltimaColumna(wsFace, anchoLCS)
+
+    ' Ahora el borde derecho de L es el mismo punto en las 3 hojas
+    ' Alinear shapes de cada hoja a SU PROPIO borde de columna L
+    bordeDerecho = wsReport.Range("L1").Left + wsReport.Range("L1").Width
+    Call AlinearFilasADerecha(wsReport, bordeDerecho)
+
+    bordeDerecho = wsFace.Range("L1").Left + wsFace.Range("L1").Width
+    Call AlinearSoloBarras(wsFace, bordeDerecho)
+
+End Sub
+
+
+Sub AjustarUltimaColumna(ws As Worksheet, anchoObjetivo As Double)
+    Dim anchoActual As Double
+    Dim delta As Double
+    Dim puntosPorUnidad As Double
+    Dim intentos As Integer
+
+    ' Itera hasta que el ancho total A:L coincida con el objetivo (tolerancia 0.5 pt)
+    For intentos = 1 To 20
+        anchoActual = ws.Range("A1:L1").Width
+        delta = anchoObjetivo - anchoActual
+        If Abs(delta) < 0.5 Then Exit For
+
+        If ws.Columns("L").ColumnWidth > 0 Then
+            puntosPorUnidad = ws.Columns("L").Width / ws.Columns("L").ColumnWidth
+        Else
+            puntosPorUnidad = 5.4   ' aprox. por defecto
+        End If
+
+        ws.Columns("L").ColumnWidth = Application.Max(0.5, ws.Columns("L").ColumnWidth + (delta / puntosPorUnidad))
+    Next intentos
+End Sub
+
+
+' Alinea SOLO las barras verdes y sus etiquetas (no los círculos de la tabla)
+Sub AlinearSoloBarras(ws As Worksheet, bordeDerecho As Double)
+    Dim shp As Shape
+    Dim bordeGrupo As Double, desplaz As Double
+
+    bordeGrupo = 0
+    For Each shp In ws.Shapes
+        If EsBarraOEtiqueta(shp.Name) Then
+            If (shp.Left + shp.Width) > bordeGrupo Then bordeGrupo = shp.Left + shp.Width
+        End If
+    Next shp
+
+    If bordeGrupo = 0 Then Exit Sub
+    desplaz = bordeDerecho - bordeGrupo
+
+    For Each shp In ws.Shapes
+        If EsBarraOEtiqueta(shp.Name) Then
+            shp.Left = shp.Left + desplaz
+        End If
+    Next shp
+End Sub
+
+
+Function EsBarraOEtiqueta(nombre As String) As Boolean
+    EsBarraOEtiqueta = (nombre Like "Rect_*") Or (nombre Like "Label_*")
+End Function
+
+
+
+
+
 Sub ExportarTresHojasComoPDF()
 
     Dim rutaCarpeta As String
