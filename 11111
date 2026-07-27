@@ -1,6 +1,27 @@
 Sub IgualarAnchosYAlinear(wb As Workbook)
 
     Dim wsLCS As Worksheet, wsReport As Worksheet, wsFace As Worksheet
+    Dim bordeTabla As Double
+
+    Set wsLCS = wb.Sheets("LCS")
+    Set wsReport = wb.Sheets("Report")
+    Set wsFace = wb.Sheets("Face")
+
+    ' Borde derecho de la tabla azul en LCS, en puntos desde el origen de la hoja
+    bordeTabla = wsLCS.Range("K1").Left + wsLCS.Range("K1").Width
+
+    ' Alinear shapes de Report y Face a ese MISMO valor absoluto en puntos
+    Call AlinearFilasADerecha(wsReport, bordeTabla)
+    Call AlinearSoloBarras(wsFace, bordeTabla)
+
+End Sub
+
+
+
+
+Sub IgualarAnchosYAlinear(wb As Workbook)
+
+    Dim wsLCS As Worksheet, wsReport As Worksheet, wsFace As Worksheet
     Dim anchoLCS As Double
     Dim bordeDerecho As Double
 
