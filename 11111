@@ -1,3 +1,52 @@
+
+Sub Paso1_CrearHojaTemporal()
+
+    Dim wsTemp As Worksheet
+    Dim wsReport As Worksheet
+    Dim wsFace As Worksheet
+    Dim wsLCS As Worksheet
+
+    ' Elimina la hoja temporal si ya existe de una prueba anterior
+    Application.DisplayAlerts = False
+    On Error Resume Next
+    ThisWorkbook.Sheets("TempExport").Delete
+    On Error GoTo 0
+    Application.DisplayAlerts = True
+
+    ' Crea la hoja temporal al final
+    Set wsTemp = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+    wsTemp.Name = "TempExport"
+
+    Set wsReport = ThisWorkbook.Sheets("Report")
+    Set wsFace = ThisWorkbook.Sheets("Face")
+    Set wsLCS = ThisWorkbook.Sheets("LCS")
+
+    ' --- Copiar bloque de Report (solo los gráficos) ---
+    ' Ajusta el rango si el bloque real de gráficos es distinto
+    wsReport.Range("A1:P46").Copy
+    wsTemp.Range("A1").PasteSpecial Paste:=xlPasteAll
+
+    ' --- Copiar bloque de Face (barras + tabla azul) ---
+    ' Lo pega empezando en la fila 50 (ajustaremos esto después de ver el resultado)
+    wsFace.Range("A1:M38").Copy
+    wsTemp.Range("A50").PasteSpecial Paste:=xlPasteAll
+
+    ' --- Copiar bloque de LCS (la tabla) ---
+    ' Lo pega empezando en la fila 90 (ajustaremos esto después de ver el resultado)
+    wsLCS.Range("A1:L50").Copy
+    wsTemp.Range("A90").PasteSpecial Paste:=xlPasteAll
+
+    Application.CutCopyMode = False
+
+    MsgBox "Hoja 'TempExport' creada con los 3 bloques copiados (sin alinear todavía). Revisa cómo quedó.", vbInformation
+
+End Sub
+
+
+
+
+
+
 Sub ExportarTresHojasComoPDF()
 
     Dim rutaCarpeta As String
