@@ -37,6 +37,99 @@
 ),
 bandas AS (
     SELECT *,
+        DATEDIFF(day, CONVERT(date,VND10FEC,112), CONVERT(date, CONVERT(varchar(8),PPFVTO), 112)) AS dias,
+        DATEDIFF(month, CONVERT(date,VND10FEC,112), CONVERT(date, CONVERT(varchar(8),PPFVTO), 112)) AS mes
+    FROM base
+    WHERE PPFVTO IS NOT NULL
+),
+bandas2 AS (
+    SELECT *,
+        CASE 
+            WHEN mes = 1 THEN '30D'
+            WHEN mes = 2 THEN '2M'
+            WHEN mes = 3 THEN '3M'
+            WHEN mes BETWEEN 4 AND 6   THEN '6M'
+            WHEN mes BETWEEN 7 AND 12  THEN '12M'
+            WHEN mes BETWEEN 13 AND 24 THEN '2Y'
+            WHEN mes BETWEEN 25 AND 36 THEN '3Y'
+            WHEN mes BETWEEN 37 AND 48 THEN '4Y'
+            WHEN mes BETWEEN 49 AND 60 THEN '5Y'
+            WHEN mes BETWEEN 61 AND 120 THEN '10Y'
+            WHEN mes BETWEEN 121 AND 240 THEN '20Y'
+            ELSE '50Y'
+        END AS banda_mes
+    FROM bandas
+    WHERE dias > 0
+)
+SELECT
+    VND10NAT AS moneda,
+    cuenta_cont,
+    SUM(CASE WHEN dias BETWEEN 0 AND 7  THEN Capital ELSE 0 END) AS [7D],
+    SUM(CASE WHEN dias BETWEEN 8 AND 15 THEN Capital ELSE 0 END) AS [15D],
+    SUM(CASE WHEN dias BETWEEN 16 AND 30 THEN Capital ELSE 0 END
+        + CASE WHEN dias > 30 AND banda_mes = '30D' THEN Capital ELSE 0 END) AS [30D],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '2M'  THEN Capital ELSE 0 END) AS [2M],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '3M'  THEN Capital ELSE 0 END) AS [3M],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '6M'  THEN Capital ELSE 0 END) AS [6M],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '12M' THEN Capital ELSE 0 END) AS [12M],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '2Y'  THEN Capital ELSE 0 END) AS [2Y],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '3Y'  THEN Capital ELSE 0 END) AS [3Y],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '4Y'  THEN Capital ELSE 0 END) AS [4Y],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '5Y'  THEN Capital ELSE 0 END) AS [5Y],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '10Y' THEN Capital ELSE 0 END) AS [10Y],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '20Y' THEN Capital ELSE 0 END) AS [20Y],
+    SUM(CASE WHEN dias > 30 AND banda_mes = '50Y' THEN Capital ELSE 0 END) AS [50Y]
+FROM bandas2
+GROUP BY VND10NAT, cuenta_cont
+ORDER BY VND10NAT, cuenta_cont
+
+
+
+
+
+
+
+
+
+;WITH base AS (
+    SELECT
+        a.VND10FEC,
+        a.VND10MDA,
+        LEFT(VND10RUB,8) AS cuenta_cont,
+        a.VND10NAT,
+        b.PPFVTO,
+        SUM(b.PPCAP) AS Capital,
+        SUM(b.PPINT) AS Interes
+    FROM (
+        SELECT VND10FEC, VND10MDA, VND10CTA, VND10OPER, VND10MOD, VND10TOPE, VND10SBOP,
+               MAX(VND10RUB) AS VND10RUB, MAX(VND10NAT) AS VND10NAT,
+               SUM(VND10SDOO) AS VND10SDOO,
+               SUM(VND10IDESO) AS VND10IDESO
+        FROM [SBP_RGHISTORICA].[dbo].[BLPRNJBT_LVND10_20260731_PROCESADO] WITH (NOLOCK)
+        WHERE VND10ENT = 1
+          AND LEFT(VND10RUB,4) IN ('1411','1421')
+          AND VND10MOD IN (20,30,31,32,39,44,45,64,92,131,136,180)
+        GROUP BY VND10FEC, VND10MDA, VND10CTA, VND10OPER, VND10MOD, VND10SBOP, VND10TOPE
+    ) a
+    INNER JOIN (
+        SELECT PPMDA, PPCTA, PPOPER, PPMOD, PPTOPE, PPFVTO, PPSBOP,
+               SUM(PPCAP) AS PPCAP,
+               SUM(PPINT) AS PPINT
+        FROM [SBP_RGHISTORICA].[dbo].[fsd601_BASE] WITH (NOLOCK)
+        WHERE PPMOD IN (20,30,31,32,39,44,45,64,92,131,136,180)
+          AND PGCOD = 1
+        GROUP BY PPMDA, PPCTA, PPOPER, PPMOD, PPTOPE, PPFVTO, PPSBOP
+    ) b
+    ON  a.VND10MDA = b.PPMDA
+    AND a.VND10CTA = b.PPCTA
+    AND a.VND10OPER = b.PPOPER
+    AND a.VND10MOD = b.PPMOD
+    AND a.VND10TOPE = b.PPTOPE
+    AND a.VND10SBOP = b.PPSBOP
+    GROUP BY a.VND10FEC, a.VND10MDA, LEFT(VND10RUB,8), a.VND10NAT, b.PPFVTO
+),
+bandas AS (
+    SELECT *,
         DATEDIFF(day, CONVERT(date,VND10FEC,112), CONVERT(date,PPFVTO,112)) AS dias,
         DATEDIFF(month, CONVERT(date,VND10FEC,112), CONVERT(date,PPFVTO,112)) AS mes
     FROM base
