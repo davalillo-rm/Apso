@@ -1,4 +1,29 @@
 
+remi_msg = msg.SenderEmailAddress.lower()
+                    if msg.SenderEmailType == "EX":
+                        nombre_remitente = getattr(msg, "SenderName", "") or ""
+                        if nombre_remitente in cache_remitentes:
+                            # ya lo resolvimos antes en este mismo sync
+                            remi_msg = cache_remitentes[nombre_remitente]
+                        else:
+                            try:
+                                # NUEVO: lee la propiedad SMTP directo del mensaje,
+                                # sin consultar el Directorio Activo (mucho más rápido)
+                                remi_msg = msg.PropertyAccessor.GetProperty(
+                                    "http://schemas.microsoft.com/mapi/proptag/0x5D01001F"
+                                ).lower()
+                            except:
+                                try:
+                                    remi_msg = msg.Sender.GetExchangeUser().PrimarySmtpAddress.lower()
+                                except:
+                                    pass
+                            cache_remitentes[nombre_remitente] = remi_msg
+                    asun_msg = msg.Subject.lower() if msg.Subject else ""
+                    fecha_msg = msg.ReceivedTime.date()
+
+
+
+
 # --- NUEVO: UNA SOLA PASADA POR TODA LA BANDEJA DE ENTRADA ---
         if pendientes_bandeja and fecha_limite_global is not None:
             for i in range(max_correos):
