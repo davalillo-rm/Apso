@@ -1,3 +1,83 @@
+
+elif seleccion == "Specific Days":
+                ctk.CTkLabel(frame_dinamico, text="Select the days this process applies to:",
+                             text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(anchor="w", pady=(0, 5))
+
+                # Fila 1: los 7 días, compacto en una sola fila
+                dias_frame = ctk.CTkFrame(frame_dinamico, fg_color="transparent")
+                dias_frame.pack(fill="x")
+                ctk.CTkCheckBox(dias_frame, text="Mon", variable=var_dia_lun, onvalue="LUN", offvalue="",
+                                font=("Trebuchet MS", 11), checkbox_width=16, checkbox_height=16, width=60).pack(side="left")
+                ctk.CTkCheckBox(dias_frame, text="Tue", variable=var_dia_mar, onvalue="MAR", offvalue="",
+                                font=("Trebuchet MS", 11), checkbox_width=16, checkbox_height=16, width=60).pack(side="left")
+                ctk.CTkCheckBox(dias_frame, text="Wed", variable=var_dia_mie, onvalue="MIE", offvalue="",
+                                font=("Trebuchet MS", 11), checkbox_width=16, checkbox_height=16, width=60).pack(side="left")
+                ctk.CTkCheckBox(dias_frame, text="Thu", variable=var_dia_jue, onvalue="JUE", offvalue="",
+                                font=("Trebuchet MS", 11), checkbox_width=16, checkbox_height=16, width=60).pack(side="left")
+                ctk.CTkCheckBox(dias_frame, text="Fri", variable=var_dia_vie, onvalue="VIE", offvalue="",
+                                font=("Trebuchet MS", 11), checkbox_width=16, checkbox_height=16, width=60).pack(side="left")
+                ctk.CTkCheckBox(dias_frame, text="Sat", variable=var_dia_sab, onvalue="SAB", offvalue="",
+                                font=("Trebuchet MS", 11), checkbox_width=16, checkbox_height=16, width=60).pack(side="left")
+                ctk.CTkCheckBox(dias_frame, text="Sun", variable=var_dia_dom, onvalue="DOM", offvalue="",
+                                font=("Trebuchet MS", 11), checkbox_width=16, checkbox_height=16, width=60).pack(side="left")
+
+                # Fila 2: hora inicio, hora limite, intervalo (compacto, lado a lado)
+                horas_frame = ctk.CTkFrame(frame_dinamico, fg_color="transparent")
+                horas_frame.pack(fill="x", pady=(8, 0))
+
+                ctk.CTkLabel(horas_frame, text="From:", text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(side="left")
+                entry_hora_inicio_sd = ctk.CTkEntry(horas_frame, width=70, placeholder_text="09:00")
+                entry_hora_inicio_sd.pack(side="left", padx=(4, 12))
+
+                ctk.CTkLabel(horas_frame, text="Until:", text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(side="left")
+                entry_hora_limite_sd = ctk.CTkEntry(horas_frame, width=70, placeholder_text="14:00")
+                entry_hora_limite_sd.pack(side="left", padx=(4, 12))
+
+                ctk.CTkLabel(horas_frame, text="Remind every:", text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(side="left")
+                entry_intervalo_sd = ctk.CTkEntry(horas_frame, width=50, placeholder_text="15")
+                entry_intervalo_sd.pack(side="left", padx=(4, 4))
+                ctk.CTkLabel(horas_frame, text="min", text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(side="left")
+
+                # Fila 3: destinatario
+                ctk.CTkLabel(frame_dinamico, text="Reminder recipient:", text_color=SCOTIA_SUBTEXT,
+                             font=("Trebuchet MS", 11)).pack(anchor="w", pady=(8, 0))
+                entry_destinatario_sd = ctk.CTkEntry(frame_dinamico, width=400, placeholder_text="example@scotiabank.com.pe")
+                entry_destinatario_sd.pack(anchor="w", pady=(2, 0))
+                agregar_autocomplete(entry_destinatario_sd)
+
+
+
+
+
+
+
+
+
+
+# --- NUEVO: VARIABLES PARA "SPECIFIC DAYS" ---
+        var_dia_lun = ctk.StringVar(value="")
+        var_dia_mar = ctk.StringVar(value="")
+        var_dia_mie = ctk.StringVar(value="")
+        var_dia_jue = ctk.StringVar(value="")
+        var_dia_vie = ctk.StringVar(value="")
+        var_dia_sab = ctk.StringVar(value="")
+        var_dia_dom = ctk.StringVar(value="")
+        entry_hora_inicio_sd = None
+        entry_hora_limite_sd = None
+        entry_intervalo_sd = None
+        entry_destinatario_sd = None
+
+
+
+
+
+
+
+
+
+
+
+
 def parsear_specific_days(valor_tiempo: str) -> dict:
     """
     Convierte el string guardado en Excel para la frecuencia
