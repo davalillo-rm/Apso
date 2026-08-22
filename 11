@@ -1,3 +1,33 @@
+elif frecuencia == "Specific Days":
+                config_sd = parsear_specific_days(str(proc.get("valor_tiempo", "")))
+                dias_semana_map = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
+                dia_hoy_str = dias_semana_map[hoy.weekday()]
+
+                if dia_hoy_str not in config_sd["dias"] or config_sd["hora_inicio"] is None:
+                    evaluar_proceso = False
+                else:
+                    ahora_hora = datetime.datetime.now().time()
+                    fecha_limite = hoy
+                    dias_restantes = 0
+
+                    if ahora_hora < config_sd["hora_inicio"]:
+                        # Todavía no empieza la ventana de este proceso hoy
+                        evaluar_proceso = False
+                    elif ahora_hora <= config_sd["hora_limite"]:
+                        # Está dentro de la ventana: se evalúa pero en modo "esperando"
+                        datos_proc_estado_especial = "esperando"
+                    else:
+                        # Pasó la hora límite: se evalúa en modo normal (falta = vencido)
+                        datos_proc_estado_especial = None
+
+
+
+
+
+
+
+
+
 
 # --- NUEVA LÓGICA DE CAPTURA DE TIEMPO ---
             if frecuencia == "Monthly (Select Weeks)":
