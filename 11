@@ -1,3 +1,142 @@
+
+# --- NUEVO: UNA SOLA PASADA POR TODA LA BANDEJA DE ENTRADA ---
+        if pendientes_bandeja and fecha_limite_global is not None:
+            for i in range(max_correos):
+                try:
+                    msg = mensajes.Item(i + 1)
+                    if getattr(msg, "Class", 0) != 43: continue
+                    if msg.ReceivedTime.date() < fecha_limite_global: break
+
+                    remi_msg = msg.SenderEmailAddress.lower()
+                    if msg.SenderEmailType == "EX":
+                        try: remi_msg = msg.Sender.GetExchangeUser().PrimarySmtpAddress.lower()
+                        except: pass
+                    asun_msg = msg.Subject.lower() if msg.Subject else ""
+                    fecha_msg = msg.ReceivedTime.date()
+
+                    for pend in pendientes_bandeja:
+                        if pend["resuelto"]: continue
+                        if fecha_msg < pend["fecha_limite"]: continue
+                        if msg.EntryID in pend["ignorados"]: continue
+
+                        es_remitente_correcto = (pend["remi_ppal"] in remi_msg) or (pend["remi_alt"] != "" and pend["remi_alt"] in remi_msg)
+                        if es_remitente_correcto and all(p in asun_msg for p in pend["palabras_clave"]):
+                            pend["resuelto"] = True
+                            pend["hora_str"] = str(msg.ReceivedTime)[11:16]
+                            pend["correo_id"] = str(msg.EntryID)
+                            pend["fecha_real"] = msg.ReceivedTime.strftime("%d/%m/%Y")
+                            pend["es_valido"] = self.evaluar_contenido_conforme(msg.Body if msg.Body else "")
+                except:
+                    continue
+
+        # --- NUEVO: aplicar los resultados del escaneo a cada proceso ---
+        for pend in pendientes_bandeja:
+            datos_proc = pend["datos_proc"]
+            if pend["resuelto"]:
+                registrar_evento_historico(
+                    proceso=datos_proc["nombre"], item=pend["nombre_regla"],
+                    tipo="CORREO RECIBIDO", remitente=pend["remi_ppal"],
+                    hora_real=pend["hora_str"], fecha_real=pend["fecha_real"]
+                )
+                if not pend["es_valido"]:
+                    restantes = datos_proc["total"] - datos_proc["cumplidos"] - 1
+                    if restantes > 0:
+                        datos_proc["faltantes"].append({
+                            "nombre_display": pend["nombre_display"], "nombre_regla": pend["nombre_regla"],
+                            "remitente": pend["remi_ppal"], "falta_solicitar": False,
+                            "ind_sol": pend["ind_sol"], "observado": True
+                        })
+                        continue
+                datos_proc["cumplidos"] += 1
+                datos_proc["recibidos"].append({
+                    "nombre": pend["nombre_display"], "hora": pend["hora_str"],
+                    "es_valido": pend["es_valido"], "correo_id": pend["correo_id"],
+                    "ind_sol": pend["ind_sol"]
+                })
+            else:
+                datos_proc["faltantes"].append({
+                    "nombre_display": pend["nombre_display"], "nombre_regla": pend["nombre_regla"],
+                    "remitente": pend["remi_ppal"], "falta_solicitar": pend["validar_solicitud"] and not pend["sol_enviada"],
+                    "ind_sol": pend["ind_sol"], "observado": False
+                })
+
+
+
+
+
+
+
+
+# 3. Preparar cada item para el escaneo único de la bandeja
+            ###################################
+            for itm in items_esperados:
+                # 1. --- VALIDAR OVERRIDE MANUAL (sin cambios) ---
+                if str(itm.get("forzado_fecha")).strip()[:10] == str(hoy):
+                    datos_proc["cumplidos"] += 1
+                    datos_proc["recibidos"].append({
+                        "nombre": itm['nombre'], "hora": "(Manual)",
+                        "es_valido": True, "correo_id": "", "ind_sol": ""
+                    })
+                    continue
+
+                # 2. --- RADAR DE SOLICITUDES (sin cambios, se mantiene por ahora) ---
+                validar_solicitud = itm.get("validar_sol", False)
+                sol_enviada, hora_sol = False, ""
+                palabras_clave = itm["asunto"].lower().split()
+                remi_ppal = itm["remitente"].lower()
+                remi_alt = itm.get("remitente_alterno", "").lower()
+
+                if validar_solicitud:
+                    for i in range(max_enviados):
+                        try:
+                            m = enviados.Item(i + 1)
+                            if m.SentOn.date() < fecha_limite: break
+                            destinatario = str(m.To).lower()
+                            asunto_env = m.Subject.lower() if m.Subject else ""
+                            if all(p in asunto_env for p in palabras_clave):
+                                sol_enviada, hora_sol = True, str(m.SentOn)[11:16]
+                                registrar_evento_historico(
+                                    proceso=nombre_proc, item=itm["nombre"],
+                                    tipo="SOLICITUD ENVIADA", remitente=destinatario,
+                                    hora_real=hora_sol, fecha_real=m.SentOn.strftime("%d/%m/%Y")
+                                )
+                                break
+                        except: continue
+
+                ind_sol = f"  [🟩 Request Submitted ({hora_sol})]" if sol_enviada else f"  [⚠ Pending Request]" if validar_solicitud else ""
+                nombre_display = f"{itm['nombre']}"
+                ignorados = itm.get("ignorados", [])
+
+                # 3. --- NUEVO: en vez de escanear acá, se agrega a la lista global ---
+                pendientes_bandeja.append({
+                    "datos_proc": datos_proc,
+                    "nombre_display": nombre_display,
+                    "nombre_regla": itm["nombre"],
+                    "remi_ppal": remi_ppal,
+                    "remi_alt": remi_alt,
+                    "palabras_clave": palabras_clave,
+                    "ignorados": ignorados,
+                    "fecha_limite": fecha_limite,
+                    "validar_solicitud": validar_solicitud,
+                    "sol_enviada": sol_enviada,
+                    "ind_sol": ind_sol,
+                    "resuelto": False,
+                    "hora_str": "", "correo_id": "", "fecha_real": "", "es_valido": True,
+                })
+
+                if fecha_limite_global is None or fecha_limite < fecha_limite_global:
+                    fecha_limite_global = fecha_limite
+
+            resultados_procesos.append(datos_proc)
+
+
+
+
+
+
+
+
+
 def cargar_items_con_ignorados():
     """
     Lee UNA SOLA VEZ todo el Excel de reglas y arma un diccionario:
