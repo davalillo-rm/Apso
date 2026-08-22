@@ -1,0 +1,31 @@
+def parsear_specific_days(valor_tiempo: str) -> dict:
+    """
+    Convierte el string guardado en Excel para la frecuencia
+    'Specific Days' en un diccionario usable.
+    Formato esperado: "LUN-MIE-VIE|09:00|14:00|10|correo@dominio.com"
+    Si el formato está mal o incompleto, devuelve valores por defecto seguros.
+    """
+    resultado = {
+        "dias": [],           # lista tipo ["LUN", "MIE", "VIE"]
+        "hora_inicio": None,  # objeto datetime.time
+        "hora_limite": None,  # objeto datetime.time
+        "intervalo_min": 15,  # default de seguridad
+        "destinatario": "",
+    }
+    try:
+        partes = valor_tiempo.split("|")
+        if len(partes) < 5:
+            return resultado
+
+        dias_str, inicio_str, limite_str, intervalo_str, destinatario = partes[0], partes[1], partes[2], partes[3], partes[4]
+
+        resultado["dias"] = [d.strip().upper() for d in dias_str.split("-") if d.strip()]
+        resultado["hora_inicio"] = datetime.datetime.strptime(inicio_str.strip(), "%H:%M").time()
+        resultado["hora_limite"] = datetime.datetime.strptime(limite_str.strip(), "%H:%M").time()
+        resultado["intervalo_min"] = int(intervalo_str.strip())
+        resultado["destinatario"] = destinatario.strip()
+
+    except Exception:
+        pass  # si algo falla, se devuelve el default seguro de arriba
+
+    return resultado
