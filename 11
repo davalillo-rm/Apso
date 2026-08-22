@@ -1,4 +1,73 @@
 
+# --- NUEVA LÓGICA DE CAPTURA DE TIEMPO ---
+            if frecuencia == "Monthly (Select Weeks)":
+                # Recolectamos solo los checkboxes que están marcados
+                semanas_marcadas = [s for s in [var_s1.get(), var_s2.get(), var_s3.get(), var_s4.get()] if s != ""]
+
+                if not semanas_marcadas:
+                    messagebox.showwarning("Empty Selection", "You must select at least one week of the month.", parent=v)
+                    return
+
+                # Unimos las selecciones. Ej: Si marcas 1 y 3, guardará "S1-S3"
+                valor_tiempo = "-".join(semanas_marcadas)
+
+            elif frecuencia == "Specific Days":
+                dias_marcados = [d for d in [
+                    var_dia_lun.get(), var_dia_mar.get(), var_dia_mie.get(),
+                    var_dia_jue.get(), var_dia_vie.get(), var_dia_sab.get(), var_dia_dom.get()
+                ] if d != ""]
+
+                if not dias_marcados:
+                    messagebox.showwarning("Empty Selection", "You must select at least one day of the week.", parent=v)
+                    return
+
+                hora_inicio_txt = entry_hora_inicio_sd.get().strip()
+                hora_limite_txt = entry_hora_limite_sd.get().strip()
+                intervalo_txt = entry_intervalo_sd.get().strip()
+                destinatario_txt = entry_destinatario_sd.get().strip()
+
+                if not hora_inicio_txt or not hora_limite_txt or not intervalo_txt or not destinatario_txt:
+                    messagebox.showwarning("Incomplete Fields", "Please complete start time, deadline time, interval and recipient.", parent=v)
+                    return
+
+                try:
+                    h_inicio = datetime.datetime.strptime(hora_inicio_txt, "%H:%M").time()
+                    h_limite = datetime.datetime.strptime(hora_limite_txt, "%H:%M").time()
+                except ValueError:
+                    messagebox.showwarning("Invalid Format", "Please use time format HH:MM (e.g., 09:00).", parent=v)
+                    return
+
+                if h_inicio >= h_limite:
+                    messagebox.showwarning("Invalid Range", "Start time must be earlier than deadline time.", parent=v)
+                    return
+
+                try:
+                    intervalo_num = int(intervalo_txt)
+                    if intervalo_num <= 0:
+                        raise ValueError()
+                except ValueError:
+                    messagebox.showwarning("Invalid Interval", "Reminder interval must be a positive number of minutes.", parent=v)
+                    return
+
+                if not destinatario_txt.lower().endswith("@scotiabank.com.pe"):
+                    messagebox.showwarning("Unauthorized Domain", "The recipient must end with @scotiabank.com.pe", parent=v)
+                    return
+
+                dias_str = "-".join(dias_marcados)
+                valor_tiempo = f"{dias_str}|{hora_inicio_txt}|{hora_limite_txt}|{intervalo_num}|{destinatario_txt}"
+
+            else:
+                # Si es Diario o Semanal, no necesitamos guardar variables extra de tiempo
+                valor_tiempo = "N/A"
+
+
+
+
+
+
+
+
+
 elif seleccion == "Specific Days":
                 ctk.CTkLabel(frame_dinamico, text="Select the days this process applies to:",
                              text_color=SCOTIA_SUBTEXT, font=("Trebuchet MS", 11)).pack(anchor="w", pady=(0, 5))
