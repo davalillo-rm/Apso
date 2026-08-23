@@ -1,4 +1,51 @@
 
+def _enviar_correo_specific_days(self, destinatario: str, nombre_proceso: str, tipo: str, faltantes: list = None):
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            correo = outlook.CreateItem(0)
+            correo.To = destinatario
+
+            # Cabecera común (mismo estilo que enviar_correo_alerta)
+            html = """
+<html><body style="font-family: 'Segoe UI', Arial, sans-serif; color: #262626; line-height: 1.6;">
+<h2 style="color: #ED0006; border-bottom: 2px solid #ED0006; padding-bottom: 5px;">
+Automated Notification: Report Monitoring
+</h2>
+<p>It is hereby communicated that...</p>
+"""
+
+            if tipo == "confirmacion":
+                correo.Subject = f"{nombre_proceso}: Report Received"
+                html += f"<h3 style='color: #008000; margin-top: 20px; margin-bottom: 5px;'>{nombre_proceso}: Process Completed</h3>"
+                html += "<p style='margin-top: 5px;'>All expected emails related to this report have been received. Please access them in your inbox.</p>"
+
+            else:
+                correo.Subject = f"Reminder: {nombre_proceso} still pending"
+                html += f"<h3 style='color: #ED0006; margin-top: 20px; margin-bottom: 5px;'>{nombre_proceso}: Incomplete Process</h3>"
+                html += "<ol style='margin-top: 5px;'>"
+                for n in (faltantes or []):
+                    html += f"<li>You still need <b>{n}</b>.</li>"
+                html += "</ol>"
+
+            # Firma común (misma que enviar_correo_alerta)
+            html += """
+<br><p style="font-size: 11px; color: #555555; border-top: 1px solid #ccc; padding-top: 10px;">
+Atentamente,<br><b>Área de Riesgos de Mercado</b><br>Scotiabank Perú<br>
+<i>*Este es un mensaje generado automáticamente por el Monitor de Reportes.*</i>
+</p></body></html>
+"""
+
+            correo.HTMLBody = html
+            correo.Send()
+
+        except Exception as e:
+            print(f"Error enviando correo Specific Days: {e}")
+
+
+
+
+
+
 def _specific_days_worker(self, candidatos: list):
         """Escanea SOLO los correos de hoy, y SOLO contra los items de los
         procesos Specific Days que están en ventana ahora. Mucho más liviano
