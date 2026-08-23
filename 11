@@ -1,0 +1,187 @@
+
+def _specific_days_worker(self, candidatos: list):
+        """Escanea SOLO los correos de hoy, y SOLO contra los items de los
+        procesos Specific Days que están en ventana ahora. Mucho más liviano
+        que el sync completo porque no recorre otras frecuencias ni va más
+        atrás del día de hoy."""
+        pythoncom.CoInitialize()
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+            bandeja = outlook.GetDefaultFolder(6)
+            mensajes = bandeja.Items
+            mensajes.Sort("[ReceivedTime]", True)
+            hoy = datetime.datetime.now().date()
+
+            items_todos = cargar_items_con_ignorados()
+
+            resultados = []
+            for cand in candidatos:
+                nombre_proc = cand["nombre"]
+                items_proc = items_todos.get(nombre_proc, [])
+                for it in items_proc:
+                    it["_resuelto"] = False
+                datos = {
+                    "nombre": nombre_proc,
+                    "total": len(items_proc),
+                    "cumplidos": 0,
+                    "faltantes": [],
+                    "frecuencia": "Specific Days",
+                    "config_sd": cand["config_sd"],
+                }
+                resultados.append((datos, items_proc))
+
+            max_correos = min(300, mensajes.Count)
+            for i in range(max_correos):
+                try:
+                    msg = mensajes.Item(i + 1)
+                    if getattr(msg, "Class", 0) != 43: continue
+                    if msg.ReceivedTime.date() < hoy: break  # solo nos importa hoy
+
+                    remi_msg = msg.SenderEmailAddress.lower()
+                    if msg.SenderEmailType == "EX":
+                        try: remi_msg = msg.Sender.GetExchangeUser().PrimarySmtpAddress.lower()
+                        except: pass
+                    asun_msg = msg.Subject.lower() if msg.Subject else ""
+
+                    for datos, items_proc in resultados:
+                        for itm in items_proc:
+                            if itm["_resuelto"]: continue
+                            if msg.EntryID in itm.get("ignorados", []): continue
+                            remi_ppal = itm["remitente"].lower()
+                            remi_alt = itm.get("remitente_alterno", "").lower()
+                            palabras_clave = itm["asunto"].lower().split()
+                            es_remitente_correcto = (remi_ppal in remi_msg) or (remi_alt != "" and remi_alt in remi_msg)
+                            if es_remitente_correcto and all(p in asun_msg for p in palabras_clave):
+                                itm["_resuelto"] = True
+                except:
+                    continue
+
+            for datos, items_proc in resultados:
+                for itm in items_proc:
+                    if itm["_resuelto"]:
+                        datos["cumplidos"] += 1
+                    else:
+                        datos["faltantes"].append({
+                            "nombre_display": itm["nombre"],
+                            "nombre_regla": itm["nombre"],
+                            "esperando": True,
+                        })
+
+            lista_final = [d for d, _ in resultados]
+            self.after(0, lambda: self._aplicar_recordatorios_specific_days(lista_final))
+
+        except Exception as e:
+            print(f"Error en chequeo liviano Specific Days: {e}")
+        finally:
+            self._specific_days_scanning = False
+            pythoncom.CoUninitialize()
+
+
+
+
+
+
+def _ciclo_check_specific_days(self):
+        """Cada 1 minuto revisa si hay algún proceso Specific Days en ventana
+        ahora mismo. Si no hay ninguno, no toca Outlook (barato). Si hay,
+        dispara un chequeo liviano en un hilo aparte."""
+        if not self._specific_days_scanning:
+            candidatos = self._procesos_specific_days_en_ventana_ahora()
+            if candidatos:
+                self._specific_days_scanning = True
+                threading.Thread(target=self._specific_days_worker, args=(candidatos,), daemon=True).start()
+
+        self.after(60000, self._ciclo_check_specific_days)
+
+    def _procesos_specific_days_en_ventana_ahora(self) -> list:
+        """Chequeo barato (sin Outlook): qué procesos Specific Days están
+        activos y dentro de su ventana horaria en este momento."""
+        resultado = []
+        try:
+            procesos = leer_procesos()
+        except Exception:
+            return resultado
+
+        hoy = datetime.datetime.now().date()
+        ahora_hora = datetime.datetime.now().time()
+        dias_semana_map = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
+        dia_hoy_str = dias_semana_map[hoy.weekday()]
+
+        for proc in procesos:
+            if proc["frecuencia"] != "Specific Days":
+                continue
+            config_sd = parsear_specific_days(str(proc.get("valor_tiempo", "")))
+            if dia_hoy_str not in config_sd["dias"]:
+                continue
+            if config_sd["hora_inicio"] is None or config_sd["hora_limite"] is None:
+                continue
+            if ahora_hora < config_sd["hora_inicio"] or ahora_hora > config_sd["hora_limite"]:
+                continue
+            resultado.append({"nombre": proc["nombre"], "config_sd": config_sd})
+
+        return resultado
+
+
+
+
+
+
+
+
+def _revisar_recordatorios_specific_days(self, resultado: dict):
+        """Punto de entrada cuando viene del sync completo (cada 10 min)."""
+        if resultado.get("sin_reglas") or resultado.get("error"):
+            return
+        self._aplicar_recordatorios_specific_days(resultado.get("procesos", []))
+
+    def _aplicar_recordatorios_specific_days(self, lista_datos: list):
+        """Lógica compartida: decide si tocar mandar recordatorio o confirmación.
+        La usan tanto el sync completo como el chequeo liviano de 1 minuto."""
+        ahora = datetime.datetime.now()
+        hoy = ahora.date()
+
+        for datos in lista_datos:
+            if datos.get("frecuencia") != "Specific Days":
+                continue
+
+            config_sd = datos.get("config_sd")
+            if not config_sd or not config_sd.get("destinatario"):
+                continue
+
+            nombre_proc = datos["nombre"]
+            estado = self.recordatorios_specific_days.setdefault(nombre_proc, {
+                "ultimo_recordatorio": None,
+                "confirmado_hoy": False,
+                "fecha_confirmado": None,
+            })
+
+            if estado["fecha_confirmado"] != hoy:
+                estado["confirmado_hoy"] = False
+                estado["fecha_confirmado"] = None
+
+            completo = datos["total"] > 0 and datos["cumplidos"] == datos["total"]
+
+            if completo:
+                if not estado["confirmado_hoy"]:
+                    self._enviar_correo_specific_days(
+                        config_sd["destinatario"], nombre_proc, tipo="confirmacion"
+                    )
+                    estado["confirmado_hoy"] = True
+                    estado["fecha_confirmado"] = hoy
+                    estado["ultimo_recordatorio"] = None
+                continue
+
+            en_espera = any(f.get("esperando") for f in datos.get("faltantes", []))
+            if not en_espera:
+                continue
+
+            intervalo = datetime.timedelta(minutes=config_sd.get("intervalo_min", 15))
+            ultimo = estado["ultimo_recordatorio"]
+
+            if ultimo is None or (ahora - ultimo) >= intervalo:
+                nombres_faltantes = [f["nombre_display"] for f in datos["faltantes"] if f.get("esperando")]
+                self._enviar_correo_specific_days(
+                    config_sd["destinatario"], nombre_proc, tipo="recordatorio",
+                    faltantes=nombres_faltantes
+                )
+                estado["ultimo_recordatorio"] = ahora
