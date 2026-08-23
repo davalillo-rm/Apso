@@ -1,3 +1,100 @@
+def _enviar_correo_specific_days(self, destinatario: str, nombre_proceso: str, tipo: str, faltantes: list = None):
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            correo = outlook.CreateItem(0)
+            correo.To = destinatario
+
+            if tipo == "confirmacion":
+                correo.Subject = f"{nombre_proceso}: Report Received"
+                correo.HTMLBody = f"""
+<html><body style="font-family: 'Segoe UI', Arial, sans-serif; color:#262626;">
+<p><b>{nombre_proceso}</b> has been received. No further reminders will be sent today.</p>
+</body></html>
+"""
+            else:
+                items_html = "".join(f"<li>{n}</li>" for n in (faltantes or []))
+                correo.Subject = f"Reminder: {nombre_proceso} still pending"
+                correo.HTMLBody = f"""
+<html><body style="font-family: 'Segoe UI', Arial, sans-serif; color:#262626;">
+<p><b>{nombre_proceso}</b> is still pending:</p>
+<ul>{items_html}</ul>
+</body></html>
+"""
+
+            correo.Send()
+        except Exception as e:
+            print(f"Error enviando correo Specific Days: {e}")
+
+
+
+
+
+
+def _revisar_recordatorios_specific_days(self, resultado: dict):
+        """Revisa procesos 'Specific Days' y manda recordatorio o confirmación por correo."""
+        if resultado.get("sin_reglas") or resultado.get("error"):
+            return
+
+        procesos = resultado.get("procesos", [])
+        ahora = datetime.datetime.now()
+        hoy = ahora.date()
+
+        for datos in procesos:
+            if datos.get("frecuencia") != "Specific Days":
+                continue
+
+            config_sd = datos.get("config_sd")
+            if not config_sd or not config_sd.get("destinatario"):
+                continue
+
+            nombre_proc = datos["nombre"]
+            estado = self.recordatorios_specific_days.setdefault(nombre_proc, {
+                "ultimo_recordatorio": None,
+                "confirmado_hoy": False,
+                "fecha_confirmado": None,
+            })
+
+            # Si cambió el día, reseteamos la confirmación
+            if estado["fecha_confirmado"] != hoy:
+                estado["confirmado_hoy"] = False
+                estado["fecha_confirmado"] = None
+
+            completo = datos["total"] > 0 and datos["cumplidos"] == datos["total"]
+
+            if completo:
+                if not estado["confirmado_hoy"]:
+                    self._enviar_correo_specific_days(
+                        config_sd["destinatario"], nombre_proc, tipo="confirmacion"
+                    )
+                    estado["confirmado_hoy"] = True
+                    estado["fecha_confirmado"] = hoy
+                    estado["ultimo_recordatorio"] = None
+                continue
+
+            # Sigue faltando: solo se recuerda mientras esté dentro de la ventana
+            en_espera = any(f.get("esperando") for f in datos.get("faltantes", []))
+            if not en_espera:
+                continue  # ya pasó la hora límite, esto ya no se maneja por este canal
+
+            intervalo = datetime.timedelta(minutes=config_sd.get("intervalo_min", 15))
+            ultimo = estado["ultimo_recordatorio"]
+
+            if ultimo is None or (ahora - ultimo) >= intervalo:
+                nombres_faltantes = [f["nombre_display"] for f in datos["faltantes"] if f.get("esperando")]
+                self._enviar_correo_specific_days(
+                    config_sd["destinatario"], nombre_proc, tipo="recordatorio",
+                    faltantes=nombres_faltantes
+                )
+                estado["ultimo_recordatorio"] = ahora
+
+
+
+
+
+
+
+
+
 elif frecuencia == "Specific Days":
                 config_sd = parsear_specific_days(str(proc.get("valor_tiempo", "")))
                 dias_semana_map = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
