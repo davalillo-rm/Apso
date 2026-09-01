@@ -1,3 +1,15 @@
+
+SELECT r.session_id, qp.query_plan
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_query_plan(r.plan_handle) qp
+WHERE r.session_id = 77;
+
+
+
+
+
+
+
 SELECT session_id, status, wait_type, wait_time, blocking_session_id, cpu_time, total_elapsed_time
 FROM sys.dm_exec_requests
 WHERE session_id = <tu session_id de esta pestaña>;
