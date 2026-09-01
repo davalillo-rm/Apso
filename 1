@@ -1,3 +1,99 @@
+
+
+-- 1. Segmento -> Tipo de Persona (PN / SME / Mayorista)
+WITH base_segmento AS (
+    SELECT
+        p.CUENTA_BT,
+        p.SEGMENTO,
+        CASE 
+            WHEN p.SEGMENTO IN ('Personal','Estandar','Premium','Preferente','Beyond') 
+                THEN 'PN'
+            WHEN p.SEGMENTO IN ('Micro Empresas','NEGOCIOS 1','NEGOCIOS 2','NEGOCIOS 3') 
+                THEN 'SME'
+            WHEN p.SEGMENTO IN ('Medianas Empresas','Otras Instituciones','Pequeñas Empresas A',
+                                 'Polo Direccion','Sector Gobierno','Corporativo','Instituciones Financieras') 
+                THEN 'Mayorista'
+        END AS tipo_persona
+    FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS p
+),
+
+-- 2. Clientes transaccionales (archivo de Luchito)
+transaccionales AS (
+    SELECT DISTINCT cuentaintegradora AS CUENTA_BT
+    FROM dbo.Clientes_Productos_Cash
+),
+
+-- 3. Fondeo mayorista (transaccionalidad + filtro acreedor)
+fondeo_mayorista_flag AS (
+    SELECT
+        CUENTA_BT,
+        TRANSAC
+    FROM DBO.FONDEO_MAYORISTA
+    WHERE FECHA = 20260731
+      AND ACREEDOR = 99
+),
+
+-- 4. Une segmento con transaccionalidad según corresponda
+segmento_transac AS (
+    SELECT
+        bs.CUENTA_BT,
+        bs.tipo_persona,
+        CASE 
+            WHEN bs.tipo_persona = 'Mayorista' THEN 
+                CASE fm.TRANSAC WHEN 'S' THEN 'Transaccional' 
+                                 WHEN 'N' THEN 'No transaccional' 
+                                 ELSE 'No transaccional' END
+            WHEN t.CUENTA_BT IS NOT NULL THEN 'Transaccional'
+            ELSE 'No transaccional'
+        END AS transaccional
+    FROM base_segmento bs
+    LEFT JOIN transaccionales t 
+        ON bs.CUENTA_BT = t.CUENTA_BT
+    LEFT JOIN fondeo_mayorista_flag fm
+        ON bs.CUENTA_BT = fm.CUENTA_BT
+),
+
+-- 5. Saldo desde LVND10
+lvnd10_saldo AS (
+    SELECT
+        VND10CTA AS CUENTA_BT,
+        CASE 
+            WHEN VND10MDA = 0 THEN VND10SDO
+            WHEN VND10MDA = 1 THEN VND10SDOO
+        END AS Saldo
+    FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PROCESADO
+    WHERE VND10ENT = 1
+)
+
+-- 6. Resultado final
+SELECT
+    'Segmento 1' AS Segmento,
+    CASE WHEN st.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END AS Tipo,
+    CASE WHEN st.tipo_persona = 'Mayorista' THEN NULL ELSE st.tipo_persona END AS [Tipo de Persona],
+    st.transaccional AS Transaccional,
+    SUM(l.Saldo) AS Saldo
+FROM segmento_transac st
+INNER JOIN lvnd10_saldo l
+    ON st.CUENTA_BT = l.CUENTA_BT
+GROUP BY 
+    CASE WHEN st.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END,
+    CASE WHEN st.tipo_persona = 'Mayorista' THEN NULL ELSE st.tipo_persona END,
+    st.transaccional
+ORDER BY Tipo, [Tipo de Persona], Transaccional;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ;WITH base AS (
     SELECT
         a.VND10FEC,
