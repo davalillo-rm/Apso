@@ -1,3 +1,102 @@
+
+USE SBP_RGTRABAJO;
+
+WITH base_segmento AS (
+    SELECT
+        p.CUENTA_BT,
+        p.SEGMENTO,
+        CASE 
+            WHEN p.SEGMENTO IN ('Personal','Estandar','Premium','Preferente','Beyond') 
+                THEN 'PN'
+            WHEN p.SEGMENTO IN ('Micro Empresas','NEGOCIOS 1','NEGOCIOS 2','NEGOCIOS 3') 
+                THEN 'SME'
+            WHEN p.SEGMENTO IN ('Medianas Empresas','Otras Instituciones','Pequeñas Empresas A',
+                                 'Polo Direccion','Sector Gobierno','Corporativo','Instituciones Financieras') 
+                THEN 'Mayorista'
+        END AS tipo_persona
+    FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS p
+    WHERE p.FECHA = 20260731
+),
+
+-- LVND10 hace de puente BT <-> CUENTA UNICA, además de traer el saldo
+lvnd10_saldo AS (
+    SELECT
+        VND10CTA AS CUENTA_BT,
+        VND10COD AS CUENTA_UNICA,
+        CASE 
+            WHEN VND10MDA = 0 THEN VND10SDO
+            WHEN VND10MDA = 1 THEN VND10SDOO
+        END AS Saldo
+    FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PROCESADO
+    WHERE VND10ENT = 1
+      AND VND10RUB NOT BETWEEN 21110400000 AND 21110499999
+      AND VND10RUB NOT BETWEEN 21110300000 AND 21110399999
+      AND VND10RUB NOT BETWEEN 21110800000 AND 21110899999
+      AND VND10RUB NOT BETWEEN 21111900000 AND 21111999999
+      AND VND10RUB NOT BETWEEN 21210400000 AND 21210499999
+      AND VND10RUB NOT BETWEEN 21210300000 AND 21210399999
+      AND VND10RUB NOT BETWEEN 21210800000 AND 21210899999
+      AND VND10RUB NOT BETWEEN 21211900000 AND 21211999999
+),
+
+-- Clientes transaccionales, a nivel cuenta única (solo aplica a Minorista)
+transaccionales AS (
+    SELECT DISTINCT cuentaintegradora AS CUENTA_UNICA
+    FROM dbo.Clientes_Productos_Cash
+),
+
+-- Segmento + saldo + cuenta única (vía LVND10)
+segmento_lvnd10 AS (
+    SELECT
+        bs.tipo_persona,
+        l.CUENTA_UNICA,
+        l.Saldo
+    FROM base_segmento bs
+    INNER JOIN lvnd10_saldo l
+        ON bs.CUENTA_BT = l.CUENTA_BT
+),
+
+-- Transaccionalidad solo para Minorista; Mayorista queda en NULL
+segmento_transac AS (
+    SELECT
+        sl.tipo_persona,
+        sl.Saldo,
+        CASE 
+            WHEN sl.tipo_persona = 'Mayorista' THEN NULL
+            WHEN t.CUENTA_UNICA IS NOT NULL THEN 'Transaccional'
+            ELSE 'No transaccional'
+        END AS transaccional
+    FROM segmento_lvnd10 sl
+    LEFT JOIN transaccionales t 
+        ON sl.CUENTA_UNICA = t.CUENTA_UNICA
+)
+
+SELECT
+    'Segmento 1' AS Segmento,
+    CASE WHEN tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END AS Tipo,
+    CASE WHEN tipo_persona = 'Mayorista' THEN NULL ELSE tipo_persona END AS [Tipo de Persona],
+    transaccional AS Transaccional,
+    SUM(Saldo) AS Saldo
+FROM segmento_transac
+GROUP BY 
+    CASE WHEN tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END,
+    CASE WHEN tipo_persona = 'Mayorista' THEN NULL ELSE tipo_persona END,
+    transaccional
+ORDER BY Tipo, [Tipo de Persona], Transaccional;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 USE SBP_RGTRABAJO;
 
 -- 1. Segmento -> Tipo de Persona (PN / SME / Mayorista)
