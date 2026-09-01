@@ -1,3 +1,18 @@
+IF OBJECT_ID('tempdb..#transaccionales') IS NOT NULL DROP TABLE #transaccionales;
+
+SELECT DISTINCT TRY_CAST(cuentaintegradora AS NUMERIC(9,0)) AS CUENTA_UNICA
+INTO #transaccionales
+FROM dbo.Clientes_Productos_Cash;
+
+SELECT COUNT(*) AS filas FROM #transaccionales;
+
+
+
+
+
+
+
+
 IF OBJECT_ID('tempdb..#base_segmento') IS NOT NULL DROP TABLE #base_segmento;
 
 SELECT
