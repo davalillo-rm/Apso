@@ -1,3 +1,29 @@
+
+IF OBJECT_ID('tempdb..#segmento_lvnd10') IS NOT NULL DROP TABLE #segmento_lvnd10;
+
+SELECT
+    bs.tipo_persona,
+    l.CUENTA_UNICA,
+    l.Saldo
+INTO #segmento_lvnd10
+FROM #base_segmento bs
+INNER JOIN #lvnd10_saldo l
+    ON bs.CUENTA_BT = l.CUENTA_BT;
+
+SELECT COUNT(*) AS filas FROM #segmento_lvnd10;
+
+
+
+
+CREATE INDEX IX_temp_segmento_bt ON #base_segmento(CUENTA_BT);
+CREATE INDEX IX_temp_lvnd10_bt ON #lvnd10_saldo(CUENTA_BT);
+CREATE INDEX IX_temp_transac_cu ON #transaccionales(CUENTA_UNICA);
+
+
+
+
+
+
 IF OBJECT_ID('tempdb..#transaccionales') IS NOT NULL DROP TABLE #transaccionales;
 
 SELECT DISTINCT cuentaintegradora AS CUENTA_UNICA
