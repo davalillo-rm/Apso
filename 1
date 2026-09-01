@@ -1,3 +1,24 @@
+IF OBJECT_ID('tempdb..#transaccionales') IS NOT NULL DROP TABLE #transaccionales;
+
+SELECT DISTINCT cuentaintegradora AS CUENTA_UNICA
+INTO #transaccionales
+FROM dbo.Clientes_Productos_Cash;
+
+SELECT COUNT(*) AS filas FROM #transaccionales;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 IF OBJECT_ID('tempdb..#lvnd10_saldo') IS NOT NULL DROP TABLE #lvnd10_saldo;
 
 SELECT
