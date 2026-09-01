@@ -1,3 +1,34 @@
+SELECT
+    'Segmento 1' AS Segmento,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END AS Tipo,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN NULL ELSE sl.tipo_persona END AS [Tipo de Persona],
+    CASE 
+        WHEN sl.tipo_persona = 'Mayorista' THEN NULL
+        WHEN t.CUENTA_UNICA IS NOT NULL THEN 'Transaccional'
+        ELSE 'No transaccional'
+    END AS Transaccional,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS Moneda,
+    SUM(sl.Saldo) AS Saldo
+FROM #segmento_lvnd10 sl
+LEFT JOIN #transaccionales t 
+    ON sl.CUENTA_UNICA = t.CUENTA_UNICA
+GROUP BY 
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN NULL ELSE sl.tipo_persona END,
+    CASE 
+        WHEN sl.tipo_persona = 'Mayorista' THEN NULL
+        WHEN t.CUENTA_UNICA IS NOT NULL THEN 'Transaccional'
+        ELSE 'No transaccional'
+    END,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END
+ORDER BY Tipo, [Tipo de Persona], Transaccional, Moneda;
+
+
+
+
+
+
+
 IF OBJECT_ID('tempdb..#lvnd10_saldo_bt') IS NOT NULL DROP TABLE #lvnd10_saldo_bt;
 
 SELECT
