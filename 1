@@ -1,3 +1,12 @@
+SELECT session_id, status, wait_type, wait_time, blocking_session_id, cpu_time, total_elapsed_time
+FROM sys.dm_exec_requests
+WHERE session_id = <tu session_id de esta pestaña>;
+
+
+
+
+
+
 IF OBJECT_ID('tempdb..#transaccionales') IS NOT NULL DROP TABLE #transaccionales;
 
 SELECT DISTINCT TRY_CAST(cuentaintegradora AS NUMERIC(9,0)) AS CUENTA_UNICA
