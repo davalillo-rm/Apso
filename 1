@@ -1,3 +1,18 @@
+
+IF OBJECT_ID('tempdb..#producto_unico') IS NOT NULL DROP TABLE #producto_unico;
+
+SELECT DISTINCT 
+    CAST(Cuenta_BT AS NUMERIC(9,0)) AS CUENTA_BT,
+    producto
+INTO #producto_unico
+FROM SBP_RGTRABAJO.IRRBB.MODEL_DATA_HIST
+WHERE Fecha_corte = 20260731;
+
+CREATE INDEX IX_producto_unico_bt ON #producto_unico(CUENTA_BT);
+
+
+
+
 SELECT TABLE_NAME 
 FROM INFORMATION_SCHEMA.TABLES
 WHERE TABLE_NAME LIKE '%PRODUCTO%'
