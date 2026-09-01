@@ -1,3 +1,18 @@
+IF OBJECT_ID('tempdb..#lvnd10_saldo_bt') IS NOT NULL DROP TABLE #lvnd10_saldo_bt;
+
+SELECT
+    CUENTA_BT,
+    CUENTA_UNICA,
+    SUM(Saldo) AS Saldo
+INTO #lvnd10_saldo_bt
+FROM #lvnd10_saldo
+GROUP BY CUENTA_BT, CUENTA_UNICA;
+
+SELECT COUNT(*) AS filas FROM #lvnd10_saldo_bt;
+
+
+
+
 
 
 SELECT session_id, status, wait_type, wait_time, blocking_session_id, cpu_time, total_elapsed_time,
