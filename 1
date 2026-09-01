@@ -1,3 +1,127 @@
+USE SBP_RGTRABAJO;
+
+-- ============================================
+-- PASO 1: Segmento por cuenta BT
+-- ============================================
+IF OBJECT_ID('tempdb..#base_segmento') IS NOT NULL DROP TABLE #base_segmento;
+
+SELECT
+    CAST(p.CUENTA_BT AS NUMERIC(9,0)) AS CUENTA_BT,
+    p.SEGMENTO,
+    CASE 
+        WHEN p.SEGMENTO IN ('Personal','Estandar','Premium','Preferente','Beyond') THEN 'PN'
+        WHEN p.SEGMENTO IN ('Micro Empresas','NEGOCIOS 1','NEGOCIOS 2','NEGOCIOS 3') THEN 'SME'
+        WHEN p.SEGMENTO IN ('Medianas Empresas','Otras Instituciones','Pequeñas Empresas A',
+                             'Polo Direccion','Sector Gobierno','Corporativo','Instituciones Financieras') 
+            THEN 'Mayorista'
+    END AS tipo_persona
+INTO #base_segmento
+FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS p
+WHERE p.PERIODO = 202607;  -- <-- AJUSTA AL PERÍODO CORRECTO
+
+-- ============================================
+-- PASO 2: Segmento único por cuenta (sin duplicados)
+-- ============================================
+IF OBJECT_ID('tempdb..#segmento_unico') IS NOT NULL DROP TABLE #segmento_unico;
+
+SELECT DISTINCT CUENTA_BT, tipo_persona
+INTO #segmento_unico
+FROM #base_segmento;
+
+CREATE INDEX IX_segmento_unico_bt ON #segmento_unico(CUENTA_BT);
+
+-- ============================================
+-- PASO 3: LVND10 - saldo en moneda origen, SOLO rubros NMD (Vista/Ahorro/Plazo)
+-- ============================================
+IF OBJECT_ID('tempdb..#lvnd10_saldo') IS NOT NULL DROP TABLE #lvnd10_saldo;
+
+SELECT
+    VND10CTA AS CUENTA_BT,
+    VND10COD AS CUENTA_UNICA,
+    VND10MDA AS Moneda,
+    VND10SDOO AS Saldo
+INTO #lvnd10_saldo
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PROCESADO
+WHERE VND10ENT = 1
+  AND LEFT(CAST(VND10RUB AS VARCHAR(20)), 4) IN ('2111','2112','2113');
+  -- Solo Vista (2111), Ahorro (2112) y Plazo (2113) — filtro por INCLUSIÓN
+
+-- ============================================
+-- PASO 4: Resumir LVND10 por cuenta + moneda
+-- ============================================
+IF OBJECT_ID('tempdb..#lvnd10_saldo_bt') IS NOT NULL DROP TABLE #lvnd10_saldo_bt;
+
+SELECT
+    CUENTA_BT,
+    CUENTA_UNICA,
+    Moneda,
+    SUM(Saldo) AS Saldo
+INTO #lvnd10_saldo_bt
+FROM #lvnd10_saldo
+GROUP BY CUENTA_BT, CUENTA_UNICA, Moneda;
+
+CREATE INDEX IX_lvnd10bt_bt ON #lvnd10_saldo_bt(CUENTA_BT);
+
+-- ============================================
+-- PASO 5: Clientes transaccionales
+-- ============================================
+IF OBJECT_ID('tempdb..#transaccionales') IS NOT NULL DROP TABLE #transaccionales;
+
+SELECT DISTINCT TRY_CAST(cuentaintegradora AS NUMERIC(9,0)) AS CUENTA_UNICA
+INTO #transaccionales
+FROM dbo.Clientes_Productos_Cash;
+
+CREATE INDEX IX_transac_cu ON #transaccionales(CUENTA_UNICA);
+
+-- ============================================
+-- PASO 6: LVND10 (base) + segmento pegado — SOLO cuentas que existen en PASIVOS
+-- ============================================
+IF OBJECT_ID('tempdb..#segmento_lvnd10') IS NOT NULL DROP TABLE #segmento_lvnd10;
+
+SELECT
+    l.CUENTA_BT,
+    l.CUENTA_UNICA,
+    l.Moneda,
+    l.Saldo,
+    s.tipo_persona
+INTO #segmento_lvnd10
+FROM #lvnd10_saldo_bt l
+INNER JOIN #segmento_unico s      -- INNER JOIN: descarta lo que no tenga match (ej. cuentas de activos)
+    ON l.CUENTA_BT = s.CUENTA_BT;
+
+-- ============================================
+-- PASO 7: Resultado final
+-- ============================================
+SELECT
+    'Segmento 1' AS Segmento,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END AS Tipo,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN NULL ELSE sl.tipo_persona END AS [Tipo de Persona],
+    CASE 
+        WHEN sl.tipo_persona = 'Mayorista' THEN NULL
+        WHEN t.CUENTA_UNICA IS NOT NULL THEN 'Transaccional'
+        ELSE 'No transaccional'
+    END AS Transaccional,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' ELSE 'SIN_MONEDA' END AS Moneda,
+    SUM(sl.Saldo) AS Saldo
+FROM #segmento_lvnd10 sl
+LEFT JOIN #transaccionales t 
+    ON sl.CUENTA_UNICA = t.CUENTA_UNICA
+GROUP BY 
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN NULL ELSE sl.tipo_persona END,
+    CASE 
+        WHEN sl.tipo_persona = 'Mayorista' THEN NULL
+        WHEN t.CUENTA_UNICA IS NOT NULL THEN 'Transaccional'
+        ELSE 'No transaccional'
+    END,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' ELSE 'SIN_MONEDA' END
+ORDER BY Tipo, [Tipo de Persona], Transaccional, Moneda;
+
+
+
+
+
+
 
 USE SBP_RGTRABAJO;
 
