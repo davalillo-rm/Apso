@@ -1,3 +1,30 @@
+SELECT
+    'Segmento 1' AS Segmento,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END AS Tipo,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN NULL ELSE sl.tipo_persona END AS [Tipo de Persona],
+    CASE 
+        WHEN sl.tipo_persona = 'Mayorista' THEN NULL
+        WHEN t.CUENTA_UNICA IS NOT NULL THEN 'Transaccional'
+        ELSE 'No transaccional'
+    END AS Transaccional,
+    SUM(sl.Saldo) AS Saldo
+FROM #segmento_lvnd10 sl
+LEFT JOIN #transaccionales t 
+    ON sl.CUENTA_UNICA = t.CUENTA_UNICA
+GROUP BY 
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN NULL ELSE sl.tipo_persona END,
+    CASE 
+        WHEN sl.tipo_persona = 'Mayorista' THEN NULL
+        WHEN t.CUENTA_UNICA IS NOT NULL THEN 'Transaccional'
+        ELSE 'No transaccional'
+    END
+ORDER BY Tipo, [Tipo de Persona], Transaccional;
+
+
+
+
+
 IF OBJECT_ID('tempdb..#segmento_lvnd10') IS NOT NULL DROP TABLE #segmento_lvnd10;
 
 SELECT
