@@ -1,4 +1,11 @@
 
+SELECT DISTINCT producto  -- ajusta el nombre según lo que confirme el INFORMATION_SCHEMA
+FROM SBP_RGTRABAJO.IRRBB.MODEL_DATA_HIST WITH (INDEX(IX_model_data_hist_cuenta_bt))
+WHERE Fecha_corte = 20260731;
+
+
+
+
 IF OBJECT_ID('tempdb..#producto_unico') IS NOT NULL DROP TABLE #producto_unico;
 
 SELECT DISTINCT 
