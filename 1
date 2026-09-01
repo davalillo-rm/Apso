@@ -1,3 +1,20 @@
+IF OBJECT_ID('tempdb..#segmento_lvnd10') IS NOT NULL DROP TABLE #segmento_lvnd10;
+
+SELECT
+    bs.tipo_persona,
+    l.CUENTA_UNICA,
+    l.Saldo
+INTO #segmento_lvnd10
+FROM #base_segmento bs
+INNER JOIN #lvnd10_saldo_bt l
+    ON bs.CUENTA_BT = l.CUENTA_BT;
+
+SELECT COUNT(*) AS filas FROM #segmento_lvnd10;
+
+
+
+
+
 CREATE INDEX IX_temp_lvnd10bt_bt ON #lvnd10_saldo_bt(CUENTA_BT);
 
 
