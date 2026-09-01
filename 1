@@ -1,3 +1,29 @@
+IF OBJECT_ID('tempdb..#base_segmento') IS NOT NULL DROP TABLE #base_segmento;
+
+SELECT
+    p.CUENTA_BT,
+    p.SEGMENTO,
+    CASE 
+        WHEN p.SEGMENTO IN ('Personal','Estandar','Premium','Preferente','Beyond') THEN 'PN'
+        WHEN p.SEGMENTO IN ('Micro Empresas','NEGOCIOS 1','NEGOCIOS 2','NEGOCIOS 3') THEN 'SME'
+        WHEN p.SEGMENTO IN ('Medianas Empresas','Otras Instituciones','Pequeñas Empresas A',
+                             'Polo Direccion','Sector Gobierno','Corporativo','Instituciones Financieras') 
+            THEN 'Mayorista'
+    END AS tipo_persona
+INTO #base_segmento
+FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS p
+WHERE p.PERIODO = 20260731;
+
+SELECT COUNT(*) AS filas FROM #base_segmento;
+
+
+
+
+
+
+
+
+
 
 USE SBP_RGTRABAJO;
 
