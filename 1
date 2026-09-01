@@ -1,3 +1,13 @@
+SELECT VND10FAM, VND10SFA, SUM(VND10SDOO) AS Saldo
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PROCESADO
+WHERE VND10ENT = 1
+GROUP BY VND10FAM, VND10SFA
+ORDER BY VND10FAM, VND10SFA;
+
+
+
+
+
 USE SBP_RGTRABAJO;
 
 -- ============================================
