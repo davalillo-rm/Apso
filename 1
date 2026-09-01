@@ -1,3 +1,11 @@
+SELECT CUENTA_BT, COUNT(DISTINCT SEGMENTO) AS segmentos_distintos
+FROM #base_segmento
+GROUP BY CUENTA_BT
+HAVING COUNT(DISTINCT SEGMENTO) > 1;
+
+
+
+
 SELECT
     'Segmento 1' AS Segmento,
     CASE WHEN sl.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END AS Tipo,
