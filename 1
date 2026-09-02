@@ -1,3 +1,23 @@
+-- 1. Cuántas cuentas hay en total en tu universo NMD
+SELECT COUNT(DISTINCT CUENTA_BT) AS TotalCuentasNMD FROM #lvnd10_saldo_bt;
+
+-- 2. Cuántas de esas cuentas SÍ matchearon con la lista de tasa cero de Preliminar
+SELECT COUNT(DISTINCT l.CUENTA_BT) AS CuentasConMatchTasaCero
+FROM #lvnd10_saldo_bt l
+INNER JOIN #cuentas_tasa_cero tc ON l.CUENTA_BT = tc.CUENTA_BT;
+
+-- 3. Compara: ¿cuántas cuentas de tu universo tienen tasa=0 en FINAL vs en PRELIMINAR?
+SELECT 
+    (SELECT COUNT(DISTINCT VND10CTA) FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PROCESADO 
+     WHERE VND10ENT=1 AND VND10TASA=0 AND VND10CTA IN (SELECT CUENTA_BT FROM #lvnd10_saldo_bt)) AS CuentasTasaCero_Final,
+    (SELECT COUNT(DISTINCT VND10CTA) FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PRELIMINAR 
+     WHERE VND10TASA=0 AND VND10CTA IN (SELECT CUENTA_BT FROM #lvnd10_saldo_bt)) AS CuentasTasaCero_Preliminar;
+
+
+
+
+
+
 
 USE SBP_RGTRABAJO;
 
