@@ -1,3 +1,25 @@
+SELECT TOP 20 * 
+FROM [SBP_RGTRABAJO].[RMERCADO].[Catalogo_producto] WITH (nolock);
+
+
+
+SELECT * 
+FROM [SBP_RGTRABAJO].[RMERCADO].[Catalogo_producto] WITH (nolock)
+WHERE producto LIKE '%SUELDO%' 
+   OR producto LIKE '%FREE%' 
+   OR producto LIKE '%DIGITAL%'
+   OR sub_producto LIKE '%SUELDO%' 
+   OR sub_producto LIKE '%FREE%' 
+   OR sub_producto LIKE '%DIGITAL%';
+
+
+
+
+
+
+
+
+
 SELECT ID_PRODUCTO, COUNT(*) AS CantidadCuentas
 FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS
 WHERE PERIODO = 202607
