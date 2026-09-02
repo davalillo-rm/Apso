@@ -1,3 +1,23 @@
+Buenas tardes, Lili, Julio.
+Les comparto un hallazgo relevante sobre la definición de transaccionalidad para el reporte de NMD.
+Logré identificar el código de producto correspondiente a Cuenta Sueldo, Cuenta Free y Cuenta Digital en la tabla PORTAFOLIO_SBP_PASIVOS (columna ID_SUBPRODUCTO). Este mapeo fue validado cruzando los saldos en cuatro segmentos distintos (Beyond, Personal, Preferente y Premium), confirmando consistencia en el ranking de magnitudes en los cuatro casos:
+ID_SUBPRODUCTO 416 = CUENTA SUELDO
+ID_SUBPRODUCTO 405 = CUENTA FREE
+ID_SUBPRODUCTO 470 = CUENTA DIGITAL
+Cabe precisar que la tabla LVND10 no contiene este nivel de detalle de producto, por lo que aplicar este criterio requiere cruzar PASIVOS con LVND10 a través de CUENTA_BT.
+Al realizar dicho cruce dentro del universo de rubros contables utilizados para NMD (2111, 2112 y 2113, con las exclusiones ya acordadas), se observa que el 100% de las cuentas correspondientes a estos tres productos ya presenta VND10TASA = 0.
+En consecuencia, el filtro de tasa cero aplicado directamente sobre LVND10 produce el mismo resultado que incorporar adicionalmente el cruce por producto, por lo que no resulta necesario ese cruce para este reporte.
+Por el mismo motivo, no existen cuentas con tasa distinta de cero dentro de este universo, por lo que el análisis comparativo contra la tasa de referencia BCRP (100%/75%/50%) no aplica: no hay data sobre la cual realizarlo.
+Deja constancia del mapeo de ID_SUBPRODUCTO documentado, en caso se requiera para un alcance futuro distinto (por ejemplo, si se incorporan Depósitos a Plazo).
+
+
+
+
+
+
+
+
+
 SELECT VND10RUB, COUNT(*) AS filas, SUM(VND10SDOO) AS SaldoTotal
 FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PROCESADO
 WHERE VND10ENT = 1
