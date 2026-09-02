@@ -1,3 +1,36 @@
+-- Universo total de tasa_bt para PN+SME (sin aplicar umbral)
+SELECT tipo_persona, Moneda, SUM(Saldo) AS Saldo_UniversoTasaDistintaCero
+FROM #sme_tasa_detalle
+GROUP BY tipo_persona, Moneda
+ORDER BY tipo_persona, Moneda;
+
+-- Saldo "No transaccional" del resultado final (Paso 7), filtrado a PN/SME
+SELECT 
+    sl.tipo_persona,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS Moneda,
+    SUM(sl.Saldo) AS Saldo_NoTransaccional
+FROM #segmento_lvnd10 sl
+WHERE sl.tipo_persona IN ('PN','SME') AND sl.Transaccional = 'No transaccional'
+GROUP BY sl.tipo_persona, CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END
+ORDER BY tipo_persona, Moneda;
+
+-- La diferencia entre ambos debería ser exactamente el saldo de cuentas con tasa≠0 Y producto 416/405/470
+SELECT 
+    sl.tipo_persona,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS Moneda,
+    SUM(sl.Saldo) AS Saldo_TasaDistintaCero_PeroProductoTransaccional
+FROM #segmento_lvnd10 sl
+INNER JOIN #tasa_bt t ON sl.CUENTA_BT = t.CUENTA_BT
+WHERE sl.tipo_persona IN ('PN','SME') AND sl.Transaccional = 'Transaccional'
+GROUP BY sl.tipo_persona, CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END
+ORDER BY tipo_persona, Moneda;
+
+
+
+
+
+
+
 IF OBJECT_ID('tempdb..#sme_tasa_detalle') IS NOT NULL DROP TABLE #sme_tasa_detalle;
 
 SELECT
