@@ -1,3 +1,18 @@
+SELECT 
+    tipo_persona,
+    Moneda,
+    COUNT(CASE WHEN BajoDel100pct = 1 THEN 1 END) AS Cuentas_BajoDel100pct,
+    COUNT(CASE WHEN BajoDel75pct = 1 THEN 1 END) AS Cuentas_BajoDel75pct,
+    COUNT(CASE WHEN BajoDel50pct = 1 THEN 1 END) AS Cuentas_BajoDel50pct
+FROM #sme_tasa_detalle
+GROUP BY tipo_persona, Moneda
+ORDER BY tipo_persona, Moneda;
+
+
+
+
+
+
 IF OBJECT_ID('tempdb..#tasa_bt') IS NOT NULL DROP TABLE #tasa_bt;
 
 SELECT 
