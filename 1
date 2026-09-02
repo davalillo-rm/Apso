@@ -1,3 +1,60 @@
+
+-- ============================================
+-- PASO 8: Tasa por cuenta (desde PRELIMINAR, solo tasas > 0)
+-- ============================================
+IF OBJECT_ID('tempdb..#tasa_bt') IS NOT NULL DROP TABLE #tasa_bt;
+
+SELECT 
+    VND10CTA AS CUENTA_BT,
+    MAX(VND10TASA) AS Tasa
+INTO #tasa_bt
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PRELIMINAR
+WHERE VND10TASA <> 0
+GROUP BY VND10CTA;
+
+CREATE INDEX IX_tasa_bt ON #tasa_bt(CUENTA_BT);
+
+-- ============================================
+-- PASO 9: Cuentas PN y SME con tasa distinta de cero, clasificadas vs tasa de referencia
+-- ============================================
+IF OBJECT_ID('tempdb..#sme_tasa_detalle') IS NOT NULL DROP TABLE #sme_tasa_detalle;
+
+SELECT
+    sl.tipo_persona,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS Moneda,
+    t.Tasa,
+    sl.Saldo,
+    CASE WHEN sl.Moneda = 0 THEN t.Tasa < 4.25 ELSE t.Tasa < 3.75 END AS BajoDel100pct,
+    CASE WHEN sl.Moneda = 0 THEN t.Tasa < (4.25*0.75) ELSE t.Tasa < (3.75*0.75) END AS BajoDel75pct,
+    CASE WHEN sl.Moneda = 0 THEN t.Tasa < (4.25*0.50) ELSE t.Tasa < (3.75*0.50) END AS BajoDel50pct
+INTO #sme_tasa_detalle
+FROM #segmento_lvnd10 sl
+INNER JOIN #tasa_bt t ON sl.CUENTA_BT = t.CUENTA_BT
+WHERE sl.tipo_persona IN ('PN', 'SME');
+
+-- ============================================
+-- PASO 10: Resumen — saldo total por cada corte, separado por tipo_persona y moneda
+-- ============================================
+SELECT 
+    tipo_persona,
+    Moneda,
+    SUM(CASE WHEN BajoDel100pct = 1 THEN Saldo ELSE 0 END) AS Saldo_BajoDel100pct,
+    SUM(CASE WHEN BajoDel75pct = 1 THEN Saldo ELSE 0 END) AS Saldo_BajoDel75pct,
+    SUM(CASE WHEN BajoDel50pct = 1 THEN Saldo ELSE 0 END) AS Saldo_BajoDel50pct,
+    COUNT(*) AS CantidadCuentas
+FROM #sme_tasa_detalle
+GROUP BY tipo_persona, Moneda
+ORDER BY tipo_persona, Moneda;
+
+
+
+
+
+
+
+
+
+
 USE SBP_RGTRABAJO;
 
 -- ============================================
