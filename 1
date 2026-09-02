@@ -1,3 +1,11 @@
+SELECT 
+    CASE WHEN VND10TASA = 0 THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END AS Grupo,
+    COUNT(*) AS filas
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PROCESADO
+WHERE VND10ENT = 1
+GROUP BY CASE WHEN VND10TASA = 0 THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END;
+
+
 
 
 
