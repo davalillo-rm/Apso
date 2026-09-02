@@ -1,3 +1,135 @@
+
+
+
+
+
+
+
+
+
+USE SBP_RGTRABAJO;
+
+-- PASO 1: Segmento por cuenta BT
+IF OBJECT_ID('tempdb..#base_segmento') IS NOT NULL DROP TABLE #base_segmento;
+
+SELECT
+    CAST(p.CUENTA_BT AS NUMERIC(9,0)) AS CUENTA_BT,
+    p.SEGMENTO,
+    CASE 
+        WHEN p.SEGMENTO IN ('Personal','Estandar','Premium','Preferente','Beyond') THEN 'PN'
+        WHEN p.SEGMENTO IN ('Micro Empresas','NEGOCIOS 1','NEGOCIOS 2','NEGOCIOS 3') THEN 'SME'
+        WHEN p.SEGMENTO IN ('Medianas Empresas','Otras Instituciones','Pequeñas Empresas A',
+                             'Polo Direccion','Sector Gobierno','Corporativo','Instituciones Financieras') 
+            THEN 'Mayorista'
+    END AS tipo_persona
+INTO #base_segmento
+FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS p
+WHERE p.PERIODO = 202607;
+
+-- PASO 2: Segmento único por cuenta
+IF OBJECT_ID('tempdb..#segmento_unico') IS NOT NULL DROP TABLE #segmento_unico;
+
+SELECT DISTINCT CUENTA_BT, tipo_persona
+INTO #segmento_unico
+FROM #base_segmento;
+
+CREATE INDEX IX_segmento_unico_bt ON #segmento_unico(CUENTA_BT);
+
+-- PASO 2.5: Catálogo de producto transaccional por cuenta BT (CONFIRMADO por validación cruzada)
+IF OBJECT_ID('tempdb..#producto_unico') IS NOT NULL DROP TABLE #producto_unico;
+
+SELECT DISTINCT 
+    CAST(CUENTA_BT AS NUMERIC(9,0)) AS CUENTA_BT,
+    CASE WHEN ID_SUBPRODUCTO IN (416, 405, 470) THEN 1 ELSE 0 END AS EsProductoTransaccional
+INTO #producto_unico
+FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS
+WHERE PERIODO = 202607;
+
+CREATE INDEX IX_producto_unico_bt ON #producto_unico(CUENTA_BT);
+
+-- PASO 3: LVND10 - saldo + flag Transaccional (tasa=0 O producto sueldo/free/digital)
+IF OBJECT_ID('tempdb..#lvnd10_saldo') IS NOT NULL DROP TABLE #lvnd10_saldo;
+
+SELECT
+    l.VND10CTA AS CUENTA_BT,
+    l.VND10COD AS CUENTA_UNICA,
+    l.VND10MDA AS Moneda,
+    l.VND10SDOO AS Saldo,
+    CASE 
+        WHEN l.VND10TASA = 0 THEN 'Transaccional'
+        WHEN pu.EsProductoTransaccional = 1 THEN 'Transaccional'
+        ELSE 'No transaccional'
+    END AS Transaccional
+INTO #lvnd10_saldo
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PROCESADO l
+LEFT JOIN #producto_unico pu
+    ON CAST(l.VND10CTA AS NUMERIC(9,0)) = pu.CUENTA_BT
+WHERE l.VND10ENT = 1
+  AND l.VND10MDA IN (0,1)
+  AND LEFT(CAST(l.VND10RUB AS VARCHAR(20)), 4) IN ('2111','2112','2113')
+  AND l.VND10RUB NOT BETWEEN 21110400000 AND 21110499999
+  AND l.VND10RUB NOT BETWEEN 21110300000 AND 21110399999
+  AND l.VND10RUB NOT BETWEEN 21110800000 AND 21110899999
+  AND l.VND10RUB NOT BETWEEN 21111900000 AND 21111999999
+  AND l.VND10RUB NOT BETWEEN 21210400000 AND 21210499999
+  AND l.VND10RUB NOT BETWEEN 21210300000 AND 21210399999
+  AND l.VND10RUB NOT BETWEEN 21210800000 AND 21210899999
+  AND l.VND10RUB NOT BETWEEN 21211900000 AND 21211999999;
+
+-- PASO 4: Resumir por cuenta + moneda + transaccional
+IF OBJECT_ID('tempdb..#lvnd10_saldo_bt') IS NOT NULL DROP TABLE #lvnd10_saldo_bt;
+
+SELECT
+    CUENTA_BT, CUENTA_UNICA, Moneda, Transaccional,
+    SUM(Saldo) AS Saldo
+INTO #lvnd10_saldo_bt
+FROM #lvnd10_saldo
+GROUP BY CUENTA_BT, CUENTA_UNICA, Moneda, Transaccional;
+
+CREATE INDEX IX_lvnd10bt_bt ON #lvnd10_saldo_bt(CUENTA_BT);
+
+-- PASO 6: LVND10 (base) + segmento pegado
+IF OBJECT_ID('tempdb..#segmento_lvnd10') IS NOT NULL DROP TABLE #segmento_lvnd10;
+
+SELECT
+    l.CUENTA_BT, l.CUENTA_UNICA, l.Moneda, l.Saldo, l.Transaccional, s.tipo_persona
+INTO #segmento_lvnd10
+FROM #lvnd10_saldo_bt l
+INNER JOIN #segmento_unico s ON l.CUENTA_BT = s.CUENTA_BT;
+
+-- PASO 7: Resultado final
+SELECT
+    'Segmento 1' AS Segmento,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END AS Tipo,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN NULL ELSE sl.tipo_persona END AS [Tipo de Persona],
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN NULL ELSE sl.Transaccional END AS Transaccional,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS Moneda,
+    SUM(sl.Saldo) AS Saldo
+FROM #segmento_lvnd10 sl
+GROUP BY 
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN 'Mayorista' ELSE 'Minorista' END,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN NULL ELSE sl.tipo_persona END,
+    CASE WHEN sl.tipo_persona = 'Mayorista' THEN NULL ELSE sl.Transaccional END,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END
+ORDER BY Tipo, [Tipo de Persona], Transaccional, Moneda;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 SELECT ID_PRODUCTO, 
        COUNT(*) AS CantidadCuentas,
        SUM(SALDO_ACTUAL_SOLES) AS Saldo_Soles,
