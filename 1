@@ -1,0 +1,106 @@
+"""
+Automatiza la extracción de PPFVTO, PPCAP, PPINT desde FSD601_BASE
+para una lista de pares (PPCTA, PPOPER), incluyendo solo los pares
+que tengan registro correspondiente en BLPRNJBT_LVND10.
+
+Requisitos:
+    pip install pyodbc pandas openpyxl
+
+Archivo de entrada (Excel):
+    Debe tener al menos 2 columnas con encabezado: PPCTA y PPOPER
+    (una fila por par a consultar)
+"""
+
+import pyodbc
+import pandas as pd
+from datetime import datetime
+
+# ------------------- CONFIGURACIÓN -------------------
+
+# Ajusta según tu conexión real (ver barra de título de SSMS)
+SERVER = "0672.PER.BNS\\SQL1,275"
+DATABASE = "SBP_RGHISTORICA"
+DRIVER = "{ODBC Driver 17 for SQL Server}"  # cambia si usas otro driver instalado
+
+ARCHIVO_ENTRADA = "pares_cta_oper.xlsx"   # tu Excel con columnas PPCTA / PPOPER
+ARCHIVO_SALIDA = f"resultado_repricing_{datetime.now():%Y%m%d_%H%M}.xlsx"
+
+# Lista de módulos permitidos (misma que usas en SSMS)
+MODULOS = "(20,30,31,32,39,44,45,64,92,131,136,180)"
+
+# Query única por par: trae PPFVTO/PPCAP/PPINT de FSD601_BASE
+# SOLO si existe el registro correspondiente en BLPRNJBT_LVND10 (mismo CTA/OPER/MOD)
+QUERY = f"""
+SELECT
+    f.PPCTA,
+    f.PPOPER,
+    f.PPMOD,
+    f.PPFVTO,
+    f.PPCAP,
+    f.PPINT
+FROM [SBP_RGHISTORICA].[dbo].[FSD601_BASE] f
+WHERE f.PPCTA = ?
+  AND f.PPOPER = ?
+  AND f.PGCOD = 1
+  AND f.PPMOD IN {MODULOS}
+  AND EXISTS (
+        SELECT 1
+        FROM [SBP_RGHISTORICA].[dbo].[BLPRNJBT_LVND10] v
+        WHERE v.VND10ENT = 1
+          AND v.VND10CTA = f.PPCTA
+          AND v.VND10OPER = f.PPOPER
+          AND v.VND10MOD = f.PPMOD
+  )
+ORDER BY f.PPFVTO ASC;
+"""
+
+# ------------------- EJECUCIÓN -------------------
+
+def main():
+    conn_str = (
+        f"DRIVER={DRIVER};"
+        f"SERVER={SERVER};"
+        f"DATABASE={DATABASE};"
+        f"Trusted_Connection=yes;"
+    )
+
+    print("Leyendo pares de entrada...")
+    pares = pd.read_excel(ARCHIVO_ENTRADA, dtype={"PPCTA": "int64", "PPOPER": "int64"})
+    pares = pares[["PPCTA", "PPOPER"]].dropna().drop_duplicates()
+    print(f"  -> {len(pares)} pares a procesar")
+
+    print("Conectando a SQL Server...")
+    conn = pyodbc.connect(conn_str)
+
+    resultados = []
+    pares_sin_dato = []
+
+    for i, row in pares.iterrows():
+        cta, oper = int(row["PPCTA"]), int(row["PPOPER"])
+        df = pd.read_sql(QUERY, conn, params=[cta, oper])
+        if df.empty:
+            pares_sin_dato.append((cta, oper))
+        else:
+            resultados.append(df)
+
+    conn.close()
+
+    if resultados:
+        final = pd.concat(resultados, ignore_index=True)
+    else:
+        final = pd.DataFrame(columns=["PPCTA", "PPOPER", "PPMOD", "PPFVTO", "PPCAP", "PPINT"])
+
+    with pd.ExcelWriter(ARCHIVO_SALIDA, engine="openpyxl") as writer:
+        final.to_excel(writer, sheet_name="Resultado", index=False)
+        if pares_sin_dato:
+            pd.DataFrame(pares_sin_dato, columns=["PPCTA", "PPOPER"]).to_excel(
+                writer, sheet_name="Sin_dato_LVND10", index=False
+            )
+
+    print(f"Listo. {len(final)} filas exportadas -> {ARCHIVO_SALIDA}")
+    if pares_sin_dato:
+        print(f"  ({len(pares_sin_dato)} pares no tenían dato en LVND10, ver hoja 'Sin_dato_LVND10')")
+
+
+if __name__ == "__main__":
+    main()
