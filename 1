@@ -1,3 +1,40 @@
+-- ============================================
+-- PASO 6b: Mayorista con detalle de SEGMENTO (Corporativo, Sector Gobierno, etc.)
+-- ============================================
+IF OBJECT_ID('tempdb..#segmento_mayorista_detalle') IS NOT NULL DROP TABLE #segmento_mayorista_detalle;
+
+SELECT DISTINCT CUENTA_BT, SEGMENTO, tipo_persona
+INTO #segmento_mayorista_detalle
+FROM #base_segmento
+WHERE tipo_persona = 'Mayorista';
+
+CREATE INDEX IX_segmento_mayorista_bt ON #segmento_mayorista_detalle(CUENTA_BT);
+
+-- ============================================
+-- PASO 7b: Resultado Mayorista, en el formato de la tabla de Jannet
+-- ============================================
+SELECT
+    'Mayorista' AS Tipo,
+    sm.SEGMENTO AS [Tipo de Persona],
+    'No aplica' AS Transaccional,
+    CASE WHEN lf.Moneda = 0 THEN 'PEN' WHEN lf.Moneda = 1 THEN 'USD' END AS Moneda,
+    lf.TipoCuenta,
+    SUM(lf.Saldo) AS Saldo
+FROM #lvnd10_final lf
+INNER JOIN #segmento_mayorista_detalle sm ON lf.CUENTA_BT = sm.CUENTA_BT
+GROUP BY 
+    sm.SEGMENTO,
+    CASE WHEN lf.Moneda = 0 THEN 'PEN' WHEN lf.Moneda = 1 THEN 'USD' END,
+    lf.TipoCuenta
+ORDER BY [Tipo de Persona], Moneda, TipoCuenta;
+
+
+
+
+
+
+
+
 
 USE SBP_RGTRABAJO;
 
