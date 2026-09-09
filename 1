@@ -1,3 +1,68 @@
+DECLARE @FechaReporte DATE = '2026-07-31'; -- ajusta al corte exacto de julio
+
+;WITH Base AS (
+    SELECT
+        a.VND10MDA,
+        a.VND10RUB AS cuenta_cont,
+        --
+        -- Bucket RDARR
+        CASE
+            WHEN DATEDIFF(DAY, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) = 1
+                THEN 'ON'
+
+            -- Meses 1M..120M (mes calendario)
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 1 AND 120
+                THEN CAST(DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) AS VARCHAR(3)) + 'M'
+
+            -- Años 11Y..30Y basados en bandas de 12 meses
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 121 AND 132 THEN '11Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 133 AND 144 THEN '12Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 145 AND 156 THEN '13Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 157 AND 168 THEN '14Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 169 AND 180 THEN '15Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 181 AND 192 THEN '16Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 193 AND 204 THEN '17Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 205 AND 216 THEN '18Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 217 AND 228 THEN '19Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 229 AND 240 THEN '20Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 241 AND 252 THEN '21Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 253 AND 264 THEN '22Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 265 AND 276 THEN '23Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 277 AND 288 THEN '24Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 289 AND 300 THEN '25Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 301 AND 312 THEN '26Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 313 AND 324 THEN '27Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 325 AND 336 THEN '28Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 337 AND 348 THEN '29Y'
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) BETWEEN 349 AND 360 THEN '30Y'
+
+            -- Más de 30 años (mes > 360)
+            WHEN DATEDIFF(MONTH, @FechaReporte, TRY_CONVERT(DATE, CAST(a.VND10FVTO AS VARCHAR(12)), 112)) > 360 THEN '50Y'
+
+            ELSE NULL
+        END AS Bucket_Reprecio,
+        --
+        a.VND10CAP AS Capital,   -- ajusta el nombre si tu columna de capital es distinta
+        a.VND10INT AS Interes    -- ajusta el nombre si tu columna de interés es distinta
+    FROM LVND10 a   -- ajusta esquema/nombre exacto de la tabla de julio
+    WHERE a.VND10RUB IN ('2311','2321','2312','2322')
+)
+SELECT
+    cuenta_cont,
+    Bucket_Reprecio,
+    SUM(Capital) AS Capital,
+    SUM(Interes) AS Interes
+FROM Base
+GROUP BY cuenta_cont, Bucket_Reprecio
+ORDER BY cuenta_cont, Bucket_Reprecio;
+
+
+
+
+
+
+
+
 -- ============================================
 -- PASO 6b: Mayorista con detalle de SEGMENTO (Corporativo, Sector Gobierno, etc.)
 -- ============================================
