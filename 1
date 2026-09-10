@@ -1,3 +1,18 @@
+df_a[key_col_a] = df_a[key_col_a].astype(str).str.strip()
+df_b[key_col_b] = df_b[key_col_b].astype(str).str.strip()
+
+df_a = df_a.set_index(key_col_a)
+df_b = df_b.set_index(key_col_b)
+
+
+
+
+
+
+
+
+
+
 DECLARE @FechaReporte DATE = '2026-07-31'; -- ajusta al corte exacto de julio
 
 ;WITH Base AS (
