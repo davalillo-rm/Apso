@@ -1,0 +1,138 @@
+Attribute VB_Name = "Modulo_CopiarStressTest"
+Option Explicit
+
+'==================================================================
+' MACRO: Copiar EVE y NII (Archivo A) hacia Stress Test (Archivo B)
+'==================================================================
+' INSTRUCCIONES:
+' 1. Abre el editor VBA (Alt+F11) en cualquier libro de Excel.
+' 2. Insertar > Módulo, y pega todo este código.
+' 3. Completa las rutas de los archivos A y B más abajo
+'    (constantes RUTA_ARCHIVO_A y RUTA_ARCHIVO_B).
+' 4. Ejecuta la macro "CopiarEVEyNII_a_StressTest" (F5).
+'==================================================================
+
+Sub CopiarEVEyNII_a_StressTest()
+
+    Dim RUTA_ARCHIVO_A As String
+    Dim RUTA_ARCHIVO_B As String
+
+    ' >>> PON AQUÍ LAS RUTAS DE TUS ARCHIVOS <<<
+    RUTA_ARCHIVO_A = "C:\Ruta\Del\Archivo_A.xlsx"
+    RUTA_ARCHIVO_B = "C:\Ruta\Del\Archivo_B.xlsx"
+
+    Dim wbA As Workbook, wbB As Workbook
+    Dim wsEVE As Worksheet, wsNII As Worksheet, wsStress As Worksheet
+    Dim wasOpenA As Boolean, wasOpenB As Boolean
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+    On Error GoTo ErrorHandler
+
+    ' --- Abrir (o reutilizar si ya están abiertos) los archivos ---
+    Set wbA = AbrirOReutilizar(RUTA_ARCHIVO_A, wasOpenA)
+    Set wbB = AbrirOReutilizar(RUTA_ARCHIVO_B, wasOpenB)
+
+    Set wsEVE = wbA.Sheets("EVE")
+    Set wsNII = wbA.Sheets("NII")
+    Set wsStress = wbB.Sheets("Stress Test")
+
+    '=================================================================
+    ' BLOQUE 1: EVE -> Stress Test  (filas 16-20 -> columnas E-I, filas 7-147)
+    '=================================================================
+    CopiarFilaComoColumna wsEVE, "E", "EO", 16, wsStress, "E", 7
+    CopiarFilaComoColumna wsEVE, "E", "EO", 17, wsStress, "F", 7
+    CopiarFilaComoColumna wsEVE, "E", "EO", 18, wsStress, "G", 7
+    CopiarFilaComoColumna wsEVE, "E", "EO", 19, wsStress, "H", 7
+    CopiarFilaComoColumna wsEVE, "E", "EO", 20, wsStress, "I", 7
+
+    '=================================================================
+    ' BLOQUE 2: EVE -> Stress Test  (filas 22-26 -> columnas E-I, filas 154-294)
+    '=================================================================
+    CopiarFilaComoColumna wsEVE, "E", "EO", 22, wsStress, "E", 154
+    CopiarFilaComoColumna wsEVE, "E", "EO", 23, wsStress, "F", 154
+    CopiarFilaComoColumna wsEVE, "E", "EO", 24, wsStress, "G", 154  ' corregido: G154:G294
+    CopiarFilaComoColumna wsEVE, "E", "EO", 25, wsStress, "H", 154
+    CopiarFilaComoColumna wsEVE, "E", "EO", 26, wsStress, "I", 154
+
+    '=================================================================
+    ' BLOQUE 3: NII -> Stress Test  (filas 16,19,22,26,30 -> col AI-AM, filas 7-19)
+    '=================================================================
+    CopiarFilaComoColumna wsNII, "E", "Q", 16, wsStress, "AI", 7
+    CopiarFilaComoColumna wsNII, "E", "Q", 19, wsStress, "AJ", 7
+    CopiarFilaComoColumna wsNII, "E", "Q", 22, wsStress, "AK", 7
+    CopiarFilaComoColumna wsNII, "E", "Q", 26, wsStress, "AL", 7
+    CopiarFilaComoColumna wsNII, "E", "Q", 30, wsStress, "AM", 7
+
+    '=================================================================
+    ' BLOQUE 4: NII -> Stress Test  (filas 17,20,23,27,31 -> col AI-AM, filas 154-166)
+    '=================================================================
+    CopiarFilaComoColumna wsNII, "E", "Q", 17, wsStress, "AI", 154
+    CopiarFilaComoColumna wsNII, "E", "Q", 20, wsStress, "AJ", 154  ' corregido: AJ154:AJ166
+    CopiarFilaComoColumna wsNII, "E", "Q", 23, wsStress, "AK", 154
+    CopiarFilaComoColumna wsNII, "E", "Q", 27, wsStress, "AL", 154
+    CopiarFilaComoColumna wsNII, "E", "Q", 31, wsStress, "AM", 154
+
+    ' --- Guardar el archivo B ---
+    wbB.Save
+
+    ' --- Cerrar A si la macro lo abrió (no se guarda) ---
+    If Not wasOpenA Then wbA.Close SaveChanges:=False
+
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+
+    MsgBox "Copiado completado correctamente.", vbInformation, "Listo"
+    Exit Sub
+
+ErrorHandler:
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    MsgBox "Ocurrió un error: " & Err.Description, vbCritical, "Error"
+End Sub
+
+'------------------------------------------------------------------
+' Abre un libro por ruta, o lo reutiliza si ya está abierto.
+' wasOpen = True si ya estaba abierto (para no cerrarlo luego).
+'------------------------------------------------------------------
+Private Function AbrirOReutilizar(ruta As String, ByRef wasOpen As Boolean) As Workbook
+    Dim nombreArchivo As String
+    Dim wb As Workbook
+
+    nombreArchivo = Mid(ruta, InStrRev(ruta, "\") + 1)
+
+    On Error Resume Next
+    Set wb = Workbooks(nombreArchivo)
+    On Error GoTo 0
+
+    If Not wb Is Nothing Then
+        wasOpen = True
+        Set AbrirOReutilizar = wb
+    Else
+        wasOpen = False
+        Set AbrirOReutilizar = Workbooks.Open(ruta)
+    End If
+End Function
+
+'------------------------------------------------------------------
+' Copia un rango horizontal de una fila (colInicio..colFin, fila)
+' de la hoja origen, y lo pega TRANSPUESTO como columna vertical
+' empezando en (colDestino, filaDestinoInicio) en la hoja destino.
+'------------------------------------------------------------------
+Private Sub CopiarFilaComoColumna(wsOrigen As Worksheet, colInicio As String, colFin As String, _
+                                   fila As Long, wsDestino As Worksheet, colDestino As String, _
+                                   filaDestinoInicio As Long)
+
+    Dim rngOrigen As Range
+    Dim datos As Variant
+    Dim n As Long
+
+    Set rngOrigen = wsOrigen.Range(colInicio & fila & ":" & colFin & fila)
+    n = rngOrigen.Cells.Count
+
+    datos = Application.WorksheetFunction.Transpose(rngOrigen.Value)
+
+    wsDestino.Range(colDestino & filaDestinoInicio).Resize(n, 1).Value = datos
+
+End Sub
