@@ -1,4 +1,107 @@
 """
+convertir_forwards.py
+
+Toma el reporte de Forwards (PE_FWDRM_YYYYMMDD.xls) desde una ruta A,
+lo convierte a .xlsx real (algunos de estos archivos vienen como XML
+'SpreadsheetML' disfrazado de .xls, igual que los reportes RTK y Cartera
+Derivados) y lo guarda con el nombre "fwds20260909.xlsx" (o el que definas)
+en la ruta B, SIN modificar su estructura, columnas ni datos.
+
+Uso:
+    python convertir_forwards.py
+
+    o importando la función:
+    from convertir_forwards import convertir_reporte
+    convertir_reporte(ruta_origen, ruta_destino)
+"""
+
+import os
+import shutil
+
+# ---------------------------------------------------------------------------
+# 1) PARÁMETROS DE ENTRADA — MODIFICAR AQUÍ
+# ---------------------------------------------------------------------------
+RUTA_ORIGEN = r"C:\ruta\a\PE_FWDRM_20260909.xls"      # Ruta A (archivo fuente)
+RUTA_DESTINO = r"C:\ruta\a\fwds20260909.xlsx"         # Ruta B (archivo de salida)
+
+
+def _detectar_formato_real(ruta: str) -> str:
+    """Detecta el formato real del archivo mirando sus primeros bytes,
+    en lugar de confiar en la extensión (estos reportes a veces exportan
+    XML 'SpreadsheetML' con extensión .xls falsa)."""
+    with open(ruta, "rb") as f:
+        inicio = f.read(16)
+
+    if inicio.startswith(b"PK\x03\x04"):
+        return "xlsx"  # zip real -> xlsx moderno
+    if inicio.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        return "xls_binario"  # OLE2 -> xls binario clásico
+    if inicio.lstrip().startswith(b"<?xml") or inicio.lstrip().startswith(b"<Work"):
+        return "xml_spreadsheet"  # Excel 2003 XML (SpreadsheetML) disfrazado de .xls
+    return "desconocido"
+
+
+def _convertir_con_excel_a_xlsx(ruta_origen: str, ruta_destino: str) -> None:
+    """Abre el archivo con Excel (COM / win32com) y lo guarda directamente
+    como .xlsx real en ruta_destino, preservando formato, fechas y estilos
+    tal cual estaban en el original.
+    Requiere: pip install pywin32"""
+    import win32com.client as win32
+
+    excel = win32.gencache.EnsureDispatch("Excel.Application")
+    excel.Visible = False
+    excel.DisplayAlerts = False
+    try:
+        wb = excel.Workbooks.Open(os.path.abspath(ruta_origen))
+        wb.SaveAs(os.path.abspath(ruta_destino), FileFormat=51)  # 51 = xlsx
+        wb.Close(False)
+    finally:
+        excel.Quit()
+
+
+def convertir_reporte(ruta_origen: str = RUTA_ORIGEN,
+                       ruta_destino: str = RUTA_DESTINO) -> None:
+    """Localiza el archivo en ruta_origen, lo convierte a .xlsx real si hace
+    falta, y lo guarda tal cual (misma estructura) en ruta_destino."""
+
+    if not os.path.isfile(ruta_origen):
+        raise FileNotFoundError(f"No se encontró el archivo origen: {ruta_origen}")
+
+    # Aseguramos que la carpeta destino exista
+    carpeta_destino = os.path.dirname(ruta_destino)
+    if carpeta_destino and not os.path.isdir(carpeta_destino):
+        os.makedirs(carpeta_destino, exist_ok=True)
+
+    formato_real = _detectar_formato_real(ruta_origen)
+
+    if formato_real == "xlsx":
+        # Ya es un .xlsx real (zip) -> basta con copiarlo/renombrarlo
+        shutil.copy2(ruta_origen, ruta_destino)
+    elif formato_real in ("xls_binario", "xml_spreadsheet"):
+        # xls clásico o XML disfrazado -> se abre y se guarda con Excel
+        _convertir_con_excel_a_xlsx(ruta_origen, ruta_destino)
+    else:
+        raise ValueError(
+            f"No se pudo determinar el formato real del archivo: {ruta_origen}"
+        )
+
+    print(f"Reporte convertido y guardado correctamente en: {ruta_destino}")
+
+
+if __name__ == "__main__":
+    convertir_reporte(RUTA_ORIGEN, RUTA_DESTINO)
+
+
+
+
+
+
+
+
+
+
+
+"""
 convertir_cartera_derivados.py
 
 Toma el reporte de Cartera Derivados (PE_RPTDRV_YYYYMMDD.xls) desde una ruta A,
