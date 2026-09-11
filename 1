@@ -1,0 +1,301 @@
+"""
+generar_reporte_bonds.py
+
+Toma el reporte plano RTK (PE_B_H_AODT0MDT0MR) desde una ruta A,
+lo transforma al formato de reporte agrupado "Bonds" (agrupado por
+Folders_ShortName) y lo guarda como un Excel nuevo en la ruta B.
+
+Uso:
+    python generar_reporte_bonds.py
+
+    o importando la función:
+    from generar_reporte_bonds import generar_reporte
+    generar_reporte(ruta_origen, ruta_destino)
+"""
+
+import os
+import tempfile
+
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
+
+# ---------------------------------------------------------------------------
+# 1) PARÁMETROS DE ENTRADA — MODIFICAR AQUÍ
+# ---------------------------------------------------------------------------
+RUTA_ORIGEN = r"C:\ruta\a\PE_AODT0MR_20260910.xlsx"      # Ruta A (archivo fuente)
+RUTA_DESTINO = r"C:\ruta\a\Bonds_Reporte_20260910.xlsx"  # Ruta B (archivo de salida)
+HOJA_ORIGEN = "RTK PE_B_H_AODT0MDT0MR"                   # Nombre de la hoja fuente
+COLUMNA_AGRUPACION = "Folders_ShortName"                 # Campo por el que se agrupa
+ORDEN_GRUPOS = ["ALM_INV", "ALM_LIQ", "TRAD_FIXIN"]      # Orden fijo deseado; cualquier otro
+                                                          # grupo que aparezca se agrega al final,
+                                                          # en el orden en que aparece en el archivo.
+
+# ---------------------------------------------------------------------------
+# 2) MAPEO DE COLUMNAS: nombre origen -> nombre destino
+#    (mantiene el orden en que deben aparecer en el reporte de salida)
+# ---------------------------------------------------------------------------
+MAPEO_COLUMNAS = {
+    "Bond_ShortName":        "Short Name",
+    "Bond_Name":             "Security Name",
+    "ISINCode":              "Instr. ISIN Code",
+    "CurrencyShortName":     "Currency ShortName",
+    "TypeOfInstrShortNam":   "Type Of Instrument ShortName",
+    "Bonds_IssueDate":       "IssueDate",
+    "MaturityDate":          "Mat. Date",
+    "BuyOrSell":             "Open",
+    "AdjFactor":             "Adj. Factor",
+    "Price":                 "Price",
+    "CleanPrice":            "Clean Price",
+    "Quantity":              "Quantity",
+    "Nominal":               "Nominal",
+    "OriginalOpenPosi":      "Orig. Nominal",
+    "CpnRate":               "Cpn Rate",
+    "AccInterest":           "Accr. Int",
+    "CpnCumul":              "Cpn Cumul",
+    "CostOfCarry":           "Cost Of Carry",
+    "DiscountMargin":        "Disct. Margin",
+    "Yield":                 "Yield Mat",
+    "ModDuration":           "Mod Dur",
+    "Duration":              "Dur.",
+    "Convexity":             "Cnvx.",
+    "ConvexityValue":        "Cnvx. Value",
+    "Bpv":                   "Bpv",
+    "Bpv_002":               "Bpv (K)",
+    "ExchangeRate":          "Exch. Rate",
+    "Delta":                 "Delta",
+    "MarketValue":           "Market Value",
+    "Realized":              "Realized Cur",
+    "Unrealized":            "Unrealized Cur",
+    "PL":                    "P/L Currency",
+    "CleanPL":               "P/L Clean Price",
+    "CurrentCall":           "Current Call",
+    "CurrentPut":            "Current Put",
+    "RatingAgencyName":      "Rating Agency Name",
+    "RatingName":            "Rating Name",
+    "PL_002":                "PL",
+    "ReportPL":              "P/L Report",
+    "AvgPrice":              "Avg Price",
+    "AvgYield":              "Avg Yield",
+    "Spread":                "Spread",
+    "MTM":                   "MTM",
+    "Bonds_Bonds_Id":        "Bonds_Id",
+    "PEtat_KdbTables_Id":    "KdbTables_Id",
+}
+
+COLUMNAS_ORIGEN = list(MAPEO_COLUMNAS.keys())
+COLUMNAS_DESTINO = list(MAPEO_COLUMNAS.values())
+
+# Columnas que se ven como fecha en el reporte de salida
+COLUMNAS_FECHA_DESTINO = {"IssueDate", "Mat. Date"}
+
+# Estilos reutilizables
+FONT_TITULO = Font(bold=True, size=14)
+FONT_SUBTITULO = Font(bold=True, size=12)
+FONT_GRUPO = Font(bold=True)
+FONT_HEADER = Font(bold=True)
+
+
+def _detectar_formato_real(ruta: str) -> str:
+    """Detecta el formato real del archivo mirando sus primeros bytes,
+    en lugar de confiar en la extensión (los reportes RTK/Kondor suelen
+    exportar archivos XML 'SpreadsheetML' con extensión .xls falsa)."""
+    with open(ruta, "rb") as f:
+        inicio = f.read(16)
+
+    if inicio.startswith(b"PK\x03\x04"):
+        return "xlsx"  # zip real -> xlsx moderno
+    if inicio.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        return "xls_binario"  # OLE2 -> xls binario clasico
+    if inicio.lstrip().startswith(b"<?xml") or inicio.lstrip().startswith(b"<Work"):
+        return "xml_spreadsheet"  # Excel 2003 XML (SpreadsheetML) disfrazado de .xls
+    return "desconocido"
+
+
+def _convertir_con_excel_a_xlsx(ruta_origen: str) -> str:
+    """Convierte un archivo XML SpreadsheetML (extensión .xls falsa) a un
+    .xlsx real usando Excel instalado en la máquina (COM / win32com).
+    Requiere: pip install pywin32
+    Devuelve la ruta del archivo .xlsx temporal generado (hay que borrarlo
+    después de usarlo)."""
+    import win32com.client as win32
+
+    ruta_tmp = os.path.join(
+        tempfile.gettempdir(),
+        "temp_convertido_" + os.path.splitext(os.path.basename(ruta_origen))[0] + ".xlsx",
+    )
+
+    excel = win32.gencache.EnsureDispatch("Excel.Application")
+    excel.Visible = False
+    excel.DisplayAlerts = False
+    try:
+        wb = excel.Workbooks.Open(os.path.abspath(ruta_origen))
+        wb.SaveAs(ruta_tmp, FileFormat=51)  # 51 = xlsx
+        wb.Close(False)
+    finally:
+        excel.Quit()
+
+    return ruta_tmp
+
+
+def generar_reporte(ruta_origen: str = RUTA_ORIGEN,
+                     ruta_destino: str = RUTA_DESTINO,
+                     hoja_origen: str = HOJA_ORIGEN,
+                     columna_agrupacion: str = COLUMNA_AGRUPACION,
+                     orden_grupos: list = None) -> None:
+    """Lee el reporte plano en ruta_origen y escribe el reporte agrupado en ruta_destino.
+
+    orden_grupos: lista opcional con el orden fijo en que deben aparecer los grupos
+                  (ej. ["ALM_INV", "ALM_LIQ", "TRAD_FIXIN"]). Cualquier grupo del
+                  archivo que no esté en esta lista se agrega al final, en el orden
+                  en que aparece en el archivo origen. Si no se pasa, se usa ORDEN_GRUPOS.
+    """
+    if orden_grupos is None:
+        orden_grupos = ORDEN_GRUPOS
+
+    # -----------------------------------------------------------------
+    # Leer archivo origen
+    # -----------------------------------------------------------------
+    # El archivo origen puede venir en 3 formatos distintos, sin que la
+    # extensión .xls sea confiable (los reportes RTK/Kondor a veces
+    # exportan XML SpreadsheetML con extensión .xls falsa):
+    #   xlsx            -> zip real, se lee con openpyxl
+    #   xls_binario     -> OLE2 real, se lee con xlrd
+    #   xml_spreadsheet -> XML disfrazado, hay que convertirlo primero
+    #                      a .xlsx real usando Excel (win32com)
+    formato_real = _detectar_formato_real(ruta_origen)
+
+    archivo_a_leer = ruta_origen
+    archivo_temporal = None
+
+    try:
+        if formato_real == "xlsx":
+            engine = "openpyxl"
+        elif formato_real == "xls_binario":
+            engine = "xlrd"
+        elif formato_real == "xml_spreadsheet":
+            archivo_temporal = _convertir_con_excel_a_xlsx(ruta_origen)
+            archivo_a_leer = archivo_temporal
+            engine = "openpyxl"
+        else:
+            # Formato no identificado: se intenta con openpyxl por defecto
+            engine = "openpyxl"
+
+        df = pd.read_excel(archivo_a_leer, sheet_name=hoja_origen, header=2, engine=engine)
+        # header=2 -> la fila 3 del Excel (índice 2) contiene los nombres de columna,
+        # tal como se ve en las capturas (Fecha, Level1, Folders_ShortName, ...).
+    finally:
+        if archivo_temporal and os.path.exists(archivo_temporal):
+            os.remove(archivo_temporal)
+
+    columnas_faltantes = [c for c in COLUMNAS_ORIGEN + [columna_agrupacion] if c not in df.columns]
+    if columnas_faltantes:
+        raise ValueError(f"Columnas no encontradas en el archivo origen: {columnas_faltantes}")
+
+    # Orden de los grupos: primero los definidos en orden_grupos (en ese orden,
+    # solo si existen en el archivo), luego cualquier otro grupo que aparezca,
+    # respetando el orden en que aparece en el archivo origen.
+    grupos_presentes = list(dict.fromkeys(df[columna_agrupacion].dropna().tolist()))
+    grupos_ordenados = [g for g in orden_grupos if g in grupos_presentes]
+    grupos_ordenados += [g for g in grupos_presentes if g not in orden_grupos]
+
+    # -----------------------------------------------------------------
+    # Construir el workbook de salida
+    # -----------------------------------------------------------------
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Bonds"
+
+    fila_actual = 1
+
+    ws.cell(row=fila_actual, column=1, value="Financial Report").font = FONT_TITULO
+    fila_actual += 1
+    ws.cell(row=fila_actual, column=1, value="Bonds").font = FONT_SUBTITULO
+    fila_actual += 2  # deja una fila en blanco
+
+    for grupo in grupos_ordenados:
+        df_grupo = df[df[columna_agrupacion] == grupo]
+
+        # Nombre del grupo
+        ws.cell(row=fila_actual, column=1, value=grupo).font = FONT_GRUPO
+        fila_actual += 2  # fila en blanco antes del header
+
+        # Encabezados de columna
+        for col_idx, nombre_col in enumerate(COLUMNAS_DESTINO, start=1):
+            celda = ws.cell(row=fila_actual, column=col_idx, value=nombre_col)
+            celda.font = FONT_HEADER
+        fila_actual += 1
+
+        # Filas de datos
+        for _, fila in df_grupo.iterrows():
+            for col_idx, col_origen in enumerate(COLUMNAS_ORIGEN, start=1):
+                valor = fila[col_origen]
+                if pd.isna(valor):
+                    valor = None
+                ws.cell(row=fila_actual, column=col_idx, value=valor)
+            fila_actual += 1
+
+        fila_actual += 1  # fila en blanco antes del siguiente grupo
+
+    # -----------------------------------------------------------------
+    # Formato de columnas (fechas, decimales, separador de miles)
+    # -----------------------------------------------------------------
+    formato_columna = {
+        "Adj. Factor": "0.0000000",
+        "Price": "0.000",
+        "Clean Price": "0.000",
+        "Quantity": "#,##0",
+        "Nominal": "#,##0",
+        "Orig. Nominal": "#,##0",
+        "Cpn Rate": "0.000000",
+        "Accr. Int": "0.000000",
+        "Cpn Cumul": "#,##0.00",
+        "Cost Of Carry": "#,##0.00",
+        "Yield Mat": "0.00",
+        "Mod Dur": "0.00",
+        "Dur.": "0.00",
+        "Cnvx.": "0.000",
+        "Cnvx. Value": "0.000",
+        "Bpv": "0.000",
+        "Bpv (K)": "0.000",
+        "Market Value": "#,##0.00",
+        "Realized Cur": "#,##0.00",
+        "Unrealized Cur": "#,##0.00",
+        "P/L Currency": "#,##0.00",
+        "P/L Clean Price": "#,##0.00",
+        "PL": "#,##0.00",
+        "P/L Report": "#,##0.00",
+        "Avg Price": "0.000",
+        "Avg Yield": "0.000",
+        "MTM": "0.000",
+    }
+
+    # Se recorre fila por fila para aplicar formato solo a celdas numéricas
+    # ya que la hoja mezcla títulos, encabezados y datos en las mismas columnas.
+    for fila_cells in ws.iter_rows(min_row=1, max_row=ws.max_row, max_col=len(COLUMNAS_DESTINO)):
+        for celda in fila_cells:
+            col_idx = celda.column
+            if col_idx > len(COLUMNAS_DESTINO):
+                continue
+            nombre_col = COLUMNAS_DESTINO[col_idx - 1]
+            if celda.value is None:
+                continue
+            if nombre_col in COLUMNAS_FECHA_DESTINO and hasattr(celda.value, "strftime"):
+                celda.number_format = "DD/MM/YYYY"
+            elif nombre_col in formato_columna and isinstance(celda.value, (int, float)):
+                celda.number_format = formato_columna[nombre_col]
+
+    # -----------------------------------------------------------------
+    # Ancho de columnas automático (aproximado)
+    # -----------------------------------------------------------------
+    for col_idx, nombre_col in enumerate(COLUMNAS_DESTINO, start=1):
+        letra = get_column_letter(col_idx)
+        ws.column_dimensions[letra].width = max(12, len(nombre_col) + 2)
+
+    wb.save(ruta_destino)
+    print(f"Reporte generado correctamente en: {ruta_destino}")
+
+
+if __name__ == "__main__":
+    generar_reporte(RUTA_ORIGEN, RUTA_DESTINO, HOJA_ORIGEN, COLUMNA_AGRUPACION, ORDEN_GRUPOS)
