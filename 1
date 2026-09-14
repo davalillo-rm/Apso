@@ -1,3 +1,23 @@
+
+SELECT CUENTA_BT, COUNT(*) AS filas
+FROM #producto_unico
+GROUP BY CUENTA_BT
+HAVING COUNT(*) > 1;
+
+
+
+SELECT COUNT(DISTINCT VND10CTA) AS CuentasTasaCero
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20241231_PRELIMINAR  -- ajusta el nombre de tabla según el período
+WHERE VND10TASA = 0;
+
+
+
+
+
+
+
+
+
 USE SBP_RGTRABAJO;
 
 -- ============================================
