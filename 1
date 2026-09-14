@@ -1,3 +1,17 @@
+SELECT 
+    sl.tipo_persona,
+    sl.Transaccional,
+    COUNT(*) AS filas,
+    SUM(sl.Saldo) AS SaldoTotal
+FROM #segmento_lvnd10 sl
+WHERE sl.tipo_persona IN ('PN','SME')
+GROUP BY sl.tipo_persona, sl.Transaccional
+ORDER BY sl.tipo_persona, sl.Transaccional;
+
+
+
+
+
 
 SELECT CUENTA_BT, COUNT(*) AS filas
 FROM #producto_unico
