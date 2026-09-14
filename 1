@@ -1,3 +1,36 @@
+
+SELECT TOP 20 VND10CTA, VND10RUB, VND10TASA
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20241231_PRELIMINAR
+WHERE VND10ENT = 1
+  AND VND10MDA IN (0,1)
+  AND LEFT(CAST(VND10RUB AS VARCHAR(20)), 4) IN ('2111','2112','2121','2122')
+ORDER BY VND10TASA DESC;
+
+
+
+-- Cuántas cuentas caen como transaccional SOLO por tasa cero
+SELECT COUNT(DISTINCT l.CUENTA_BT) AS PorTasaCero
+FROM #lvnd10_saldo_bt l
+INNER JOIN #cuentas_tasa_cero tc ON l.CUENTA_BT = tc.CUENTA_BT;
+
+-- Cuántas cuentas caen como transaccional SOLO por producto
+SELECT COUNT(DISTINCT l.CUENTA_BT) AS PorProducto
+FROM #lvnd10_saldo_bt l
+INNER JOIN #producto_unico pu ON l.CUENTA_BT = pu.CUENTA_BT AND pu.EsProductoTransaccional = 1;
+
+-- Total de cuentas en tu universo
+SELECT COUNT(DISTINCT CUENTA_BT) AS TotalUniverso FROM #lvnd10_saldo_bt;
+
+
+SELECT COUNT(*) AS TotalCuentasTasaCero FROM #cuentas_tasa_cero;
+
+
+
+
+
+
+
+
 IF OBJECT_ID('tempdb..#cuentas_tasa_cero') IS NOT NULL DROP TABLE #cuentas_tasa_cero;
 
 SELECT DISTINCT VND10CTA AS CUENTA_BT
