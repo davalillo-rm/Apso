@@ -1,3 +1,281 @@
+
+
+
+
+
+USE SBP_RGTRABAJO;
+
+-- ============================================
+-- PASO 1: Segmento por cuenta BT
+-- ============================================
+IF OBJECT_ID('tempdb..#base_segmento') IS NOT NULL DROP TABLE #base_segmento;
+
+SELECT
+    CAST(p.CUENTA_BT AS NUMERIC(9,0)) AS CUENTA_BT,
+    p.SEGMENTO,
+    CASE 
+        WHEN p.SEGMENTO IN ('Personal','Estandar','Premium','Preferente','Beyond') THEN 'PN'
+        WHEN p.SEGMENTO IN ('Micro Empresas','NEGOCIOS 1','NEGOCIOS 2','NEGOCIOS 3') THEN 'SME'
+        WHEN p.SEGMENTO IN ('Medianas Empresas','Otras Instituciones','Pequeñas Empresas A',
+                             'Polo Direccion','Sector Gobierno','Corporativo','Instituciones Financieras') 
+            THEN 'Mayorista'
+    END AS tipo_persona
+INTO #base_segmento
+FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS p
+WHERE p.PERIODO = 202607;  -- <-- AJUSTA AL PERÍODO CORRECTO
+
+-- ============================================
+-- PASO 2: Segmento único por cuenta
+-- ============================================
+IF OBJECT_ID('tempdb..#segmento_unico') IS NOT NULL DROP TABLE #segmento_unico;
+
+SELECT DISTINCT CUENTA_BT, tipo_persona
+INTO #segmento_unico
+FROM #base_segmento;
+
+CREATE INDEX IX_segmento_unico_bt ON #segmento_unico(CUENTA_BT);
+
+-- ============================================
+-- PASO 2.5: Catálogo de producto transaccional por cuenta BT
+-- ============================================
+IF OBJECT_ID('tempdb..#producto_unico') IS NOT NULL DROP TABLE #producto_unico;
+
+SELECT 
+    CAST(CUENTA_BT AS NUMERIC(9,0)) AS CUENTA_BT,
+    MAX(CASE WHEN ID_SUBPRODUCTO IN (416, 405, 470) THEN 1 ELSE 0 END) AS EsProductoTransaccional
+INTO #producto_unico
+FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS
+WHERE PERIODO = 202607
+GROUP BY CAST(CUENTA_BT AS NUMERIC(9,0));
+
+CREATE INDEX IX_producto_unico_bt ON #producto_unico(CUENTA_BT);
+
+-- ============================================
+-- PASO 3: LVND10 FINAL - saldo + TipoCuenta (Vista/Ahorro), SIN tasa todavía
+-- ============================================
+IF OBJECT_ID('tempdb..#lvnd10_saldo') IS NOT NULL DROP TABLE #lvnd10_saldo;
+
+SELECT
+    VND10CTA AS CUENTA_BT,
+    VND10COD AS CUENTA_UNICA,
+    VND10MDA AS Moneda,
+    VND10SDOO AS Saldo,
+    CASE 
+        WHEN LEFT(CAST(VND10RUB AS VARCHAR(20)), 4) IN ('2111','2121') THEN 'VISTA'
+        WHEN LEFT(CAST(VND10RUB AS VARCHAR(20)), 4) IN ('2112','2122') THEN 'AHORRO'
+    END AS TipoCuenta
+INTO #lvnd10_saldo
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PROCESADO
+WHERE VND10ENT = 1
+  AND VND10MDA IN (0,1)
+  AND LEFT(CAST(VND10RUB AS VARCHAR(20)), 4) IN ('2111','2112','2121','2122')
+  AND VND10RUB NOT BETWEEN 21110400000 AND 21110499999
+  AND VND10RUB NOT BETWEEN 21110300000 AND 21110399999
+  AND VND10RUB NOT BETWEEN 21110800000 AND 21110899999
+  AND VND10RUB NOT BETWEEN 21111900000 AND 21111999999
+  AND VND10RUB NOT BETWEEN 21210400000 AND 21210499999
+  AND VND10RUB NOT BETWEEN 21210300000 AND 21210399999
+  AND VND10RUB NOT BETWEEN 21210800000 AND 21210899999
+  AND VND10RUB NOT BETWEEN 21211900000 AND 21211999999;
+
+-- ============================================
+-- PASO 4: Resumir por cuenta + moneda + TipoCuenta
+-- ============================================
+IF OBJECT_ID('tempdb..#lvnd10_saldo_bt') IS NOT NULL DROP TABLE #lvnd10_saldo_bt;
+
+SELECT
+    CUENTA_BT, CUENTA_UNICA, Moneda, TipoCuenta,
+    SUM(Saldo) AS Saldo
+INTO #lvnd10_saldo_bt
+FROM #lvnd10_saldo
+GROUP BY CUENTA_BT, CUENTA_UNICA, Moneda, TipoCuenta;
+
+CREATE INDEX IX_lvnd10bt_bt ON #lvnd10_saldo_bt(CUENTA_BT);
+
+-- ============================================
+-- PASO 4.5: Lista de cuentas con tasa=0 según PRELIMINAR
+-- ============================================
+IF OBJECT_ID('tempdb..#cuentas_tasa_cero') IS NOT NULL DROP TABLE #cuentas_tasa_cero;
+
+SELECT DISTINCT VND10CTA AS CUENTA_BT
+INTO #cuentas_tasa_cero
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PRELIMINAR
+WHERE VND10TASA = 0;
+
+CREATE INDEX IX_tasa_cero_bt ON #cuentas_tasa_cero(CUENTA_BT);
+
+-- ============================================
+-- PASO 5: Asignar flag Transaccional, cruzando SOLO por BT
+-- ============================================
+IF OBJECT_ID('tempdb..#lvnd10_final') IS NOT NULL DROP TABLE #lvnd10_final;
+
+SELECT
+    l.CUENTA_BT, l.CUENTA_UNICA, l.Moneda, l.TipoCuenta, l.Saldo,
+    CASE 
+        WHEN tc.CUENTA_BT IS NOT NULL THEN 'Transaccional'
+        WHEN pu.EsProductoTransaccional = 1 THEN 'Transaccional'
+        ELSE 'No transaccional'
+    END AS Transaccional
+INTO #lvnd10_final
+FROM #lvnd10_saldo_bt l
+LEFT JOIN #cuentas_tasa_cero tc ON l.CUENTA_BT = tc.CUENTA_BT
+LEFT JOIN #producto_unico pu ON l.CUENTA_BT = pu.CUENTA_BT;
+
+-- ============================================
+-- PASO 6: + segmento pegado (PN/SME/Mayorista agregado)
+-- ============================================
+IF OBJECT_ID('tempdb..#segmento_lvnd10') IS NOT NULL DROP TABLE #segmento_lvnd10;
+
+SELECT
+    l.CUENTA_BT, l.CUENTA_UNICA, l.Moneda, l.TipoCuenta, l.Saldo, l.Transaccional, s.tipo_persona
+INTO #segmento_lvnd10
+FROM #lvnd10_final l
+INNER JOIN #segmento_unico s ON l.CUENTA_BT = s.CUENTA_BT;
+
+-- ============================================
+-- PASO 6b: Mayorista con detalle de SEGMENTO
+-- ============================================
+IF OBJECT_ID('tempdb..#segmento_mayorista_detalle') IS NOT NULL DROP TABLE #segmento_mayorista_detalle;
+
+SELECT DISTINCT CUENTA_BT, SEGMENTO, tipo_persona
+INTO #segmento_mayorista_detalle
+FROM #base_segmento
+WHERE tipo_persona = 'Mayorista';
+
+CREATE INDEX IX_segmento_mayorista_bt ON #segmento_mayorista_detalle(CUENTA_BT);
+
+-- ============================================
+-- PASO 7: RESULTADO 1 — PN y SME, por Transaccional/No transaccional
+-- ============================================
+SELECT
+    'Minorista' AS Tipo,
+    sl.tipo_persona AS [Tipo de Persona],
+    sl.Transaccional,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS Moneda,
+    sl.TipoCuenta,
+    SUM(sl.Saldo) AS Saldo
+FROM #segmento_lvnd10 sl
+WHERE sl.tipo_persona IN ('PN','SME')
+GROUP BY 
+    sl.tipo_persona,
+    sl.Transaccional,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END,
+    sl.TipoCuenta
+ORDER BY [Tipo de Persona], Transaccional, Moneda, TipoCuenta;
+
+-- ============================================
+-- PASO 7b: RESULTADO 2 — Mayorista, por SEGMENTO detallado
+-- ============================================
+SELECT
+    'Mayorista' AS Tipo,
+    sm.SEGMENTO AS [Tipo de Persona],
+    'No aplica' AS Transaccional,
+    CASE WHEN lf.Moneda = 0 THEN 'PEN' WHEN lf.Moneda = 1 THEN 'USD' END AS Moneda,
+    lf.TipoCuenta,
+    SUM(lf.Saldo) AS Saldo
+FROM #lvnd10_final lf
+INNER JOIN #segmento_mayorista_detalle sm ON lf.CUENTA_BT = sm.CUENTA_BT
+GROUP BY 
+    sm.SEGMENTO,
+    CASE WHEN lf.Moneda = 0 THEN 'PEN' WHEN lf.Moneda = 1 THEN 'USD' END,
+    lf.TipoCuenta
+ORDER BY [Tipo de Persona], Moneda, TipoCuenta;
+
+-- ============================================
+-- PASO 8: Tasa por cuenta (desde PRELIMINAR, solo tasas > 0, mismo filtro de rubro)
+-- ============================================
+IF OBJECT_ID('tempdb..#tasa_bt') IS NOT NULL DROP TABLE #tasa_bt;
+
+SELECT 
+    VND10CTA AS CUENTA_BT,
+    MAX(VND10TASA) AS Tasa
+INTO #tasa_bt
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20260731_PRELIMINAR
+WHERE VND10TASA <> 0
+  AND VND10ENT = 1
+  AND VND10MDA IN (0,1)
+  AND LEFT(CAST(VND10RUB AS VARCHAR(20)), 4) IN ('2111','2112','2121','2122')
+  AND VND10RUB NOT BETWEEN 21110400000 AND 21110499999
+  AND VND10RUB NOT BETWEEN 21110300000 AND 21110399999
+  AND VND10RUB NOT BETWEEN 21110800000 AND 21110899999
+  AND VND10RUB NOT BETWEEN 21111900000 AND 21111999999
+  AND VND10RUB NOT BETWEEN 21210400000 AND 21210499999
+  AND VND10RUB NOT BETWEEN 21210300000 AND 21210399999
+  AND VND10RUB NOT BETWEEN 21210800000 AND 21210899999
+  AND VND10RUB NOT BETWEEN 21211900000 AND 21211999999
+GROUP BY VND10CTA;
+
+CREATE INDEX IX_tasa_bt ON #tasa_bt(CUENTA_BT);
+
+-- ============================================
+-- PASO 9: Cuentas PN/SME con tasa≠0, clasificadas vs tasa de referencia
+-- ============================================
+IF OBJECT_ID('tempdb..#sme_tasa_detalle') IS NOT NULL DROP TABLE #sme_tasa_detalle;
+
+SELECT
+    sl.tipo_persona,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS Moneda,
+    t.Tasa,
+    sl.Saldo,
+    CASE 
+        WHEN sl.Moneda = 0 AND t.Tasa < 4.25 THEN 1
+        WHEN sl.Moneda = 1 AND t.Tasa < 3.75 THEN 1
+        ELSE 0
+    END AS BajoDel100pct,
+    CASE 
+        WHEN sl.Moneda = 0 AND t.Tasa < (4.25*0.75) THEN 1
+        WHEN sl.Moneda = 1 AND t.Tasa < (3.75*0.75) THEN 1
+        ELSE 0
+    END AS BajoDel75pct,
+    CASE 
+        WHEN sl.Moneda = 0 AND t.Tasa < (4.25*0.50) THEN 1
+        WHEN sl.Moneda = 1 AND t.Tasa < (3.75*0.50) THEN 1
+        ELSE 0
+    END AS BajoDel50pct
+INTO #sme_tasa_detalle
+FROM #segmento_lvnd10 sl
+INNER JOIN #tasa_bt t ON sl.CUENTA_BT = t.CUENTA_BT
+WHERE sl.tipo_persona IN ('PN', 'SME');
+
+-- ============================================
+-- RESULTADO 3: Saldos por corte de tasa de referencia
+-- ============================================
+SELECT 
+    tipo_persona,
+    Moneda,
+    SUM(CASE WHEN BajoDel100pct = 1 THEN Saldo ELSE 0 END) AS Saldo_BajoDel100pct,
+    SUM(CASE WHEN BajoDel75pct = 1 THEN Saldo ELSE 0 END) AS Saldo_BajoDel75pct,
+    SUM(CASE WHEN BajoDel50pct = 1 THEN Saldo ELSE 0 END) AS Saldo_BajoDel50pct
+FROM #sme_tasa_detalle
+GROUP BY tipo_persona, Moneda
+ORDER BY tipo_persona, Moneda;
+
+-- ============================================
+-- RESULTADO 4: Cantidad de cuentas por corte de tasa de referencia
+-- ============================================
+SELECT 
+    tipo_persona,
+    Moneda,
+    COUNT(CASE WHEN BajoDel100pct = 1 THEN 1 END) AS Cuentas_BajoDel100pct,
+    COUNT(CASE WHEN BajoDel75pct = 1 THEN 1 END) AS Cuentas_BajoDel75pct,
+    COUNT(CASE WHEN BajoDel50pct = 1 THEN 1 END) AS Cuentas_BajoDel50pct
+FROM #sme_tasa_detalle
+GROUP BY tipo_persona, Moneda
+ORDER BY tipo_persona, Moneda;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Attribute VB_Name = "Modulo_CopiarStressTest"
 Option Explicit
 
