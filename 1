@@ -1,3 +1,58 @@
+
+Sub ValidarRepricing_Boton()
+
+    Dim rutaEsperada As String
+    Dim vinculos As Variant
+    Dim i As Long
+    Dim encontrado As Boolean
+    Dim rutaDetectada As String
+    Dim celdaResultado As Range
+    
+    rutaEsperada = "\\fs2\Riesgos de Mercado\ALM\Internos\REPRICING\Reportes\"
+    encontrado = False
+    rutaDetectada = ""
+    
+    ' Celda donde se escribirá el resultado (ajusta según tu hoja)
+    Set celdaResultado = ThisWorkbook.Sheets("Control").Range("C10")
+    
+    On Error Resume Next
+    vinculos = ThisWorkbook.LinkSources(xlExcelLinks)
+    On Error GoTo 0
+    
+    If IsEmpty(vinculos) Then
+        celdaResultado.Value = "ERROR - No hay vínculos externos"
+        celdaResultado.Interior.Color = RGB(255, 199, 206)
+        MsgBox "No se encontraron vínculos externos en el archivo.", vbExclamation, "Validación"
+        Exit Sub
+    End If
+    
+    For i = LBound(vinculos) To UBound(vinculos)
+        rutaDetectada = rutaDetectada & vinculos(i) & vbCrLf
+        If InStr(1, vinculos(i), rutaEsperada, vbTextCompare) = 1 Then
+            encontrado = True
+        End If
+    Next i
+    
+    If encontrado Then
+        celdaResultado.Value = "OK"
+        celdaResultado.Interior.Color = RGB(198, 239, 206)  ' verde
+        MsgBox "Validación exitosa." & vbCrLf & vbCrLf & _
+               "Rutas detectadas:" & vbCrLf & rutaDetectada, vbInformation, "Validación OK"
+    Else
+        celdaResultado.Value = "ERROR"
+        celdaResultado.Interior.Color = RGB(255, 199, 206)  ' rojo
+        MsgBox "Ruta incorrecta." & vbCrLf & vbCrLf & _
+               "Esperada:" & vbCrLf & rutaEsperada & vbCrLf & vbCrLf & _
+               "Detectada:" & vbCrLf & rutaDetectada, vbCritical, "Validación Fallida"
+    End If
+
+End Sub
+
+
+
+
+
+
 =IFERROR(
   IF(
     ISNUMBER(SEARCH("'\\fs2\Riesgos de Mercado\ALM\Internos\REPRICING\Reportes\[",FORMULATEXT(D10))),
