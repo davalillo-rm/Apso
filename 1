@@ -1,3 +1,16 @@
+=IFERROR(
+  IF(
+    ISNUMBER(SEARCH("'\\fs2\Riesgos de Mercado\ALM\Internos\REPRICING\Reportes\[",FORMULATEXT(D10))),
+    "OK",
+    "ERROR - Ruta incorrecta"
+  ),
+  "ERROR - No es un vínculo válido"
+)
+
+
+
+
+
 
 SELECT MIN(VND10TASA) AS TasaMinima, MAX(VND10TASA) AS TasaMaxima, AVG(VND10TASA) AS TasaPromedio
 FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20241231_PRELIMINAR
