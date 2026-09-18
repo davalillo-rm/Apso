@@ -1,3 +1,125 @@
+Sub GenerarTXT_DeltaFX()
+    Const RUTA_BASE As String = "C:\Users\s7398771\OneDrive - The Bank of Nova Scotia\Documentos\LCS\"
+    Const PREFIJO As String = "RWH_FRTB_Sensitivities_FXspot_Peru_Delta_"
+
+    Dim ws As Worksheet, celdaH As Range
+    Dim arr As Variant
+    Dim esFecha() As Boolean
+    Dim fecha As String, archivo As String, linea As String, msg As String
+    Dim filaH As Long, ultFila As Long, ultCol As Long, i As Long, j As Long
+    Dim f As Integer
+
+    Set ws = ThisWorkbook.Worksheets("FX Delta BNS")
+    Set celdaH = ws.Columns(1).Find("EFFECTIVE_DATE", LookIn:=xlValues, LookAt:=xlWhole)
+    If celdaH Is Nothing Then
+        MsgBox "No encontré el encabezado EFFECTIVE_DATE en la columna A.", vbExclamation
+        Exit Sub
+    End If
+
+    filaH = celdaH.Row
+    ultCol = ws.Cells(filaH, ws.Columns.Count).End(xlToLeft).Column
+
+    ultFila = filaH
+    Do While Len(Trim(ws.Cells(ultFila + 1, 1).Text)) > 0
+        ultFila = ultFila + 1
+    Loop
+    If ultFila = filaH Then MsgBox "No hay datos debajo del encabezado.", vbExclamation: Exit Sub
+
+    arr = ws.Range(ws.Cells(filaH, 1), ws.Cells(ultFila, ultCol)).Value
+
+    fecha = FechaTxt(arr(2, 1))
+    If Len(fecha) <> 8 Then MsgBox "No pude leer la fecha de EFFECTIVE_DATE.", vbExclamation: Exit Sub
+
+    ReDim esFecha(1 To ultCol)
+    For j = 1 To ultCol
+        esFecha(j) = (Right(UCase(Trim(CStr(arr(1, j)))), 5) = "_DATE")
+    Next j
+
+    archivo = RUTA_BASE & PREFIJO & fecha & ".txt"
+
+    On Error GoTo Falla
+
+    If Dir(archivo) <> "" Then
+        If MsgBox("Ya existe:" & vbCrLf & archivo & vbCrLf & vbCrLf & "¿Sobrescribir?", _
+                  vbYesNo + vbQuestion) = vbNo Then Exit Sub
+    End If
+
+    f = FreeFile
+    Open archivo For Output As #f
+
+    For i = 1 To UBound(arr, 1)
+        linea = ""
+        For j = 1 To ultCol
+            If i = 1 Then
+                linea = linea & IIf(j > 1, vbTab, "") & Trim(CStr(arr(1, j)))
+            Else
+                linea = linea & IIf(j > 1, vbTab, "") & CeldaTxt(arr(i, j), esFecha(j))
+            End If
+        Next j
+        Print #f, linea
+    Next i
+
+    Close #f
+    MsgBox (UBound(arr, 1) - 1) & " filas exportadas a:" & vbCrLf & archivo, vbInformation
+    Exit Sub
+
+Falla:
+    msg = Err.Number & " - " & Err.Description
+    On Error Resume Next
+    Close #f
+    MsgBox "Error: " & msg, vbCritical
+End Sub
+
+Private Function FechaTxt(v As Variant) As String
+    If IsEmpty(v) Then Exit Function
+    If VarType(v) = vbDate Then
+        FechaTxt = Format(v, "yyyymmdd")
+    ElseIf IsNumeric(v) Then
+        If CDbl(v) > 10000000 Then
+            FechaTxt = CStr(CLng(v))
+        Else
+            FechaTxt = Format(CDate(v), "yyyymmdd")
+        End If
+    ElseIf IsDate(v) Then
+        FechaTxt = Format(CDate(v), "yyyymmdd")
+    Else
+        FechaTxt = CStr(v)
+    End If
+End Function
+
+Private Function CeldaTxt(v As Variant, esFecha As Boolean) As String
+    If IsError(v) Or IsEmpty(v) Then Exit Function
+    Select Case VarType(v)
+        Case vbDate
+            CeldaTxt = Format(v, "yyyymmdd")
+        Case vbDouble, vbSingle, vbCurrency, vbInteger, vbLong, vbDecimal
+            If esFecha Then
+                CeldaTxt = FechaTxt(v)
+            Else
+                CeldaTxt = Trim(Str(v))      ' punto decimal, sin separador de miles
+            End If
+        Case Else
+            If esFecha Then
+                CeldaTxt = FechaTxt(v)
+            Else
+                CeldaTxt = CStr(v)
+            End If
+    End Select
+End Function
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Sub ExportarFRTB_TXT()
     Const RUTA_BASE As String = "R:\FRTB\Delta FX\"
     Const PREFIJO As String = "RWH_FRTB_Sensitivities_FXspot_Peru_Delta_"
