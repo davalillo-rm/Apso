@@ -1,3 +1,20 @@
+SELECT a.VND10MDA, a.VND10CTA, a.VND10OPER,
+       a.<COL_TASA> AS tasa_actual, b.<COL_TASA> AS tasa_antes
+FROM SBP_RGHISTORICA.dbo.BLPRNJBT_LVND10_20260530_PROCESADO a WITH (NOLOCK)
+JOIN SBP_RGHISTORICA.dbo.BLPRNJBT_LVND10_<corte_anterior>_PROCESADO b WITH (NOLOCK)
+  ON  a.VND10MDA = b.VND10MDA
+  AND a.VND10CTA = b.VND10CTA
+  AND a.VND10OPER = b.VND10OPER
+WHERE a.VND10ENT = 1
+  AND a.<COL_TASA> <> b.<COL_TASA>
+
+
+
+
+
+
+
+
 Sub GenerarTXT_DeltaFX()
     Const RUTA_BASE As String = "C:\Users\s7398771\OneDrive - The Bank of Nova Scotia\Documentos\LCS\"
     Const PREFIJO As String = "RWH_FRTB_Sensitivities_FXspot_Peru_Delta_"
