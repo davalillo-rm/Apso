@@ -1,3 +1,81 @@
+Sub ExportarFRTB_TXT()
+    Const RUTA_BASE As String = "R:\FRTB\Delta FX\"
+    Const PREFIJO As String = "RWH_FRTB_Sensitivities_FXspot_Peru_Delta_"
+
+    Dim ws As Worksheet
+    Dim arr As Variant
+    Dim esFecha() As Boolean
+    Dim fecha As String, carpeta As String, archivo As String, linea As String
+    Dim lastRow As Long, lastCol As Long, i As Long, j As Long
+    Dim f As Integer, msg As String
+
+    Set ws = ThisWorkbook.Worksheets("FRTB")
+
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+    If lastRow < 2 Then MsgBox "La hoja FRTB no tiene datos.", vbExclamation: Exit Sub
+
+    arr = ws.Range(ws.Cells(1, 1), ws.Cells(lastRow, lastCol)).Value
+
+    fecha = FechaTxt(arr(2, 1))
+    If Len(fecha) <> 8 Then MsgBox "No pude leer la fecha de EFFECTIVE_DATE.", vbExclamation: Exit Sub
+
+    ReDim esFecha(1 To lastCol)
+    For j = 1 To lastCol
+        esFecha(j) = (Right(UCase(Trim(CStr(arr(1, j)))), 5) = "_DATE")
+    Next j
+
+    ' R:\FRTB\Delta FX\202609\RWH_FRTB_Sensitivities_FXspot_Peru_Delta_20260917.txt
+    carpeta = RUTA_BASE & Left(fecha, 6)
+    archivo = carpeta & "\" & PREFIJO & fecha & ".txt"
+
+    On Error GoTo Falla
+    If Dir(carpeta, vbDirectory) = "" Then MkDir carpeta
+
+    If Dir(archivo) <> "" Then
+        If MsgBox("Ya existe:" & vbCrLf & archivo & vbCrLf & vbCrLf & "¿Sobrescribir?", _
+                  vbYesNo + vbQuestion) = vbNo Then Exit Sub
+    End If
+
+    f = FreeFile
+    Open archivo For Output As #f
+
+    For i = 1 To lastRow
+        linea = ""
+        For j = 1 To lastCol
+            If i = 1 Then
+                linea = linea & IIf(j > 1, vbTab, "") & Trim(CStr(arr(1, j)))
+            Else
+                linea = linea & IIf(j > 1, vbTab, "") & CeldaTxt(arr(i, j), esFecha(j))
+            End If
+        Next j
+        Print #f, linea
+    Next i
+
+    Close #f
+    MsgBox (lastRow - 1) & " filas exportadas a:" & vbCrLf & archivo, vbInformation
+    Exit Sub
+
+Falla:
+    msg = Err.Number & " - " & Err.Description
+    On Error Resume Next
+    Close #f
+    MsgBox "Error: " & msg, vbCritical
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Sub CargarFRTB_Dia()
     Const TABLA As String = "dbo.rm_deltafx_frtb"
 
