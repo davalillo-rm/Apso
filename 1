@@ -1,3 +1,95 @@
+Sub CargarFRTB_Dia()
+    Const TABLA As String = "dbo.rm_deltafx_frtb"
+
+    Dim wsF As Worksheet, wsD As Worksheet
+    Dim cn As ADODB.Connection, rs As ADODB.Recordset
+    Dim v As Variant, fecha As String, msg As String
+    Dim i As Long, nFilas As Long
+
+    Set wsF = ThisWorkbook.Worksheets("LCS")
+    Set wsD = ThisWorkbook.Worksheets("FRTB")
+
+    ' --- Fecha desde LCS!Q2 -> yyyymmdd ---
+    v = wsF.Range("Q2").Value
+    If IsEmpty(v) Then MsgBox "LCS!Q2 está vacía.", vbExclamation: Exit Sub
+
+    If IsNumeric(v) And VarType(v) <> vbDate Then
+        If CDbl(v) > 10000000 Then
+            fecha = CStr(CLng(v))                 ' ya viene como 20260917
+        Else
+            fecha = Format(CDate(v), "yyyymmdd")  ' serial de Excel
+        End If
+    ElseIf IsDate(v) Then
+        fecha = Format(CDate(v), "yyyymmdd")
+    Else
+        MsgBox "No reconozco la fecha de LCS!Q2: " & v, vbExclamation: Exit Sub
+    End If
+
+    Set cn = New ADODB.Connection
+    Set rs = New ADODB.Recordset
+
+    On Error GoTo Falla
+    Application.ScreenUpdating = False
+
+    cn.Open "Provider=sqloledb;Server=PEPGVIPR1DS9672.PER.BNS\SQL1,275;Database=SBP_RGTRABAJO;Trusted_Connection=yes"
+    cn.CommandTimeout = 0
+    rs.Open "SELECT * FROM " & TABLA & " WHERE [EFFECTIVE_DATE] = '" & fecha & "'", cn, adOpenForwardOnly, adLockReadOnly
+
+    wsD.Cells.ClearContents
+
+    For i = 0 To rs.Fields.Count - 1
+        wsD.Cells(1, i + 1).Value = rs.Fields(i).Name
+    Next i
+
+    If Not rs.EOF Then
+        wsD.Range("A2").CopyFromRecordset rs
+        nFilas = wsD.Cells(wsD.Rows.Count, 1).End(xlUp).Row - 1
+    End If
+
+    ' Formato de fechas dd/mm/yyyy
+    For i = 0 To rs.Fields.Count - 1
+        If Right(UCase(rs.Fields(i).Name), 5) = "_DATE" And nFilas > 0 Then
+            wsD.Range(wsD.Cells(2, i + 1), wsD.Cells(nFilas + 1, i + 1)).NumberFormat = "dd/mm/yyyy"
+        End If
+    Next i
+
+    wsD.Rows(1).Font.Bold = True
+    wsD.Columns.AutoFit
+
+    rs.Close: cn.Close
+    Application.ScreenUpdating = True
+
+    If nFilas = 0 Then
+        MsgBox "No hay datos en " & TABLA & " para la fecha " & fecha, vbExclamation
+    Else
+        MsgBox nFilas & " filas copiadas a FRTB (fecha " & fecha & ")", vbInformation
+    End If
+    Exit Sub
+
+Falla:
+    msg = Err.Number & " - " & Err.Description
+    On Error Resume Next
+    Application.ScreenUpdating = True
+    If rs.State = adStateOpen Then rs.Close
+    If cn.State = adStateOpen Then cn.Close
+    MsgBox "Error: " & msg, vbCritical
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Sub SubirDeltaFX_FRTB()
     Const TABLA As String = "dbo.rm_deltafx_frtb"
     Const BORRAR_FECHA_PREVIA As Boolean = True
