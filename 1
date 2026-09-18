@@ -1,3 +1,22 @@
+SELECT 'PPTIPO' AS campo, CAST(PPTIPO AS varchar(20)) AS valor,
+       COUNT(*) AS n, SUM(cambio) AS n_cambio, 100.0*SUM(cambio)/COUNT(*) AS pct
+FROM #base GROUP BY PPTIPO HAVING COUNT(*) >= 50
+UNION ALL
+SELECT 'D601OR', CAST(D601OR AS varchar(20)),
+       COUNT(*), SUM(cambio), 100.0*SUM(cambio)/COUNT(*)
+FROM #base GROUP BY D601OR HAVING COUNT(*) >= 50
+UNION ALL
+SELECT 'D601CO', CAST(D601CO AS varchar(20)),
+       COUNT(*), SUM(cambio), 100.0*SUM(cambio)/COUNT(*)
+FROM #base GROUP BY D601CO HAVING COUNT(*) >= 50
+ORDER BY campo, n DESC
+
+
+
+
+
+
+
 SELECT D601TR, COUNT(*) AS n, SUM(cambio) AS n_cambio,
        100.0 * SUM(cambio) / COUNT(*) AS pct
 FROM #base
