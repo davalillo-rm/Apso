@@ -1,4 +1,38 @@
 
+CREATE TABLE dbo.rm_deltafx_frtb (
+    EFFECTIVE_DATE              DATE           NULL,
+    SOURCE_NAME                 VARCHAR(50)    NULL,
+    DEAL_REF_ID                 VARCHAR(50)    NULL,
+    SECURITY_ID                 VARCHAR(50)    NULL,
+    DEAL_CURRENCY               VARCHAR(10)    NULL,
+    RISK_CURRENCY               VARCHAR(10)    NULL,
+    RISK_FACTOR_TYPE            VARCHAR(50)    NULL,
+    CURVE_TYPE                  VARCHAR(50)    NULL,
+    BOOK_LEVEL2                 VARCHAR(100)   NULL,
+    RISK_FACTOR_VALUE           VARCHAR(100)   NULL,
+    MARKET_CLASS                VARCHAR(50)    NULL,
+    TERM_DATE                   DATE           NULL,
+    TERM_LABEL                  VARCHAR(50)    NULL,
+    EXPIRY_DATE                 DATE           NULL,
+    EXPIRY_LABEL                VARCHAR(50)    NULL,
+    RISK_VALUE                  DECIMAL(24,6)  NULL,
+    RISK_ORDER                  VARCHAR(50)    NULL,
+    CUSIP_ID                    VARCHAR(50)    NULL,
+    ISIN_ID                     VARCHAR(50)    NULL,
+    BBG_TICKER                  VARCHAR(50)    NULL,
+    BLOOMBERG_CO_ID             VARCHAR(50)    NULL,
+    RISK_FACTOR_CURRENCY        VARCHAR(10)    NULL,
+    RISK_FACTOR_CURRENCY_PAIR   VARCHAR(20)    NULL,
+    OPTIONALITY_FLAG            CHAR(1)        NULL,
+    BOOK_LEVEL1                 VARCHAR(50)    NULL,
+    SECURITIZED_FLAG            CHAR(1)        NULL
+);
+
+
+
+
+
+
 Sub ValidarRepricing_Boton()
 
     Dim rutaEsperada As String
