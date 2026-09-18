@@ -1,3 +1,76 @@
+Sub SubirDeltaFX_FRTB()
+    Const TABLA As String = "dbo.rm_deltafx_frtb"
+    Const BORRAR_FECHA_PREVIA As Boolean = True
+
+    Dim provStr As String
+    Dim ws As Worksheet, celdaH As Range
+    Dim cn As ADODB.Connection
+    Dim filaH As Long, ultCol As Long, r As Long, c As Long, n As Long
+    Dim cols As String, vals As String, msg As String
+
+    Set ws = ThisWorkbook.Worksheets("FX Delta BNS")
+    Set celdaH = ws.Columns(1).Find("EFFECTIVE_DATE", LookIn:=xlValues, LookAt:=xlWhole)
+    If celdaH Is Nothing Then
+        MsgBox "No encontré el encabezado EFFECTIVE_DATE en la columna A.", vbExclamation
+        Exit Sub
+    End If
+
+    filaH = celdaH.Row
+    ultCol = ws.Cells(filaH, ws.Columns.Count).End(xlToLeft).Column
+
+    For c = 1 To ultCol
+        cols = cols & IIf(c > 1, ",", "") & "[" & Trim(ws.Cells(filaH, c).Value) & "]"
+    Next c
+
+    Set cn = CreateObject("ADODB.Connection")
+    provStr = "Provider=sqloledb;Server=PEPGVIPR1DS9672.PER.BNS\SQL1,275;Database=SBP_RGTRABAJO;Trusted_Connection=yes"
+
+    On Error GoTo Falla
+    cn.Open provStr
+    cn.CommandTimeout = 0
+    cn.BeginTrans
+
+    If BORRAR_FECHA_PREVIA Then
+        cn.Execute "DELETE FROM " & TABLA & " WHERE [EFFECTIVE_DATE] = '" & _
+                   Format(ws.Cells(filaH + 1, 1).Value, "yyyymmdd") & "'"
+    End If
+
+    r = filaH + 1
+    Do While Len(Trim(ws.Cells(r, 1).Text)) > 0
+        vals = ""
+        For c = 1 To ultCol
+            vals = vals & IIf(c > 1, ",", "") & ValorSQL(ws.Cells(r, c), UCase(Trim(ws.Cells(filaH, c).Value)))
+        Next c
+        cn.Execute "INSERT INTO " & TABLA & " (" & cols & ") VALUES (" & vals & ")"
+        n = n + 1
+        r = r + 1
+    Loop
+
+    cn.CommitTrans
+    cn.Close
+    MsgBox n & " filas cargadas en " & TABLA, vbInformation
+    Exit Sub
+
+Falla:
+    msg = Err.Number & " - " & Err.Description
+    On Error Resume Next
+    If cn.State = adStateOpen Then
+        cn.RollbackTrans
+        cn.Close
+    End If
+    MsgBox "Error en la fila " & r & ": " & msg & vbCrLf & "No se cargó nada.", vbCritical
+End Sub
+
+
+
+
+
+
+
+
+
+
+
 
 
 Option Explicit
