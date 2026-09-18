@@ -1,3 +1,13 @@
+SELECT D601TR, COUNT(*) AS n, SUM(cambio) AS n_cambio,
+       100.0 * SUM(cambio) / COUNT(*) AS pct
+FROM #base
+GROUP BY D601TR
+HAVING COUNT(*) >= 50
+ORDER BY n DESC
+
+
+
+
 
 SELECT c.cambio, x.PPTIPO, x.D601TR, x.D601RE, x.D601OR, x.D601CO
 INTO #base
