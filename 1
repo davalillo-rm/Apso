@@ -1,4 +1,108 @@
 
+
+Option Explicit
+
+Sub SubirDeltaFX_FRTB()
+    Const TABLA As String = "dbo.rm_deltafx_frtb"
+    Const BORRAR_FECHA_PREVIA As Boolean = False   ' True = borra esa EFFECTIVE_DATE antes de insertar
+
+    Dim ws As Worksheet, celdaH As Range
+    Dim cn As ADODB.Connection
+    Dim miConexion As String
+    Dim filaH As Long, ultCol As Long, r As Long, c As Long, n As Long
+    Dim cols As String, vals As String, msg As String
+
+    Set ws = ThisWorkbook.Worksheets("FX Delta BNS")
+    Set celdaH = ws.Columns(1).Find("EFFECTIVE_DATE", LookIn:=xlValues, LookAt:=xlWhole)
+    If celdaH Is Nothing Then
+        MsgBox "No encontré el encabezado EFFECTIVE_DATE en la columna A.", vbExclamation
+        Exit Sub
+    End If
+
+    filaH = celdaH.Row
+    ultCol = ws.Cells(filaH, ws.Columns.Count).End(xlToLeft).Column
+
+    For c = 1 To ultCol
+        cols = cols & IIf(c > 1, ",", "") & "[" & Trim(ws.Cells(filaH, c).Value) & "]"
+    Next c
+
+    miConexion = "Provider=SQLOLEDB;" & _
+                 "Server=pepgviprlds9672.PER.BNS\SQL1,275;" & _
+                 "Database=SBP_RGTRABAJO;" & _
+                 "Trusted_Connection=Yes"
+
+    Set cn = New ADODB.Connection
+
+    On Error GoTo Falla
+    cn.ConnectionString = miConexion
+    cn.Open
+    cn.BeginTrans
+
+    If BORRAR_FECHA_PREVIA Then
+        cn.Execute "DELETE FROM " & TABLA & " WHERE [EFFECTIVE_DATE] = '" & _
+                   Format(ws.Cells(filaH + 1, 1).Value, "yyyymmdd") & "'"
+    End If
+
+    r = filaH + 1
+    Do While Len(Trim(ws.Cells(r, 1).Text)) > 0
+        vals = ""
+        For c = 1 To ultCol
+            vals = vals & IIf(c > 1, ",", "") & ValorSQL(ws.Cells(r, c), UCase(Trim(ws.Cells(filaH, c).Value)))
+        Next c
+        cn.Execute "INSERT INTO " & TABLA & " (" & cols & ") VALUES (" & vals & ")"
+        n = n + 1
+        r = r + 1
+    Loop
+
+    cn.CommitTrans
+    cn.Close
+    MsgBox n & " filas cargadas en " & TABLA, vbInformation
+    Exit Sub
+
+Falla:
+    msg = Err.Description
+    On Error Resume Next
+    cn.RollbackTrans
+    cn.Close
+    MsgBox "Error en la fila " & r & ": " & msg & vbCrLf & "No se cargó nada.", vbCritical
+End Sub
+
+Private Function ValorSQL(celda As Range, nombre As String) As String
+    Dim v As Variant, s As String
+    Dim esFecha As Boolean
+    esFecha = (Right(nombre, 5) = "_DATE")
+    v = celda.Value
+
+    If IsError(v) Or IsEmpty(v) Then ValorSQL = "NULL": Exit Function
+
+    Select Case VarType(v)
+        Case vbDate
+            ValorSQL = "'" & Format(v, "yyyymmdd") & "'"
+        Case vbDouble, vbSingle, vbCurrency, vbInteger, vbLong, vbDecimal
+            If esFecha Then
+                ValorSQL = "'" & Format(CDate(v), "yyyymmdd") & "'"
+            Else
+                ValorSQL = Trim(Str(v))          ' siempre con punto decimal
+            End If
+        Case Else
+            s = Trim(CStr(v))
+            If s = "" Then
+                ValorSQL = "NULL"
+            ElseIf esFecha And IsDate(s) Then
+                ValorSQL = "'" & Format(CDate(s), "yyyymmdd") & "'"
+            Else
+                ValorSQL = "'" & Replace(s, "'", "''") & "'"
+            End If
+    End Select
+End Function
+
+
+
+
+
+
+
+
 CREATE TABLE dbo.rm_deltafx_frtb (
     EFFECTIVE_DATE              DATE           NULL,
     SOURCE_NAME                 VARCHAR(50)    NULL,
