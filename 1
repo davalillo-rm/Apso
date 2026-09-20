@@ -1,3 +1,24 @@
+
+SELECT
+    f.PPTIPO,
+    l.RUBRO,                      -- ajusta al nombre real del campo de rubro
+    COUNT(*) AS n_registros
+FROM SBP_RGHISTORICA.dbo.FSD f
+INNER JOIN SBP_RGHISTORICA.dbo.LVND10 l
+        ON f.CUENTA    = l.CUENTA
+       AND f.OPERACION = l.OPERACION
+       -- AND f.FECHA = l.FECHA   -- si ambas tienen fecha de cierre, cruza también por ella
+GROUP BY f.PPTIPO, l.RUBRO
+ORDER BY f.PPTIPO, n_registros DESC;
+
+
+
+
+
+
+
+
+
 SELECT 'PPTIPO' AS campo, CAST(PPTIPO AS varchar(20)) AS valor,
        COUNT(*) AS n, SUM(cambio) AS n_cambio, 100.0*SUM(cambio)/COUNT(*) AS pct
 FROM #base GROUP BY PPTIPO HAVING COUNT(*) >= 50
