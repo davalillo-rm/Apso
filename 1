@@ -1,4 +1,57 @@
 
+library(readxl)
+library(dplyr)
+library(writexl)
+
+# 1. Pares cuenta y operación (ajusta la ruta)
+pares <- read_xlsx("pares.xlsx") %>%
+  transmute(CUENTA = as.numeric(CUENTA),
+            OPERACION = as.numeric(OPERACION)) %>%
+  distinct()
+
+# 2. Primera cuota posterior al 31/07/2026 de cada operación
+query <- "
+SELECT PPMDA, PPCTA, PPOPER, PPFVTO, PPCAP, PPINT
+FROM (
+    SELECT PPMDA, PPCTA, PPOPER, PPFVTO, PPCAP, PPINT,
+           ROW_NUMBER() OVER (PARTITION BY PPMDA, PPCTA, PPOPER
+                              ORDER BY PPFVTO ASC) AS rn
+    FROM (
+        SELECT PPMDA, PPCTA, PPOPER, PPFVTO,
+               SUM(PPCAP) AS PPCAP,
+               SUM(PPINT) AS PPINT
+        FROM SBP_RGHISTORICA.dbo.FSD601_BASE WITH (NOLOCK)
+        WHERE PGCOD = 1
+          AND PPSBOP = 0
+          AND PPMOD IN (20,30,31,32,39,44,45,64,92,131,136,180)
+          AND PPFVTO > '20260731'
+        GROUP BY PPMDA, PPCTA, PPOPER, PPFVTO
+    ) t
+) x
+WHERE rn = 1
+"
+
+# Usa tu conexión (la de la línea 22 de tu script, ya que la línea 107 la cierra)
+prox <- sqlQuery(con, query)
+
+# 3. Cruce con tu lista
+resultado <- pares %>%
+  left_join(prox, by = c("CUENTA" = "PPCTA", "OPERACION" = "PPOPER")) %>%
+  rename(FECHA_CUOTA = PPFVTO, CAPITAL = PPCAP, INTERES = PPINT)
+
+write_xlsx(resultado, "pares_proxima_cuota.xlsx")
+
+
+
+
+
+
+
+
+
+
+
+
 SELECT
     f.PPTIPO,
     l.RUBRO,                      -- ajusta al nombre real del campo de rubro
