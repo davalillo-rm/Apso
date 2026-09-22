@@ -1,4 +1,38 @@
 
+hip_variable_mixto_capital <- hip_variable_mixto_capital %>%
+  mutate(
+    Dias_Reprecio = as.numeric(Fecha_Reprecio - fecha),
+    Vencimiento_Reprecio = ((Dias_Reprecio - 1) %% 360) + 1,
+    Fecha_Reprecio_Cercana = fecha + Vencimiento_Reprecio
+  )
+
+
+
+hip_variable_mixto_interes <- hip_variable_mixto_interes %>%
+  mutate(
+    Dias_Reprecio = as.numeric(Fecha_Reprecio - fecha),
+    Vencimiento_Reprecio = ((Dias_Reprecio - 1) %% 360) + 1,
+    Fecha_Reprecio_Cercana = fecha + Vencimiento_Reprecio
+  )
+
+
+
+hip_variable_mixto_capital %>%
+  filter(Capital_Total != 0) %>%
+  count(Bucket_Reprecio)
+
+
+
+
+
+
+
+
+
+
+
+
+
 library(readxl)
 library(dplyr)
 library(writexl)
