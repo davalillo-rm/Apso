@@ -1,4 +1,32 @@
 
+Fecha_Reprecio > fecha ~ "Fija",
+
+
+hip_variable_fijo <- hip_variable %>% filter(Tasa_Actual == "Fija") %>%
+  mutate(
+    Dias_Reprecio = as.numeric(Fecha_Reprecio - fecha),
+    Dias_Bucket = pmin(Vencimiento_Residual, Dias_Reprecio),
+    Interes = if_else(PPFVTO < Fecha_Reprecio, Interes, 0)
+  )
+
+
+
+cut(Dias_Bucket,
+
+
+
+Dias_Bucket = if_else(Tipo != "Fija", pmin(Vencimiento_Residual, Dias_Prox_Reprecio), Vencimiento_Residual),
+
+
+
+Interes_Bucket = if_else(Tipo != "Fija", if_else(Vencimiento_Residual < Dias_Prox_Reprecio, Interes, 0), Interes)
+
+
+
+detalle %>% filter(Tipo == "Mixta_Variable", Bucket > 12) %>% nrow()
+
+
+
 Sys.setenv(http_proxy = "http://proxy.empresa.com:puerto")
 Sys.setenv(https_proxy = "http://proxy.empresa.com:puerto")
 
