@@ -1,3 +1,9 @@
+
+write_xlsx(detalle, path = paste0("Detalle hipotecarios ", fecha, ".xlsx"))
+
+
+
+
 detalle <- bind_rows(
   hip_fija %>% mutate(Tipo = "Fija"),
   hip_variable %>% mutate(Tipo = if_else(Tasa_Actual == "Fija", "Mixta_Fija", "Mixta_Variable"))
