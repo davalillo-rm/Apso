@@ -1,4 +1,42 @@
 
+hip_variable_mixto_capital <- hip_variable_mixto %>% select(cuenta_cont,OPERACION,Capital,Fecha_Reprecio,Vencimiento_Residual)
+
+
+
+
+hip_variable_mixto_interes <- hip_variable_mixto %>% select(cuenta_cont,OPERACION,Interes,PPFVTO,Fecha_Reprecio,Vencimiento_Residual)
+
+
+
+Fecha_Reprecio_Cercana = fecha + Vencimiento_Reprecio,
+    Dias_Bucket = pmin(Vencimiento_Residual, Vencimiento_Reprecio)
+
+
+
+
+cut(Dias_Bucket,
+
+
+
+
+detalle <- bind_rows(
+  hip_fija %>% mutate(Tipo = "Fija"),
+  hip_variable %>% mutate(Tipo = if_else(Tasa_Actual == "Fija", "Mixta_Fija", "Mixta_Variable"))
+) %>%
+  mutate(
+    Dias_Reprecio = as.numeric(Fecha_Reprecio - fecha),
+    Dias_Prox_Reprecio = if_else(Dias_Reprecio > 0, Dias_Reprecio, ((Dias_Reprecio - 1) %% 360) + 1),
+    Dias_Bucket = if_else(Tipo == "Mixta_Variable", pmin(Vencimiento_Residual, Dias_Prox_Reprecio), Vencimiento_Residual),
+    Bucket = ceiling(Dias_Bucket / 30),
+    Interes_Bucket = if_else(Tipo == "Mixta_Variable", if_else(Vencimiento_Residual < Dias_Prox_Reprecio, Interes, 0), Interes)
+  )
+
+
+
+
+
+
+
 write_xlsx(detalle, path = paste0("Detalle hipotecarios ", fecha, ".xlsx"))
 
 
