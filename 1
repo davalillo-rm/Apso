@@ -1,4 +1,36 @@
 
+hip_variable_mixto_interes <- hip_variable_mixto_interes %>%
+  mutate(
+    Dias_Reprecio = as.numeric(Fecha_Reprecio - fecha),
+    Vencimiento_Reprecio = ((Dias_Reprecio - 1) %% 360) + 1,
+    Fecha_Reprecio_Cercana = fecha + Vencimiento_Reprecio,
+    Dias_Bucket = pmin(Vencimiento_Residual, Vencimiento_Reprecio)
+  )
+
+
+hip_variable_mixto_interes <- hip_variable_mixto %>% select(cuenta_cont,OPERACION,Interes,PPFVTO,Fecha_Reprecio,Vencimiento_Residual)
+
+
+
+hip_variable_mixto_capital <- hip_variable_mixto_capital %>%
+  mutate(
+    Dias_Reprecio = as.numeric(Fecha_Reprecio - fecha),
+    Vencimiento_Reprecio = ((Dias_Reprecio - 1) %% 360) + 1,
+    Fecha_Reprecio_Cercana = fecha + Vencimiento_Reprecio,
+    Dias_Bucket = pmin(Vencimiento_Residual, Vencimiento_Reprecio)
+  )
+
+
+hip_variable_mixto_capital <- hip_variable_mixto %>% select(cuenta_cont,OPERACION,Capital,Fecha_Reprecio,Vencimiento_Residual)
+
+
+
+
+
+
+
+
+
 Fecha_Reprecio > fecha ~ "Fija",
 
 
