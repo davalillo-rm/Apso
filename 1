@@ -1,4 +1,21 @@
 
+hip_variable_mixto_interes <- hip_variable_mixto_interes %>%
+  mutate(
+    Interes_Reprecio = if_else(
+      PPFVTO < Fecha_Reprecio_Cercana,
+      Interes,
+      0
+    )
+  )
+
+
+
+
+
+
+
+
+
 hip_variable_mixto_capital <- hip_variable_mixto_capital %>%
   mutate(
     Dias_Reprecio = as.numeric(Fecha_Reprecio - fecha),
