@@ -1,4 +1,26 @@
 
+detalle <- bind_rows(
+  hip_fija %>% mutate(Tipo = "Fija"),
+  hip_variable %>% mutate(Tipo = if_else(Tasa_Actual == "Fija", "Mixta_Fija", "Mixta_Variable"))
+) %>%
+  mutate(
+    Dias_Reprecio = as.numeric(Fecha_Reprecio - fecha),
+    Dias_Prox_Reprecio = if_else(Dias_Reprecio > 0, Dias_Reprecio, ((Dias_Reprecio - 1) %% 360) + 1),
+    Dias_Bucket = if_else(Tipo != "Fija", pmin(Vencimiento_Residual, Dias_Prox_Reprecio), Vencimiento_Residual),
+    Bucket = ceiling(Dias_Bucket / 30),
+    Interes_Bucket = if_else(Tipo != "Fija", if_else(Vencimiento_Residual < Dias_Prox_Reprecio, Interes, 0), Interes)
+  )
+
+write_xlsx(filter(detalle, Tipo != "Fija"), path = paste0("Detalle hipotecarios mixtos ", fecha, ".xlsx"))
+
+
+
+
+
+
+
+
+
 hip_variable_mixto_interes <- hip_variable_mixto_interes %>%
   mutate(
     Dias_Reprecio = as.numeric(Fecha_Reprecio - fecha),
