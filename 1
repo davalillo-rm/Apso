@@ -1,3 +1,8 @@
+detalle %>% filter(Tipo == "Mixta_Variable", Bucket > 12, Dias_Reprecio <= 0) %>% nrow()
+
+
+
+
 
 hip_variable_mixto_capital <- hip_variable_mixto %>% select(cuenta_cont,OPERACION,Capital,Fecha_Reprecio,Vencimiento_Residual)
 
