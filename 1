@@ -1,3 +1,13 @@
+
+Sys.setenv(http_proxy = "http://proxy.empresa.com:puerto")
+Sys.setenv(https_proxy = "http://proxy.empresa.com:puerto")
+
+# Si requiere usuario y contraseña:
+Sys.setenv(http_proxy = "http://usuario:contraseña@proxy.empresa.com:puerto")
+
+
+
+
 detalle %>% filter(Tipo == "Mixta_Variable", Bucket > 12, Dias_Reprecio <= 0) %>% nrow()
 
 
