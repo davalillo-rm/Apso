@@ -1,3 +1,18 @@
+SELECT 
+    CASE WHEN t.VND10TASA = 0 THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END AS Grupo,
+    COUNT(DISTINCT cp.CUENTA_BT) AS Cuentas
+FROM #cuentas_power cp
+LEFT JOIN Sbp_rghistorica.dbo.blprnjbt_lvnd10_<periodo>_PRELIMINAR t
+    ON cp.CUENTA_BT = t.VND10CTA
+GROUP BY CASE WHEN t.VND10TASA = 0 THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END
+
+
+
+
+
+
+
+
 -- 1. Catálogo: cuentas que son específicamente Cuenta Power
 IF OBJECT_ID('tempdb..#cuentas_power') IS NOT NULL DROP TABLE #cuentas_power
 
