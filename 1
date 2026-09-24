@@ -1,3 +1,23 @@
+SELECT 
+    sl.Transaccional,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS Moneda,
+    CASE WHEN tb.CUENTA_BT IS NOT NULL THEN 'Tasa Cero' ELSE 'Sin tasa cero' END AS GrupoTasa,
+    COUNT(DISTINCT sl.CUENTA_BT) AS Cuentas,
+    SUM(sl.Saldo) AS Saldo
+FROM #segmento_lvnd10 sl
+INNER JOIN #cuentas_power cp ON sl.CUENTA_BT = cp.CUENTA_BT
+LEFT JOIN #cuentas_tasa_cero tb ON cp.CUENTA_BT = tb.CUENTA_BT
+GROUP BY 
+    sl.Transaccional, 
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END,
+    CASE WHEN tb.CUENTA_BT IS NOT NULL THEN 'Tasa Cero' ELSE 'Sin tasa cero' END
+ORDER BY Moneda, sl.Transaccional, GrupoTasa
+
+
+
+
+
+
 
 SELECT 
     sl.Transaccional,
