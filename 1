@@ -1,3 +1,28 @@
+-- 1. Catálogo: cuentas que son específicamente Cuenta Power
+IF OBJECT_ID('tempdb..#cuentas_power') IS NOT NULL DROP TABLE #cuentas_power
+
+SELECT DISTINCT CAST(CUENTA_BT AS NUMERIC(9,0)) AS CUENTA_BT
+INTO #cuentas_power
+FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS
+WHERE PERIODO = <período correspondiente>
+  AND ID_SUBPRODUCTO = 418
+
+-- 2. Saldo de Cuenta Power, desglosado por Transaccional/No transaccional
+SELECT
+    sl.Transaccional,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS Moneda,
+    SUM(sl.Saldo) AS Saldo,
+    COUNT(DISTINCT sl.CUENTA_BT) AS CantidadCuentas
+FROM #segmento_lvnd10 sl
+INNER JOIN #cuentas_power cp ON sl.CUENTA_BT = cp.CUENTA_BT
+GROUP BY sl.Transaccional, CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END
+ORDER BY Moneda, Transaccional
+
+
+
+
+
+
 
 
 
