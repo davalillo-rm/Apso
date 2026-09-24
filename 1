@@ -1,3 +1,32 @@
+IF OBJECT_ID('tempdb..#cuentas_4productos') IS NOT NULL DROP TABLE #cuentas_4productos
+
+SELECT DISTINCT 
+    CAST(CUENTA_BT AS NUMERIC(9,0)) AS CUENTA_BT,
+    ID_SUBPRODUCTO
+INTO #cuentas_4productos
+FROM SBP_RGHISTORICA.dbo.PORTAFOLIO_SBP_PASIVOS
+WHERE PERIODO = <periodo>
+  AND ID_SUBPRODUCTO IN (416, 405, 470, 418)
+
+CREATE INDEX IX_4productos_bt ON #cuentas_4productos(CUENTA_BT)
+
+SELECT
+    cp.ID_SUBPRODUCTO,
+    CASE WHEN l.Moneda = 0 THEN 'PEN' WHEN l.Moneda = 1 THEN 'USD' END AS Moneda,
+    l.TransaccionalPorTasa,
+    COUNT(DISTINCT l.CUENTA_BT) AS Cuentas,
+    SUM(l.Saldo) AS Saldo
+FROM #lvnd10_saldo l
+INNER JOIN #cuentas_4productos cp ON l.CUENTA_BT = cp.CUENTA_BT
+GROUP BY cp.ID_SUBPRODUCTO, l.Moneda, l.TransaccionalPorTasa
+ORDER BY cp.ID_SUBPRODUCTO, Moneda, l.TransaccionalPorTasa
+
+
+
+
+
+
+
 SELECT
     p.ID_SUBPRODUCTO,
     CASE WHEN f.VND10MDA = 0 THEN 'PEN' WHEN f.VND10MDA = 1 THEN 'USD' END AS Moneda,
