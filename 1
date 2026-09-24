@@ -1,5 +1,24 @@
 SELECT 
     CASE WHEN t.VND10TASA = 0 THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END AS Grupo,
+    COUNT(DISTINCT cp.CUENTA_BT) AS Cuentas,
+    SUM(sl.Saldo) AS SaldoTotal,
+    AVG(sl.Saldo) AS SaldoPromedioPorCuenta
+FROM #cuentas_power cp
+LEFT JOIN Sbp_rghistorica.dbo.blprnjbt_lvnd10_<periodo>_PRELIMINAR t
+    ON cp.CUENTA_BT = t.VND10CTA
+INNER JOIN #segmento_lvnd10 sl
+    ON cp.CUENTA_BT = sl.CUENTA_BT
+GROUP BY CASE WHEN t.VND10TASA = 0 THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END
+
+
+
+
+
+
+
+
+SELECT 
+    CASE WHEN t.VND10TASA = 0 THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END AS Grupo,
     COUNT(DISTINCT cp.CUENTA_BT) AS Cuentas
 FROM #cuentas_power cp
 LEFT JOIN Sbp_rghistorica.dbo.blprnjbt_lvnd10_<periodo>_PRELIMINAR t
