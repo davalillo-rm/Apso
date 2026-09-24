@@ -1,4 +1,22 @@
 SELECT 
+    sl.Transaccional,
+    CASE WHEN t.VND10TASA = 0 THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END AS GrupoTasa,
+    COUNT(DISTINCT sl.CUENTA_BT) AS Cuentas,
+    SUM(sl.Saldo) AS Saldo
+FROM #segmento_lvnd10 sl
+INNER JOIN #cuentas_power cp ON sl.CUENTA_BT = cp.CUENTA_BT
+LEFT JOIN Sbp_rghistorica.dbo.blprnjbt_lvnd10_<periodo>_PRELIMINAR t
+    ON cp.CUENTA_BT = t.VND10CTA
+GROUP BY sl.Transaccional, CASE WHEN t.VND10TASA = 0 THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END
+ORDER BY sl.Transaccional, GrupoTasa
+
+
+
+
+
+
+
+SELECT 
     CASE WHEN t.VND10TASA = 0 THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END AS Grupo,
     COUNT(DISTINCT cp.CUENTA_BT) AS Cuentas,
     SUM(sl.Saldo) AS SaldoTotal,
