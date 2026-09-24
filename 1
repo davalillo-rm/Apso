@@ -1,3 +1,27 @@
+SELECT TOP 100
+    cp.CUENTA_BT,
+    sl.Moneda,
+    CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS MonedaDesc,
+    sl.Saldo,
+    sl.Transaccional,
+    tb.CUENTA_BT AS MatchTasaCero,
+    CASE WHEN tb.CUENTA_BT IS NOT NULL THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END AS GrupoTasa
+FROM #segmento_lvnd10 sl
+INNER JOIN #cuentas_power cp ON sl.CUENTA_BT = cp.CUENTA_BT
+LEFT JOIN #cuentas_tasa_cero tb ON cp.CUENTA_BT = tb.CUENTA_BT
+WHERE tb.CUENTA_BT IS NOT NULL  -- solo las que SÍ tienen tasa cero
+ORDER BY sl.Saldo DESC
+
+
+
+
+
+
+
+
+
+
+
 SELECT 
     CASE WHEN sl.Moneda = 0 THEN 'PEN' WHEN sl.Moneda = 1 THEN 'USD' END AS Moneda,
     CASE WHEN tb.CUENTA_BT IS NOT NULL THEN 'Tasa Cero' ELSE 'Tasa Distinta de Cero' END AS GrupoTasa,
