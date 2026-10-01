@@ -1,3 +1,14 @@
+=LET(k,$B$24&"|"&R$25&"|Ask",n,CONTAR.SI.CONJUNTO(Posturas[Llave],k,Posturas[Yield_num],">0"),SI(n>0,MAX(SI.ERROR(Q28,0),MAX.SI.CONJUNTO(Posturas[Yield_num],Posturas[Llave],k)),Q28))
+Bid en R27 (el mejor Bid es el de menor yield):
+=LET(k,$B$24&"|"&R$25&"|Bid",n,CONTAR.SI.CONJUNTO(Posturas[Llave],k,Posturas[Yield_num],">0"),SI(n>0,MIN(SI.ERROR(Q27,1000),MIN.SI.CONJUNTO(Posturas[Yield_num],Posturas[Llave],k)),Q27))
+
+
+
+
+
+
+
+
 IF OBJECT_ID('tempdb..#cuentas_4productos') IS NOT NULL DROP TABLE #cuentas_4productos
 
 SELECT DISTINCT 
