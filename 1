@@ -1,0 +1,285 @@
+"""
+Validador de Calidad de Datos - Área Riesgos de Mercado
+Un botón Validar por cada reporte/anexo.
+Implementado: Anexo 6, 7 y 8 (nombre del txt y header a fecha T-1).
+"""
+
+import os
+from datetime import date, timedelta
+import tkinter as tk
+from tkinter import messagebox
+
+# ----------------------------------------------------------------------
+# Configuración
+# ----------------------------------------------------------------------
+RUTA_ANEXOS_678 = r"R:\AnexosSBS\Anexo 6\Prueba"
+
+# Feriados Perú 2026 (días no hábiles para calcular T-1). Revisar cada año.
+FERIADOS = {
+    date(2026, 1, 1), date(2026, 4, 2), date(2026, 4, 3), date(2026, 5, 1),
+    date(2026, 6, 7), date(2026, 6, 29), date(2026, 7, 23), date(2026, 7, 28),
+    date(2026, 7, 29), date(2026, 8, 6), date(2026, 8, 30), date(2026, 10, 8),
+    date(2026, 11, 1), date(2026, 12, 8), date(2026, 12, 9), date(2026, 12, 25),
+}
+
+# ----------------------------------------------------------------------
+# Colores y fuentes
+# ----------------------------------------------------------------------
+GUINDA = "#5A1414"
+ROJO = "#C8102E"
+ROJO_OSCURO = "#A50D24"
+FONDO = "#F0F0F0"
+BLANCO = "#FFFFFF"
+AZUL_BOTON = "#3A8FD6"
+AZUL_HOVER = "#2A72B0"
+VERDE = "#1E8E3E"
+AMBAR = "#C77700"
+
+F_TITULO = ("Segoe UI", 18, "bold")
+F_NOMBRE = ("Segoe UI", 13, "bold")
+F_DESC = ("Segoe UI", 10)
+F_BOTON = ("Segoe UI", 10, "bold")
+
+
+# ----------------------------------------------------------------------
+# Utilidades de fecha
+# ----------------------------------------------------------------------
+def es_dia_habil(d):
+    return d.weekday() < 5 and d not in FERIADOS
+
+
+def dia_habil_anterior(d):
+    d = d - timedelta(days=1)
+    while not es_dia_habil(d):
+        d = d - timedelta(days=1)
+    return d
+
+
+def fecha_t_menos_1():
+    return dia_habil_anterior(date.today())
+
+
+# ----------------------------------------------------------------------
+# Utilidades de lectura
+# ----------------------------------------------------------------------
+def leer_txt(ruta):
+    for encoding in ("utf-8-sig", "latin-1"):
+        try:
+            with open(ruta, "r", encoding=encoding) as f:
+                return f.read()
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("No se pudo leer el archivo con utf-8 ni latin-1")
+
+
+# ----------------------------------------------------------------------
+# Validaciones
+# Cada función devuelve (ok, mensajes).
+# Prefijos de mensaje: "✓" correcto, "✗" error, "⚠" advertencia (no hace fallar).
+# Devolver None si aún no está implementada.
+# ----------------------------------------------------------------------
+def validar_anexo_678(numero):
+    fecha = fecha_t_menos_1()
+    esperado = f"009{numero}{fecha:%Y%m%d}U"
+    nombre_esperado = esperado + ".txt"
+    mensajes = [f"Fecha T-1 evaluada: {fecha:%d/%m/%Y}"]
+
+    if not os.path.isdir(RUTA_ANEXOS_678):
+        mensajes.append(f"✗ No se encuentra la carpeta:\n   {RUTA_ANEXOS_678}")
+        return False, mensajes
+
+    archivos = os.listdir(RUTA_ANEXOS_678)
+
+    # 1) Nombre del archivo
+    if nombre_esperado in archivos:
+        nombre_real = nombre_esperado
+        mensajes.append(f"✓ Archivo encontrado: {nombre_esperado}")
+    else:
+        coincidencia = [a for a in archivos if a.lower() == nombre_esperado.lower()]
+        if coincidencia:
+            nombre_real = coincidencia[0]
+            mensajes.append(
+                f"✗ Nombre con mayúsculas/minúsculas incorrectas: {nombre_real} "
+                f"(esperado {nombre_esperado})"
+            )
+        else:
+            parecidos = [
+                a for a in archivos
+                if f"{fecha:%Y%m%d}" in a and a.startswith(f"009{numero}")
+            ]
+            mensajes.append(f"✗ No existe el archivo {nombre_esperado}")
+            if parecidos:
+                mensajes.append("   Archivos parecidos encontrados: " + ", ".join(parecidos))
+            return False, mensajes
+
+    # 2) Header dentro del txt
+    ruta_archivo = os.path.join(RUTA_ANEXOS_678, nombre_real)
+    try:
+        contenido = leer_txt(ruta_archivo)
+    except Exception as error:
+        mensajes.append(f"✗ No se pudo leer el archivo: {error}")
+        return False, mensajes
+
+    lineas = contenido.splitlines()
+    if not lineas:
+        mensajes.append("✗ El archivo está vacío")
+        return False, mensajes
+
+    header = lineas[0]
+    if header.strip() == esperado:
+        mensajes.append(f"✓ Header correcto: {esperado}")
+        if header != header.strip():
+            mensajes.append("⚠ El header tiene espacios al inicio o al final")
+    else:
+        mensajes.append(f"✗ Header incorrecto: '{header.strip()}' (esperado '{esperado}')")
+
+    ok = not any(m.startswith("✗") for m in mensajes)
+    return ok, mensajes
+
+
+def validar_reporte_6():
+    return None
+
+
+def validar_anexo_6():
+    return validar_anexo_678(6)
+
+
+def validar_anexo_7():
+    return validar_anexo_678(7)
+
+
+def validar_anexo_8():
+    return validar_anexo_678(8)
+
+
+def validar_reporte_5():
+    return None
+
+
+# (nombre, descripción, función de validación)
+REPORTES = [
+    ("Reporte 6", "Descripción por definir.", validar_reporte_6),
+    ("Anexo 6", "Descripción por definir.", validar_anexo_6),
+    ("Anexo 7", "Medición del Riesgo de Tasa de Interés.", validar_anexo_7),
+    ("Anexo 8", "Posiciones Netas en Instrumentos Financieros Derivados.", validar_anexo_8),
+    ("Reporte 5", "Descripción por definir.", validar_reporte_5),
+]
+
+
+# ----------------------------------------------------------------------
+# Interfaz
+# ----------------------------------------------------------------------
+class ValidadorApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("AREA RIESGOS DE MERCADO")
+        self.configure(bg=FONDO)
+        self.resizable(False, False)
+        self.estados = {}
+
+        self._crear_encabezado()
+        self._crear_lista()
+        self._centrar()
+
+    def _crear_encabezado(self):
+        header = tk.Frame(self, bg=ROJO, height=90)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        tk.Label(
+            header, text="VALIDADOR DE CALIDAD\nDE DATOS",
+            font=F_TITULO, fg=BLANCO, bg=ROJO, justify="center",
+        ).pack(side="left", expand=True)
+
+        panel = tk.Frame(header, bg=ROJO_OSCURO, width=170)
+        panel.pack(side="right", fill="y")
+        panel.pack_propagate(False)
+
+        ruta_logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+        if os.path.exists(ruta_logo):
+            self.logo_img = tk.PhotoImage(file=ruta_logo)
+            tk.Label(panel, image=self.logo_img, bg=ROJO_OSCURO).pack(expand=True)
+        else:
+            tk.Label(
+                panel, text="Riesgos de\nMercado", font=("Segoe UI", 12, "bold"),
+                fg=BLANCO, bg=ROJO_OSCURO,
+            ).pack(expand=True)
+
+    def _crear_lista(self):
+        tk.Label(
+            self, text="Seleccione Anexo a validar:", font=("Segoe UI", 12, "bold"),
+            bg=FONDO, anchor="w",
+        ).pack(fill="x", padx=25, pady=(18, 0))
+
+        tk.Label(
+            self, text=f"Hoy: {date.today():%d/%m/%Y}    T-1: {fecha_t_menos_1():%d/%m/%Y}",
+            font=F_DESC, fg="#555555", bg=FONDO, anchor="w",
+        ).pack(fill="x", padx=25, pady=(0, 6))
+
+        caja = tk.Frame(self, bg=BLANCO, highlightbackground="#9A9A9A", highlightthickness=1)
+        caja.pack(fill="both", padx=25, pady=(0, 25))
+
+        for i, (nombre, desc, funcion) in enumerate(REPORTES):
+            fila = tk.Frame(caja, bg=BLANCO)
+            fila.pack(fill="x", padx=18, pady=10)
+
+            textos = tk.Frame(fila, bg=BLANCO)
+            textos.pack(side="left", fill="x", expand=True)
+            tk.Label(textos, text=nombre, font=F_NOMBRE, fg=ROJO, bg=BLANCO,
+                     anchor="w").pack(fill="x")
+            tk.Label(textos, text=desc, font=F_DESC, fg="#222222", bg=BLANCO,
+                     anchor="w", wraplength=380, justify="left").pack(fill="x")
+
+            estado = tk.Label(fila, text="", font=("Segoe UI", 14, "bold"),
+                              bg=BLANCO, width=2)
+            estado.pack(side="right", padx=(6, 0))
+            self.estados[nombre] = estado
+
+            boton = tk.Button(
+                fila, text="Validar", font=F_BOTON, fg=BLANCO, bg=AZUL_BOTON,
+                activebackground=AZUL_HOVER, activeforeground=BLANCO,
+                relief="flat", cursor="hand2", width=10, pady=4,
+                command=lambda n=nombre, f=funcion: self._validar(n, f),
+            )
+            boton.pack(side="right")
+            boton.bind("<Enter>", lambda e, b=boton: b.config(bg=AZUL_HOVER))
+            boton.bind("<Leave>", lambda e, b=boton: b.config(bg=AZUL_BOTON))
+
+            if i < len(REPORTES) - 1:
+                tk.Frame(caja, bg="#E2E2E2", height=1).pack(fill="x", padx=18)
+
+    def _validar(self, nombre, funcion):
+        try:
+            resultado = funcion()
+        except Exception as error:
+            self.estados[nombre].config(text="✗", fg=ROJO)
+            messagebox.showerror("Error", f"Error al validar {nombre}:\n{error}")
+            return
+
+        if resultado is None:
+            messagebox.showinfo("Pendiente", f"Las validaciones de {nombre} aún no están codificadas.")
+            return
+
+        ok, mensajes = resultado
+        detalle = "\n".join(mensajes)
+        hay_advertencias = any(m.startswith("⚠") for m in mensajes)
+
+        if ok:
+            self.estados[nombre].config(text="✓", fg=AMBAR if hay_advertencias else VERDE)
+            messagebox.showinfo(f"{nombre} - OK", detalle)
+        else:
+            self.estados[nombre].config(text="✗", fg=ROJO)
+            messagebox.showwarning(f"{nombre} - Con observaciones", detalle)
+
+    def _centrar(self):
+        self.update_idletasks()
+        w, h = self.winfo_width(), self.winfo_height()
+        x = (self.winfo_screenwidth() - w) // 2
+        y = (self.winfo_screenheight() - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+if __name__ == "__main__":
+    app = ValidadorApp()
+    app.mainloop()
