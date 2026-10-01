@@ -1,3 +1,9 @@
+pyinstaller --onefile --windowed --icon=logo.ico --add-data "logo_scotia.jpeg;." --add-data "headline.png;." --add-data "logo.ico;." "Deadline Organizer.py"
+
+
+
+
+
 =LET(k,$B$90&"|"&H$91&"|Bid",n,CONTAR.SI.CONJUNTO(Posturas[Llave],k,Posturas[Yield_num],">0"),SI(n>0,MIN(SI.ERROR(G93,1000),MIN.SI.CONJUNTO(Posturas[Yield_num],Posturas[Llave],k,Posturas[Yield_num],">0")),G93))
 
 
