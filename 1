@@ -1,0 +1,167 @@
+"""
+Validador de Calidad de Datos - Área Riesgos de Mercado
+Interfaz basada en el "Generador de Archivos de Texto", con un botón
+Validar por cada reporte/anexo. Las validaciones se codifican luego
+en las funciones validar_* de abajo.
+"""
+
+import os
+import tkinter as tk
+from tkinter import messagebox
+
+# ----------------------------------------------------------------------
+# Colores y fuentes
+# ----------------------------------------------------------------------
+GUINDA = "#5A1414"
+ROJO = "#C8102E"
+ROJO_OSCURO = "#A50D24"
+FONDO = "#F0F0F0"
+BLANCO = "#FFFFFF"
+AZUL_BOTON = "#3A8FD6"
+AZUL_HOVER = "#2A72B0"
+
+F_TITULO = ("Segoe UI", 18, "bold")
+F_NOMBRE = ("Segoe UI", 13, "bold")
+F_DESC = ("Segoe UI", 10)
+F_BOTON = ("Segoe UI", 10, "bold")
+
+
+# ----------------------------------------------------------------------
+# Validaciones (se completan luego)
+# ----------------------------------------------------------------------
+def validar_reporte_6():
+    return None  # devolver True / False cuando esté implementada
+
+
+def validar_anexo_6():
+    return None
+
+
+def validar_anexo_7():
+    return None
+
+
+def validar_anexo_8():
+    return None
+
+
+def validar_reporte_5():
+    return None
+
+
+# (nombre, descripción, función de validación)
+REPORTES = [
+    ("Reporte 6", "Descripción por definir.", validar_reporte_6),
+    ("Anexo 6", "Descripción por definir.", validar_anexo_6),
+    ("Anexo 7", "Medición del Riesgo de Tasa de Interés.", validar_anexo_7),
+    ("Anexo 8", "Posiciones Netas en Instrumentos Financieros Derivados.", validar_anexo_8),
+    ("Reporte 5", "Descripción por definir.", validar_reporte_5),
+]
+
+
+# ----------------------------------------------------------------------
+# Interfaz
+# ----------------------------------------------------------------------
+class ValidadorApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("AREA RIESGOS DE MERCADO")
+        self.configure(bg=FONDO)
+        self.resizable(False, False)
+        self.estados = {}
+
+        self._crear_encabezado()
+        self._crear_lista()
+        self._centrar()
+
+    def _crear_encabezado(self):
+        header = tk.Frame(self, bg=ROJO, height=90)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        tk.Label(
+            header, text="VALIDADOR DE CALIDAD\nDE DATOS",
+            font=F_TITULO, fg=BLANCO, bg=ROJO, justify="center",
+        ).pack(side="left", expand=True)
+
+        panel = tk.Frame(header, bg=ROJO_OSCURO, width=170)
+        panel.pack(side="right", fill="y")
+        panel.pack_propagate(False)
+
+        # Si dejas un logo.png junto al script, se muestra aquí
+        ruta_logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+        if os.path.exists(ruta_logo):
+            self.logo_img = tk.PhotoImage(file=ruta_logo)
+            tk.Label(panel, image=self.logo_img, bg=ROJO_OSCURO).pack(expand=True)
+        else:
+            tk.Label(
+                panel, text="Riesgos de\nMercado", font=("Segoe UI", 12, "bold"),
+                fg=BLANCO, bg=ROJO_OSCURO,
+            ).pack(expand=True)
+
+    def _crear_lista(self):
+        tk.Label(
+            self, text="Seleccione Anexo a validar:", font=("Segoe UI", 12, "bold"),
+            bg=FONDO, anchor="w",
+        ).pack(fill="x", padx=25, pady=(18, 6))
+
+        caja = tk.Frame(self, bg=BLANCO, highlightbackground="#9A9A9A", highlightthickness=1)
+        caja.pack(fill="both", padx=25, pady=(0, 25))
+
+        for i, (nombre, desc, funcion) in enumerate(REPORTES):
+            fila = tk.Frame(caja, bg=BLANCO)
+            fila.pack(fill="x", padx=18, pady=10)
+
+            textos = tk.Frame(fila, bg=BLANCO)
+            textos.pack(side="left", fill="x", expand=True)
+            tk.Label(textos, text=nombre, font=F_NOMBRE, fg=ROJO, bg=BLANCO,
+                     anchor="w").pack(fill="x")
+            tk.Label(textos, text=desc, font=F_DESC, fg="#222222", bg=BLANCO,
+                     anchor="w", wraplength=380, justify="left").pack(fill="x")
+
+            estado = tk.Label(fila, text="", font=("Segoe UI", 14, "bold"),
+                              bg=BLANCO, width=2)
+            estado.pack(side="right", padx=(6, 0))
+            self.estados[nombre] = estado
+
+            boton = tk.Button(
+                fila, text="Validar", font=F_BOTON, fg=BLANCO, bg=AZUL_BOTON,
+                activebackground=AZUL_HOVER, activeforeground=BLANCO,
+                relief="flat", cursor="hand2", width=10, pady=4,
+                command=lambda n=nombre, f=funcion: self._validar(n, f),
+            )
+            boton.pack(side="right")
+            boton.bind("<Enter>", lambda e, b=boton: b.config(bg=AZUL_HOVER))
+            boton.bind("<Leave>", lambda e, b=boton: b.config(bg=AZUL_BOTON))
+
+            if i < len(REPORTES) - 1:
+                tk.Frame(caja, bg="#E2E2E2", height=1).pack(fill="x", padx=18)
+
+    def _validar(self, nombre, funcion):
+        try:
+            resultado = funcion()
+        except Exception as error:
+            self.estados[nombre].config(text="✗", fg=ROJO)
+            messagebox.showerror("Error", f"Error al validar {nombre}:\n{error}")
+            return
+
+        if resultado is None:
+            messagebox.showinfo("Pendiente", f"Las validaciones de {nombre} aún no están codificadas.")
+        elif resultado:
+            self.estados[nombre].config(text="✓", fg="#1E8E3E")
+            messagebox.showinfo("Validación OK", f"{nombre} pasó todas las validaciones.")
+        else:
+            self.estados[nombre].config(text="✗", fg=ROJO)
+            messagebox.showwarning("Validación con observaciones", f"{nombre} tiene observaciones.")
+
+    def _centrar(self):
+        self.update_idletasks()
+        w, h = self.winfo_width(), self.winfo_height()
+        x = (self.winfo_screenwidth() - w) // 2
+        y = (self.winfo_screenheight() - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+if __name__ == "__main__":
+    app = ValidadorApp()
+    app.mainloop()
