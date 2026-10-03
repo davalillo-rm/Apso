@@ -1,3 +1,153 @@
+Option Explicit
+
+Const HOJA_CORREO As String = "Correo"
+Const HOJA_BIDASK As String = "BidAsk"
+Const RANGO_CORREO As String = "A1:H55"
+Const GRAFICOS_POR_PAGINA As Long = 3
+Const ALTO_GRAFICO As Double = 200
+Const SEPARACION As Double = 10
+Const FILAS_POR_BLOQUE As Long = 44
+
+Sub GenerarReporteTasas()
+    Dim wsC As Worksheet, wsB As Worksheet
+    Set wsC = ThisWorkbook.Worksheets(HOJA_CORREO)
+    Set wsB = ThisWorkbook.Worksheets(HOJA_BIDASK)
+
+    Dim fecha As Date: fecha = Date
+    Dim nombre As String: nombre = Format(fecha, "yyyymmdd") & " Tasas FI"
+    Dim rutaXlsx As String, rutaPdf As String
+    rutaXlsx = ThisWorkbook.Path & "\" & nombre & ".xlsx"
+    rutaPdf = ThisWorkbook.Path & "\" & nombre & ".pdf"
+
+    Application.DisplayAlerts = False
+    CrearArchivo wsC, wsB, rutaXlsx, rutaPdf
+    Application.DisplayAlerts = True
+
+    CrearCorreo wsC, fecha, rutaXlsx, rutaPdf
+End Sub
+
+Private Sub CrearArchivo(wsC As Worksheet, wsB As Worksheet, rutaXlsx As String, rutaPdf As String)
+    Dim wbN As Workbook, ws As Worksheet, shp As Shape
+    wsC.Copy
+    Set wbN = ActiveWorkbook
+    Set ws = wbN.Worksheets(1)
+    ws.Name = "Tasas"
+
+    ChartsAImagen ws
+    With ws.UsedRange
+        .Value = .Value
+    End With
+
+    ' Fila donde termina el contenido de Correo (incluye gráficos)
+    Dim rngC As Range: Set rngC = ws.Range(RANGO_CORREO)
+    Dim limite As Double: limite = rngC.Top + rngC.Height
+    For Each shp In ws.Shapes
+        If shp.Top + shp.Height > limite Then limite = shp.Top + shp.Height
+    Next shp
+    Dim r As Long: r = rngC.Row + rngC.Rows.Count - 1
+    Do While ws.Rows(r).Top < limite
+        r = r + 1
+    Loop
+    Dim filaIni As Long: filaIni = r + 1
+
+    ' Ordenar los gráficos de BidAsk de arriba hacia abajo
+    Dim n As Long: n = wsB.ChartObjects.Count
+    Dim idx() As Long: ReDim idx(1 To n)
+    Dim i As Long, j As Long, tmp As Long
+    For i = 1 To n: idx(i) = i: Next i
+    For i = 1 To n - 1
+        For j = i + 1 To n
+            If wsB.ChartObjects(idx(j)).Top < wsB.ChartObjects(idx(i)).Top Then
+                tmp = idx(i): idx(i) = idx(j): idx(j) = tmp
+            End If
+        Next j
+    Next i
+
+    ws.ResetAllPageBreaks
+    Dim bloque As Long, pos As Long, filaBloque As Long
+    For i = 1 To n
+        bloque = (i - 1) \ GRAFICOS_POR_PAGINA
+        pos = (i - 1) Mod GRAFICOS_POR_PAGINA
+        filaBloque = filaIni + bloque * FILAS_POR_BLOQUE
+
+        wsB.ChartObjects(idx(i)).Chart.CopyPicture xlScreen, xlPicture
+        ws.Paste Destination:=ws.Range("A1")
+        With ws.Shapes(ws.Shapes.Count)
+            .LockAspectRatio = msoFalse
+            .Left = rngC.Left
+            .Width = rngC.Width
+            .Height = ALTO_GRAFICO
+            .Top = ws.Rows(filaBloque).Top + pos * (ALTO_GRAFICO + SEPARACION)
+        End With
+        If pos = 0 Then ws.HPageBreaks.Add Before:=ws.Rows(filaBloque)
+    Next i
+
+    Dim nBloques As Long: nBloques = (n - 1) \ GRAFICOS_POR_PAGINA + 1
+    Dim ultimaFila As Long: ultimaFila = filaIni + nBloques * FILAS_POR_BLOQUE - 1
+
+    With ws.PageSetup
+        .PrintArea = ws.Range(ws.Cells(1, rngC.Column), _
+            ws.Cells(ultimaFila, rngC.Column + rngC.Columns.Count - 1)).Address
+        .Orientation = xlPortrait
+        .Zoom = False
+        .FitToPagesWide = 1
+        .FitToPagesTall = False
+        .CenterHorizontally = True
+    End With
+
+    wbN.SaveAs Filename:=rutaXlsx, FileFormat:=xlOpenXMLWorkbook
+    ws.ExportAsFixedFormat Type:=xlTypePDF, Filename:=rutaPdf, _
+        Quality:=xlQualityStandard, IgnorePrintAreas:=False, OpenAfterPublish:=False
+    wbN.Close SaveChanges:=False
+End Sub
+
+Private Sub ChartsAImagen(ws As Worksheet)
+    Dim i As Long, co As ChartObject
+    Dim l As Double, t As Double, w As Double, h As Double
+    For i = ws.ChartObjects.Count To 1 Step -1
+        Set co = ws.ChartObjects(i)
+        l = co.Left: t = co.Top: w = co.Width: h = co.Height
+        co.Chart.CopyPicture xlScreen, xlPicture
+        co.Delete
+        ws.Paste Destination:=ws.Range("A1")
+        With ws.Shapes(ws.Shapes.Count)
+            .LockAspectRatio = msoFalse
+            .Left = l: .Top = t: .Width = w: .Height = h
+        End With
+    Next i
+End Sub
+
+Private Sub CrearCorreo(wsC As Worksheet, fecha As Date, rutaXlsx As String, rutaPdf As String)
+    Dim olApp As Object, mail As Object, doc As Object, rg As Object
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    If olApp Is Nothing Then Set olApp = CreateObject("Outlook.Application")
+    On Error GoTo 0
+
+    Set mail = olApp.CreateItem(0)
+    mail.Subject = "Tasas de Renta Fija - Per" & ChrW(250) & " al " & Format(fecha, "dd.mm.yyyy")
+    mail.Attachments.Add rutaPdf
+    mail.Attachments.Add rutaXlsx
+    mail.Display
+
+    Set doc = mail.GetInspector.WordEditor
+    wsC.Range(RANGO_CORREO).CopyPicture xlScreen, xlPicture
+
+    Set rg = doc.Range(0, 0)
+    rg.InsertBefore "Hola, adjuntamos las tasas y el reporte de Renta Fija Per" & ChrW(250) & _
+        " al " & Format(fecha, "dd.mm.yyyy") & vbCr
+    rg.Collapse 0
+    rg.Paste
+End Sub
+
+
+
+
+
+
+
+
+
 pyinstaller --onefile --windowed --icon=logo.ico --add-data "logo_scotia.jpeg;." --add-data "headline.png;." --add-data "logo.ico;." "Deadline Organizer.py"
 
 
