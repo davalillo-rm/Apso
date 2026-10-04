@@ -1,0 +1,741 @@
+"""
+Validador de Calidad de Datos - Área Riesgos de Mercado
+
+- Botón Validar y botón Abrir por cada reporte/anexo
+- Correo automático de status a las 11:00 (días hábiles, con la app abierta)
+- Envío manual del correo con constancia de revisión
+
+Requisitos:  pip install pywin32 xlrd   (Outlook de escritorio y lectura del .xls)
+"""
+
+import os
+import json
+import html
+from datetime import date, datetime, timedelta
+import tkinter as tk
+from tkinter import messagebox
+
+# ======================================================================
+# CONFIGURACIÓN
+# ======================================================================
+MODO_PRUEBA = True  # True: correos a CORREO_PRUEBA | False: a CORREO_PRODUCCION
+CORREO_PRUEBA = "Ramon.davalillo@scotiabank.com.pe"
+CORREO_PRODUCCION = "Tfrmperutrading@scotiabank.com"
+CORREO_CC = ""  # opcional, separar con punto y coma si son varios
+
+HORA_ENVIO_AUTO = (11, 0)       # hora del correo automático
+HORA_LIMITE_AUTO = (12, 0)      # si la app se abre después de esta hora, no se envía automático
+HORA_CHECK_REPORTE_5 = (18, 0)  # antes de esta hora Reporte 5 figura como pendiente en el correo
+
+NOMBRE_VALIDADOR = "Ramón Davalillo"
+
+RUTA_REPORTE_6 = r"R:\Prueba"
+NOMBRE_XLS_R6 = "REPORTE N 6-C.xls"
+CELDA_FECHA_R6 = "B14"
+PREFIJO_R6 = "02060300004"
+RUTA_ANEXOS_678 = r"R:\AnexosSBS\Anexo 6\Prueba"
+RUTA_REPORTE_5_BASE = r"R:\AnexosSBS\Reporte 5"
+
+ARCHIVO_CONTROL = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "control_envios.json"
+)
+
+# Feriados Perú 2026 (días no hábiles). Revisar cada año.
+FERIADOS = {
+    date(2026, 1, 1), date(2026, 4, 2), date(2026, 4, 3), date(2026, 5, 1),
+    date(2026, 6, 7), date(2026, 6, 29), date(2026, 7, 23), date(2026, 7, 28),
+    date(2026, 7, 29), date(2026, 8, 6), date(2026, 8, 30), date(2026, 10, 8),
+    date(2026, 11, 1), date(2026, 12, 8), date(2026, 12, 9), date(2026, 12, 25),
+}
+
+MESES = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
+    7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre",
+    12: "Diciembre",
+}
+
+# ======================================================================
+# Colores y fuentes
+# ======================================================================
+ROJO = "#C8102E"
+ROJO_OSCURO = "#A50D24"
+FONDO = "#F0F0F0"
+BLANCO = "#FFFFFF"
+AZUL_BOTON = "#3A8FD6"
+AZUL_HOVER = "#2A72B0"
+GRIS_BOTON = "#6C757D"
+GRIS_HOVER = "#545B62"
+VERDE = "#1E8E3E"
+AMBAR = "#C77700"
+
+F_TITULO = ("Segoe UI", 18, "bold")
+F_NOMBRE = ("Segoe UI", 13, "bold")
+F_DESC = ("Segoe UI", 10)
+F_BOTON = ("Segoe UI", 10, "bold")
+
+# Estados posibles de una validación
+OK = "OK"
+OK_ADV = "OK CON ADVERTENCIAS"
+OBSERVADO = "OBSERVADO"
+ERROR = "ERROR"
+PENDIENTE = "PENDIENTE"
+NO_IMPL = "NO IMPLEMENTADA"
+
+COLOR_ESTADO = {
+    OK: VERDE, OK_ADV: AMBAR, OBSERVADO: ROJO, ERROR: ROJO,
+    PENDIENTE: "#6C757D", NO_IMPL: "#6C757D",
+}
+
+
+# ======================================================================
+# Fechas
+# ======================================================================
+def es_dia_habil(d):
+    return d.weekday() < 5 and d not in FERIADOS
+
+
+def dia_habil_anterior(d):
+    d = d - timedelta(days=1)
+    while not es_dia_habil(d):
+        d = d - timedelta(days=1)
+    return d
+
+
+def fecha_t_menos_1():
+    return dia_habil_anterior(date.today())
+
+
+def fecha_t_0():
+    return date.today()
+
+
+def ya_paso(hora_min):
+    ahora = datetime.now()
+    return (ahora.hour, ahora.minute) >= hora_min
+
+
+# ======================================================================
+# Rutas
+# ======================================================================
+def nombre_anexo(numero):
+    return f"009{numero}{fecha_t_menos_1():%Y%m%d}U"
+
+
+def nombre_reporte_5():
+    return f"0095{fecha_t_0():%Y%m%d}"
+
+
+def carpeta_reporte_5(fecha=None):
+    fecha = fecha or fecha_t_0()
+    return os.path.join(
+        RUTA_REPORTE_5_BASE, f"{fecha:%Y}", f"{fecha:%m}. {MESES[fecha.month]}"
+    )
+
+
+def abrir_ruta(archivo, carpetas):
+    """Abre el archivo si existe, si no la primera carpeta que exista."""
+    if archivo and os.path.isfile(archivo):
+        os.startfile(archivo)
+        return
+    for carpeta in carpetas:
+        if carpeta and os.path.isdir(carpeta):
+            if archivo:
+                messagebox.showinfo(
+                    "Archivo no encontrado",
+                    f"No existe:\n{os.path.basename(archivo)}\n\nSe abrirá la carpeta.",
+                )
+            os.startfile(carpeta)
+            return
+    messagebox.showerror("Ruta no encontrada", "No se encontró:\n" + "\n".join(carpetas))
+
+
+def abrir_reporte_6():
+    abrir_ruta(None, [RUTA_REPORTE_6])
+
+
+def abrir_anexo(numero):
+    archivo = os.path.join(RUTA_ANEXOS_678, nombre_anexo(numero) + ".txt")
+    abrir_ruta(archivo, [RUTA_ANEXOS_678])
+
+
+def abrir_reporte_5():
+    carpeta = carpeta_reporte_5()
+    archivo = os.path.join(carpeta, nombre_reporte_5() + ".txt")
+    abrir_ruta(archivo, [carpeta, os.path.dirname(carpeta), RUTA_REPORTE_5_BASE])
+
+
+# ======================================================================
+# Validaciones
+# Devuelven (ok, mensajes) o None si no están implementadas.
+# Prefijos: "✓" correcto, "✗" error, "⚠" advertencia (no hace fallar).
+# ======================================================================
+def leer_txt(ruta):
+    for encoding in ("utf-8-sig", "latin-1"):
+        try:
+            with open(ruta, "r", encoding=encoding) as f:
+                return f.read()
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("No se pudo leer el archivo con utf-8 ni latin-1")
+
+
+def buscar_archivo(carpeta, archivos, nombre_esperado, token_fecha, mensajes, etiqueta):
+    """Devuelve el nombre real del archivo o None. Agrega mensajes de resultado."""
+    if nombre_esperado in archivos:
+        mensajes.append(f"✓ {etiqueta}Archivo encontrado: {nombre_esperado}")
+        return nombre_esperado
+
+    coincidencia = [a for a in archivos if a.lower() == nombre_esperado.lower()]
+    if coincidencia:
+        mensajes.append(
+            f"✗ {etiqueta}Mayúsculas/minúsculas incorrectas: {coincidencia[0]} "
+            f"(esperado {nombre_esperado})"
+        )
+        return coincidencia[0]
+
+    extension = os.path.splitext(nombre_esperado)[1].lower()
+    parecidos = [
+        a for a in archivos
+        if token_fecha and token_fecha in a and a.lower().endswith(extension)
+    ]
+    mensajes.append(f"✗ {etiqueta}No existe el archivo {nombre_esperado}")
+    if parecidos:
+        mensajes.append("   Archivos parecidos: " + ", ".join(parecidos[:5]))
+    return None
+
+
+def validar_header(ruta_archivo, esperado, mensajes, etiqueta):
+    """Compara la primera línea con el header esperado. Devuelve el contenido o None."""
+    try:
+        contenido = leer_txt(ruta_archivo)
+    except Exception as error:
+        mensajes.append(f"✗ {etiqueta}No se pudo leer el archivo: {error}")
+        return None
+
+    lineas = contenido.splitlines()
+    if not lineas:
+        mensajes.append(f"✗ {etiqueta}El archivo está vacío")
+        return contenido
+
+    header = lineas[0]
+    if header.strip() == esperado:
+        mensajes.append(f"✓ {etiqueta}Header correcto: {esperado}")
+        if header != header.strip():
+            mensajes.append(f"⚠ {etiqueta}El header tiene espacios al inicio o al final")
+    else:
+        mensajes.append(
+            f"✗ {etiqueta}Header incorrecto: '{header.strip()}' (esperado '{esperado}')"
+        )
+    return contenido
+
+
+def validar_txt_con_header(carpeta, esperado, fecha, etiqueta_fecha):
+    """Valida que exista <esperado>.txt en la carpeta y que su primera línea sea <esperado>."""
+    mensajes = [f"Fecha {etiqueta_fecha} evaluada: {fecha:%d/%m/%Y}"]
+
+    if not os.path.isdir(carpeta):
+        mensajes.append(f"✗ No se encuentra la carpeta: {carpeta}")
+        return False, mensajes
+
+    archivos = os.listdir(carpeta)
+    nombre_real = buscar_archivo(
+        carpeta, archivos, esperado + ".txt", f"{fecha:%Y%m%d}", mensajes, ""
+    )
+    if nombre_real:
+        validar_header(os.path.join(carpeta, nombre_real), esperado, mensajes, "")
+
+    ok = not any(m.startswith("✗") for m in mensajes)
+    return ok, mensajes
+
+
+# ----------------------------------------------------------------------
+# Lectura de la fecha en el Excel del Reporte 6
+# ----------------------------------------------------------------------
+def a_fecha(valor):
+    """Convierte lo que venga de la celda (fecha, número de Excel o texto) a date."""
+    if valor is None or valor == "":
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    if hasattr(valor, "year") and hasattr(valor, "month") and hasattr(valor, "day"):
+        return date(valor.year, valor.month, valor.day)  # pywintypes.datetime
+    if isinstance(valor, (int, float)):
+        return date(1899, 12, 30) + timedelta(days=int(valor))
+    texto = str(valor).strip()
+    for formato in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(texto, formato).date()
+        except ValueError:
+            continue
+    return None
+
+
+def celda_a_indices(celda):
+    letras = "".join(c for c in celda if c.isalpha()).upper()
+    numero = int("".join(c for c in celda if c.isdigit()))
+    columna = 0
+    for letra in letras:
+        columna = columna * 26 + (ord(letra) - 64)
+    return numero - 1, columna - 1  # base 0
+
+
+def leer_celda_excel(ruta, celda):
+    """Lee una celda de la primera hoja. Intenta xlrd, luego openpyxl y al final Excel (COM)."""
+    fila, columna = celda_a_indices(celda)
+    errores = []
+
+    try:
+        import xlrd  # pip install xlrd
+        libro = xlrd.open_workbook(ruta)
+        hoja = libro.sheet_by_index(0)
+        c = hoja.cell(fila, columna)
+        if c.ctype == xlrd.XL_CELL_DATE:
+            return xlrd.xldate_as_datetime(c.value, libro.datemode)
+        return c.value
+    except Exception as error:
+        errores.append(f"xlrd: {error}")
+
+    try:
+        import openpyxl
+        libro = openpyxl.load_workbook(ruta, read_only=True, data_only=True)
+        valor = libro.worksheets[0][celda].value
+        libro.close()
+        return valor
+    except Exception as error:
+        errores.append(f"openpyxl: {error}")
+
+    try:
+        import win32com.client as win32
+        excel = win32.DispatchEx("Excel.Application")  # instancia aparte, no toca tu Excel
+        excel.Visible = False
+        excel.DisplayAlerts = False
+        try:
+            libro = excel.Workbooks.Open(os.path.abspath(ruta), ReadOnly=True)
+            valor = libro.Worksheets(1).Range(celda).Value
+            libro.Close(False)
+            return valor
+        finally:
+            excel.Quit()
+    except Exception as error:
+        errores.append(f"Excel: {error}")
+
+    raise ValueError("No se pudo leer el Excel (" + " | ".join(errores) + ")")
+
+
+# ----------------------------------------------------------------------
+# Validaciones por reporte
+# ----------------------------------------------------------------------
+def validar_reporte_6():
+    fecha = fecha_t_0()
+    carpeta = RUTA_REPORTE_6
+    mensajes = [f"Fecha T+0 evaluada: {fecha:%d/%m/%Y}"]
+
+    if not os.path.isdir(carpeta):
+        mensajes.append(f"✗ No se encuentra la carpeta: {carpeta}")
+        return False, mensajes
+
+    archivos = os.listdir(carpeta)
+    header_esperado = f"{PREFIJO_R6}{fecha:%Y%m%d}012"
+
+    # 1) Excel: REPORTE N 6-C.xls con B14 = T+0
+    nombre_xls = buscar_archivo(carpeta, archivos, NOMBRE_XLS_R6, None, mensajes, "[XLS] ")
+    if nombre_xls:
+        try:
+            valor = leer_celda_excel(os.path.join(carpeta, nombre_xls), CELDA_FECHA_R6)
+            fecha_celda = a_fecha(valor)
+            if fecha_celda is None:
+                mensajes.append(f"✗ [XLS] {CELDA_FECHA_R6} no tiene una fecha válida: '{valor}'")
+            elif fecha_celda == fecha:
+                mensajes.append(f"✓ [XLS] {CELDA_FECHA_R6} = {fecha_celda:%d/%m/%Y}")
+            else:
+                mensajes.append(
+                    f"✗ [XLS] {CELDA_FECHA_R6} = {fecha_celda:%d/%m/%Y} (esperado {fecha:%d/%m/%Y})"
+                )
+        except Exception as error:
+            mensajes.append(f"✗ [XLS] {error}")
+
+    # 2) TXT: 02060300004yyyymmdd.txt con header 02060300004yyyymmdd012
+    contenido_txt = None
+    nombre_txt = buscar_archivo(
+        carpeta, archivos, f"{PREFIJO_R6}{fecha:%Y%m%d}.txt", f"{fecha:%Y%m%d}", mensajes, "[TXT] "
+    )
+    if nombre_txt:
+        contenido_txt = validar_header(
+            os.path.join(carpeta, nombre_txt), header_esperado, mensajes, "[TXT] "
+        )
+
+    # 3) 206: 03yymmdd.206 con el mismo header
+    contenido_206 = None
+    nombre_206 = buscar_archivo(
+        carpeta, archivos, f"03{fecha:%y%m%d}.206", f"{fecha:%y%m%d}", mensajes, "[206] "
+    )
+    if nombre_206:
+        contenido_206 = validar_header(
+            os.path.join(carpeta, nombre_206), header_esperado, mensajes, "[206] "
+        )
+
+    # 4) TXT y 206 deberían tener el mismo contenido
+    if contenido_txt is not None and contenido_206 is not None:
+        if contenido_txt.strip() == contenido_206.strip():
+            mensajes.append("✓ TXT y 206 tienen el mismo contenido")
+        else:
+            mensajes.append("⚠ TXT y 206 tienen contenido distinto")
+
+    ok = not any(m.startswith("✗") for m in mensajes)
+    return ok, mensajes
+
+
+def validar_anexo(numero):
+    return validar_txt_con_header(
+        RUTA_ANEXOS_678, nombre_anexo(numero), fecha_t_menos_1(), "T-1"
+    )
+
+
+def validar_reporte_5():
+    return validar_txt_con_header(
+        carpeta_reporte_5(), nombre_reporte_5(), fecha_t_0(), "T+0"
+    )
+
+
+# Cada reporte: nombre, descripción, validación, abrir, check de las 6pm
+REPORTES = [
+    {"nombre": "Reporte 6", "desc": "Información de Tasa para Productos Financieros Derivados (6-C).",
+     "validar": validar_reporte_6, "abrir": abrir_reporte_6, "tarde": False},
+    {"nombre": "Anexo 6", "desc": "Descripción por definir.",
+     "validar": lambda: validar_anexo(6), "abrir": lambda: abrir_anexo(6), "tarde": False},
+    {"nombre": "Anexo 7", "desc": "Medición del Riesgo de Tasa de Interés.",
+     "validar": lambda: validar_anexo(7), "abrir": lambda: abrir_anexo(7), "tarde": False},
+    {"nombre": "Anexo 8", "desc": "Posiciones Netas en Instrumentos Financieros Derivados.",
+     "validar": lambda: validar_anexo(8), "abrir": lambda: abrir_anexo(8), "tarde": False},
+    {"nombre": "Reporte 5", "desc": "Descripción por definir. (Check 6pm)",
+     "validar": validar_reporte_5, "abrir": abrir_reporte_5, "tarde": True},
+]
+
+
+def ejecutar_validacion(funcion):
+    """Devuelve (estado, mensajes) a partir de una función de validación."""
+    try:
+        resultado = funcion()
+    except Exception as error:
+        return ERROR, [f"✗ Error inesperado: {error}"]
+    if resultado is None:
+        return NO_IMPL, ["Validación aún no codificada"]
+    ok, mensajes = resultado
+    if not ok:
+        return OBSERVADO, mensajes
+    if any(m.startswith("⚠") for m in mensajes):
+        return OK_ADV, mensajes
+    return OK, mensajes
+
+
+def obtener_status():
+    """Ejecuta todas las validaciones. Reporte 5 queda pendiente antes de las 6pm."""
+    status = []
+    for rep in REPORTES:
+        if rep["tarde"] and not ya_paso(HORA_CHECK_REPORTE_5):
+            hora = f"{HORA_CHECK_REPORTE_5[0]:02d}:{HORA_CHECK_REPORTE_5[1]:02d}"
+            status.append((rep["nombre"], PENDIENTE, [f"Se revisa a partir de las {hora}"]))
+        else:
+            estado, mensajes = ejecutar_validacion(rep["validar"])
+            status.append((rep["nombre"], estado, mensajes))
+    return status
+
+
+# ======================================================================
+# Correo
+# ======================================================================
+def destinatario():
+    return CORREO_PRUEBA if MODO_PRUEBA else CORREO_PRODUCCION
+
+
+def construir_asunto(manual):
+    prefijo = "[PRUEBA] " if MODO_PRUEBA else ""
+    tipo = "Validado" if manual else "Automático"
+    return f"{prefijo}Status Anexos SBS - {date.today():%d/%m/%Y} ({tipo})"
+
+
+def construir_html(status, constancia=None):
+    filas = ""
+    for nombre, estado, mensajes in status:
+        color = COLOR_ESTADO.get(estado, "#000000")
+        detalle = "<br>".join(html.escape(m) for m in mensajes)
+        filas += (
+            "<tr>"
+            f"<td style='padding:6px 10px;border:1px solid #ccc;font-weight:bold'>{html.escape(nombre)}</td>"
+            f"<td style='padding:6px 10px;border:1px solid #ccc;color:{color};font-weight:bold'>{estado}</td>"
+            f"<td style='padding:6px 10px;border:1px solid #ccc;font-size:12px'>{detalle}</td>"
+            "</tr>"
+        )
+
+    if constancia:
+        pie = (
+            "<p style='margin-top:16px;padding:8px 12px;border-left:4px solid #C8102E;"
+            f"background:#f7f7f7'><b>Constancia de revisión:</b> {html.escape(constancia)}</p>"
+        )
+    else:
+        pie = (
+            "<p style='margin-top:16px;color:#777;font-size:11px'>"
+            "Correo generado automáticamente por el Validador de Calidad de Datos.</p>"
+        )
+
+    return f"""
+    <div style='font-family:Segoe UI,Arial,sans-serif;font-size:13px'>
+      <p>Buenos días,</p>
+      <p>Se comparte el status de validación de los reportes regulatorios.<br>
+         Fecha: {date.today():%d/%m/%Y} &nbsp;|&nbsp; T-1: {fecha_t_menos_1():%d/%m/%Y}
+         &nbsp;|&nbsp; Hora: {datetime.now():%H:%M}</p>
+      <table style='border-collapse:collapse'>
+        <tr style='background:#C8102E;color:white'>
+          <th style='padding:6px 10px;border:1px solid #ccc;text-align:left'>Reporte</th>
+          <th style='padding:6px 10px;border:1px solid #ccc;text-align:left'>Estado</th>
+          <th style='padding:6px 10px;border:1px solid #ccc;text-align:left'>Detalle</th>
+        </tr>
+        {filas}
+      </table>
+      {pie}
+    </div>
+    """
+
+
+def enviar_outlook(para, asunto, cuerpo_html):
+    import win32com.client as win32  # pip install pywin32
+    outlook = win32.Dispatch("Outlook.Application")
+    mail = outlook.CreateItem(0)
+    mail.To = para
+    if CORREO_CC:
+        mail.CC = CORREO_CC
+    mail.Subject = asunto
+    mail.HTMLBody = cuerpo_html
+    mail.Send()
+
+
+def leer_control():
+    try:
+        with open(ARCHIVO_CONTROL, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def guardar_control(datos):
+    try:
+        with open(ARCHIVO_CONTROL, "w", encoding="utf-8") as f:
+            json.dump(datos, f, indent=2)
+    except Exception:
+        pass
+
+
+# ======================================================================
+# Interfaz
+# ======================================================================
+class ValidadorApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("AREA RIESGOS DE MERCADO")
+        self.configure(bg=FONDO)
+        self.resizable(False, False)
+        self.indicadores = {}
+
+        self._crear_encabezado()
+        self._crear_lista()
+        self._crear_panel_correo()
+        self._centrar()
+
+        self._actualizar_label_auto()
+        self.after(2000, self._revisar_envio_auto)
+
+    # ---------------- Encabezado ----------------
+    def _crear_encabezado(self):
+        header = tk.Frame(self, bg=ROJO, height=90)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        tk.Label(
+            header, text="VALIDADOR DE CALIDAD\nDE DATOS",
+            font=F_TITULO, fg=BLANCO, bg=ROJO, justify="center",
+        ).pack(side="left", expand=True)
+
+        panel = tk.Frame(header, bg=ROJO_OSCURO, width=170)
+        panel.pack(side="right", fill="y")
+        panel.pack_propagate(False)
+
+        ruta_logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+        if os.path.exists(ruta_logo):
+            self.logo_img = tk.PhotoImage(file=ruta_logo)
+            tk.Label(panel, image=self.logo_img, bg=ROJO_OSCURO).pack(expand=True)
+        else:
+            tk.Label(
+                panel, text="Riesgos de\nMercado", font=("Segoe UI", 12, "bold"),
+                fg=BLANCO, bg=ROJO_OSCURO,
+            ).pack(expand=True)
+
+    # ---------------- Lista de reportes ----------------
+    def _boton(self, padre, texto, color, hover, comando, ancho=9):
+        b = tk.Button(
+            padre, text=texto, font=F_BOTON, fg=BLANCO, bg=color,
+            activebackground=hover, activeforeground=BLANCO,
+            relief="flat", cursor="hand2", width=ancho, padx=12, pady=4, command=comando,
+        )
+        b.bind("<Enter>", lambda e: b.config(bg=hover))
+        b.bind("<Leave>", lambda e: b.config(bg=color))
+        return b
+
+    def _crear_lista(self):
+        tk.Label(
+            self, text="Seleccione Anexo a validar:", font=("Segoe UI", 12, "bold"),
+            bg=FONDO, anchor="w",
+        ).pack(fill="x", padx=25, pady=(18, 0))
+
+        tk.Label(
+            self, text=f"Hoy: {date.today():%d/%m/%Y}    T-1: {fecha_t_menos_1():%d/%m/%Y}",
+            font=F_DESC, fg="#555555", bg=FONDO, anchor="w",
+        ).pack(fill="x", padx=25, pady=(0, 6))
+
+        caja = tk.Frame(self, bg=BLANCO, highlightbackground="#9A9A9A", highlightthickness=1)
+        caja.pack(fill="both", padx=25, pady=(0, 15))
+
+        for i, rep in enumerate(REPORTES):
+            fila = tk.Frame(caja, bg=BLANCO)
+            fila.pack(fill="x", padx=18, pady=10)
+
+            textos = tk.Frame(fila, bg=BLANCO)
+            textos.pack(side="left", fill="x", expand=True)
+            tk.Label(textos, text=rep["nombre"], font=F_NOMBRE, fg=ROJO, bg=BLANCO,
+                     anchor="w").pack(fill="x")
+            tk.Label(textos, text=rep["desc"], font=F_DESC, fg="#222222", bg=BLANCO,
+                     anchor="w", wraplength=330, justify="left").pack(fill="x")
+
+            indicador = tk.Label(fila, text="", font=("Segoe UI", 14, "bold"), bg=BLANCO, width=2)
+            indicador.pack(side="right", padx=(6, 0))
+            self.indicadores[rep["nombre"]] = indicador
+
+            self._boton(fila, "Validar", AZUL_BOTON, AZUL_HOVER,
+                        lambda r=rep: self._validar(r)).pack(side="right")
+            self._boton(fila, "Abrir", GRIS_BOTON, GRIS_HOVER,
+                        lambda r=rep: self._abrir(r)).pack(side="right", padx=(0, 6))
+
+            if i < len(REPORTES) - 1:
+                tk.Frame(caja, bg="#E2E2E2", height=1).pack(fill="x", padx=18)
+
+    # ---------------- Panel de correo ----------------
+    def _crear_panel_correo(self):
+        panel = tk.Frame(self, bg=FONDO)
+        panel.pack(fill="x", padx=25, pady=(0, 20))
+
+        fila = tk.Frame(panel, bg=FONDO)
+        fila.pack(fill="x")
+        tk.Label(fila, text="Validado por:", font=F_DESC, bg=FONDO).pack(side="left")
+        self.entry_validador = tk.Entry(fila, font=F_DESC, width=28)
+        self.entry_validador.insert(0, NOMBRE_VALIDADOR)
+        self.entry_validador.pack(side="left", padx=8)
+        self._boton(fila, "Enviar correo firmado", ROJO, ROJO_OSCURO,
+                    self._enviar_manual, ancho=0).pack(side="right")
+
+        self.label_auto = tk.Label(panel, text="", font=F_DESC, fg="#555555", bg=FONDO, anchor="w")
+        self.label_auto.pack(fill="x", pady=(8, 0))
+
+        if MODO_PRUEBA:
+            tk.Label(panel, text=f"MODO PRUEBA: los correos van a {CORREO_PRUEBA}",
+                     font=("Segoe UI", 9, "bold"), fg=AMBAR, bg=FONDO, anchor="w").pack(fill="x")
+
+    # ---------------- Acciones ----------------
+    def _pintar(self, nombre, estado):
+        simbolo = {OK: "✓", OK_ADV: "✓", OBSERVADO: "✗", ERROR: "✗"}.get(estado, "")
+        self.indicadores[nombre].config(text=simbolo, fg=COLOR_ESTADO.get(estado, "#000000"))
+
+    def _abrir(self, rep):
+        try:
+            rep["abrir"]()
+        except Exception as error:
+            messagebox.showerror("Error", f"No se pudo abrir {rep['nombre']}:\n{error}")
+
+    def _validar(self, rep):
+        estado, mensajes = ejecutar_validacion(rep["validar"])
+        if estado == NO_IMPL:
+            messagebox.showinfo("Pendiente", f"Las validaciones de {rep['nombre']} aún no están codificadas.")
+            return
+        self._pintar(rep["nombre"], estado)
+        detalle = "\n".join(mensajes)
+        if estado in (OK, OK_ADV):
+            messagebox.showinfo(f"{rep['nombre']} - {estado}", detalle)
+        else:
+            messagebox.showwarning(f"{rep['nombre']} - {estado}", detalle)
+
+    def _status_y_pintar(self):
+        status = obtener_status()
+        for nombre, estado, _ in status:
+            self._pintar(nombre, estado)
+        return status
+
+    def _enviar(self, manual):
+        status = self._status_y_pintar()
+        constancia = None
+        if manual:
+            validador = self.entry_validador.get().strip()
+            constancia = f"Validado por {validador} el {datetime.now():%d/%m/%Y} a las {datetime.now():%H:%M}"
+        enviar_outlook(destinatario(), construir_asunto(manual), construir_html(status, constancia))
+
+    def _enviar_manual(self):
+        if not self.entry_validador.get().strip():
+            messagebox.showwarning("Falta nombre", "Ingresa el nombre de quien valida.")
+            return
+        if not messagebox.askyesno("Enviar correo", f"¿Enviar el status firmado a {destinatario()}?"):
+            return
+        try:
+            self._enviar(manual=True)
+            messagebox.showinfo("Correo enviado", f"Status enviado a {destinatario()}")
+        except Exception as error:
+            messagebox.showerror("Error al enviar", f"No se pudo enviar el correo:\n{error}")
+
+    # ---------------- Envío automático ----------------
+    def _actualizar_label_auto(self):
+        hoy = date.today().isoformat()
+        hora = f"{HORA_ENVIO_AUTO[0]:02d}:{HORA_ENVIO_AUTO[1]:02d}"
+        control = leer_control()
+        if not es_dia_habil(date.today()):
+            texto = "Correo automático: hoy no es día hábil"
+        elif control.get("ultimo_envio_auto") == hoy:
+            texto = f"Correo automático: enviado hoy a las {control.get('hora_envio_auto', '')}"
+        elif control.get("error_auto_fecha") == hoy:
+            texto = f"Correo automático: error al enviar ({control.get('error_auto', '')})"
+        elif ya_paso(HORA_LIMITE_AUTO):
+            texto = "Correo automático: no enviado hoy (app abierta fuera de horario)"
+        else:
+            texto = f"Correo automático: programado para las {hora}"
+        self.label_auto.config(text=texto)
+
+    def _revisar_envio_auto(self):
+        hoy = date.today()
+        control = leer_control()
+        if (
+            es_dia_habil(hoy)
+            and ya_paso(HORA_ENVIO_AUTO)
+            and not ya_paso(HORA_LIMITE_AUTO)
+            and control.get("ultimo_envio_auto") != hoy.isoformat()
+            and control.get("error_auto_fecha") != hoy.isoformat()
+        ):
+            try:
+                self._enviar(manual=False)
+                control["ultimo_envio_auto"] = hoy.isoformat()
+                control["hora_envio_auto"] = f"{datetime.now():%H:%M}"
+            except Exception as error:
+                control["error_auto_fecha"] = hoy.isoformat()
+                control["error_auto"] = str(error)[:80]
+            guardar_control(control)
+
+        self._actualizar_label_auto()
+        self.after(30000, self._revisar_envio_auto)  # revisa cada 30 segundos
+
+    def _centrar(self):
+        self.update_idletasks()
+        w, h = self.winfo_width(), self.winfo_height()
+        x = (self.winfo_screenwidth() - w) // 2
+        y = (self.winfo_screenheight() - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+if __name__ == "__main__":
+    app = ValidadorApp()
+    app.mainloop()
