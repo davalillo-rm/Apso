@@ -1,3 +1,9 @@
+python -m PyInstaller --clean --onefile --noconsole --name "Validador_TFRM" --add-data "logo.png;." --hidden-import xlrd --hidden-import win32timezone validador.py
+
+
+
+
+
 python -m pip install xlrd pywin32 pillow pyinstaller
 python -c "import xlrd; print(xlrd.__version__)"
 
