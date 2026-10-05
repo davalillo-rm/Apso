@@ -1,0 +1,210 @@
+Option Explicit
+
+Const HOJA_CORREO As String = "Correo"
+Const HOJA_BIDASK As String = "BidAsk"
+Const HOJA_FECHA As String = "RF2"
+Const CELDA_FECHA As String = "W22"
+Const RANGO_CORREO As String = "A1:I55"
+Const MAX_POR_PAGINA As Long = 5
+Const MAX_ESTIRAR As Double = 1.2
+Const SEPARACION As Double = 10
+Const ANCHO_IMP As Double = 523
+Const ALTO_IMP As Double = 770
+
+Sub GenerarReporteTasas()
+    Dim wsC As Worksheet, wsB As Worksheet
+    Set wsC = ThisWorkbook.Worksheets(HOJA_CORREO)
+    Set wsB = ThisWorkbook.Worksheets(HOJA_BIDASK)
+
+    Dim fecha As Date
+    fecha = CDate(ThisWorkbook.Worksheets(HOJA_FECHA).Range(CELDA_FECHA).Value)
+
+    Dim carpeta As String
+    carpeta = ThisWorkbook.Path
+    If carpeta = "" Or LCase(Left(carpeta, 4)) = "http" Then
+        carpeta = Environ("USERPROFILE") & "\Documents\Tasas FI"
+        If Dir(carpeta, vbDirectory) = "" Then MkDir carpeta
+    End If
+
+    Dim nombre As String: nombre = Format(fecha, "yyyymmdd") & " Tasas FI"
+    Dim rutaXlsx As String, rutaPdf As String
+    rutaXlsx = carpeta & "\" & nombre & ".xlsx"
+    rutaPdf = carpeta & "\" & nombre & ".pdf"
+
+    Application.DisplayAlerts = False
+    CrearArchivo wsC, wsB, rutaXlsx, rutaPdf
+    Application.DisplayAlerts = True
+
+    CrearCorreo wsC, fecha, rutaXlsx, rutaPdf
+End Sub
+
+Private Sub CrearArchivo(wsC As Worksheet, wsB As Worksheet, rutaXlsx As String, rutaPdf As String)
+    Dim wbN As Workbook, ws As Worksheet, shp As Shape
+    wsC.Copy
+    Set wbN = ActiveWorkbook
+    Set ws = wbN.Worksheets(1)
+    ws.Name = "Tasas"
+
+    ChartsAImagen ws
+    With ws.UsedRange
+        .Value = .Value
+    End With
+
+    Dim rngC As Range: Set rngC = ws.Range(RANGO_CORREO)
+    Dim anchoArea As Double: anchoArea = rngC.Width
+
+    ' Donde termina el contenido de Correo
+    Dim limite As Double: limite = rngC.Top + rngC.Height
+    For Each shp In ws.Shapes
+        If shp.Top + shp.Height > limite Then limite = shp.Top + shp.Height
+    Next shp
+    Dim altoCorreo As Double: altoCorreo = limite - rngC.Top
+
+    ' Escala para que Correo entre en 1 pagina (por ancho y por alto)
+    Dim escala As Double: escala = 1
+    If anchoArea > ANCHO_IMP Then escala = ANCHO_IMP / anchoArea
+    If altoCorreo * escala > ALTO_IMP * 0.92 Then escala = (ALTO_IMP * 0.92) / altoCorreo
+    Dim zoomPct As Long: zoomPct = Int(escala * 100)
+    escala = zoomPct / 100
+
+    ' Alto util de una pagina en unidades de la hoja
+    Dim altoPag As Double: altoPag = (ALTO_IMP / escala) * 0.94
+
+    ' Ancho util: ultima columna que cabe en el ancho de la pagina
+    Dim limDer As Double: limDer = rngC.Left + (ANCHO_IMP / escala) * 0.99
+    Dim colFin As Long: colFin = rngC.Column + rngC.Columns.Count - 1
+    Do While colFin < 60 And ws.Cells(1, colFin + 1).Left + ws.Cells(1, colFin + 1).Width <= limDer
+        colFin = colFin + 1
+    Loop
+    Dim anchoGraf As Double
+    anchoGraf = ws.Cells(1, colFin).Left + ws.Cells(1, colFin).Width - rngC.Left
+
+    ' Alto maximo de cada grafico para que MAX_POR_PAGINA llenen la hoja
+    Dim hMax As Double
+    hMax = (altoPag - (MAX_POR_PAGINA - 1) * SEPARACION) / MAX_POR_PAGINA
+
+    Dim filaIni As Long: filaIni = FilaDesde(ws, limite, rngC.Row + rngC.Rows.Count) + 1
+
+    ' Ordenar graficos de BidAsk de arriba hacia abajo
+    Dim n As Long: n = wsB.ChartObjects.Count
+    Dim idx() As Long: ReDim idx(1 To n)
+    Dim i As Long, j As Long, tmp As Long
+    For i = 1 To n: idx(i) = i: Next i
+    For i = 1 To n - 1
+        For j = i + 1 To n
+            If wsB.ChartObjects(idx(j)).Top < wsB.ChartObjects(idx(i)).Top Then
+                tmp = idx(i): idx(i) = idx(j): idx(j) = tmp
+            End If
+        Next j
+    Next i
+
+    ws.ResetAllPageBreaks
+
+    Dim fila As Long: fila = filaIni
+    Dim yPag As Double: yPag = ws.Rows(fila).Top
+    Dim y As Double: y = yPag
+    Dim enPagina As Long: enPagina = 0
+    Dim w0 As Double, h0 As Double, h As Double, wImg As Double, hNat As Double
+    Dim ruta As String
+    ws.HPageBreaks.Add Before:=ws.Rows(fila)
+
+    For i = 1 To n
+        w0 = wsB.ChartObjects(idx(i)).Width
+        h0 = wsB.ChartObjects(idx(i)).Height
+        hNat = anchoGraf * h0 / w0
+
+        If hNat > hMax Then
+            ' No cabe a todo el ancho: se reduce manteniendo la proporcion
+            h = hMax
+            wImg = anchoGraf * (hMax / hNat)
+        Else
+            ' Sobra espacio: se estira el alto hasta un maximo controlado
+            wImg = anchoGraf
+            h = hNat * MAX_ESTIRAR
+            If h > hMax Then h = hMax
+        End If
+
+        If enPagina > 0 And (enPagina >= MAX_POR_PAGINA Or (y + h) > (yPag + altoPag)) Then
+            fila = FilaDesde(ws, y, fila)
+            ws.HPageBreaks.Add Before:=ws.Rows(fila)
+            yPag = ws.Rows(fila).Top
+            y = yPag
+            enPagina = 0
+        End If
+
+        ruta = Environ("TEMP") & "\grafico_" & i & ".png"
+        wsB.ChartObjects(idx(i)).Chart.Export ruta, "PNG"
+        Set shp = ws.Shapes.AddPicture(ruta, msoFalse, msoTrue, _
+            rngC.Left + (anchoGraf - wImg) / 2, y, wImg, h)
+        Kill ruta
+
+        y = y + h + SEPARACION
+        enPagina = enPagina + 1
+    Next i
+
+    Dim ultimaFila As Long: ultimaFila = FilaDesde(ws, y, fila) + 1
+
+    With ws.PageSetup
+        .PaperSize = xlPaperA4
+        .LeftMargin = Application.InchesToPoints(0.5)
+        .RightMargin = Application.InchesToPoints(0.5)
+        .TopMargin = Application.InchesToPoints(0.5)
+        .BottomMargin = Application.InchesToPoints(0.5)
+        .HeaderMargin = 0
+        .FooterMargin = 0
+        .PrintArea = ws.Range(ws.Cells(1, rngC.Column), ws.Cells(ultimaFila, colFin)).Address
+        .Orientation = xlPortrait
+        .Zoom = zoomPct
+        .CenterHorizontally = True
+    End With
+
+    wbN.SaveAs Filename:=rutaXlsx, FileFormat:=xlOpenXMLWorkbook
+    ws.ExportAsFixedFormat Type:=xlTypePDF, Filename:=rutaPdf, _
+        Quality:=xlQualityStandard, IgnorePrintAreas:=False, OpenAfterPublish:=False
+    wbN.Close SaveChanges:=False
+End Sub
+
+Private Function FilaDesde(ws As Worksheet, y As Double, desde As Long) As Long
+    Dim r As Long: r = desde
+    Do While ws.Rows(r).Top < y
+        r = r + 1
+    Loop
+    FilaDesde = r
+End Function
+
+Private Sub ChartsAImagen(ws As Worksheet)
+    Dim i As Long, co As ChartObject, ruta As String
+    Dim l As Double, t As Double, w As Double, h As Double
+    For i = ws.ChartObjects.Count To 1 Step -1
+        Set co = ws.ChartObjects(i)
+        l = co.Left: t = co.Top: w = co.Width: h = co.Height
+        ruta = Environ("TEMP") & "\corr_" & i & ".png"
+        co.Chart.Export ruta, "PNG"
+        co.Delete
+        ws.Shapes.AddPicture ruta, msoFalse, msoTrue, l, t, w, h
+        Kill ruta
+    Next i
+End Sub
+
+Private Sub CrearCorreo(wsC As Worksheet, fecha As Date, rutaXlsx As String, rutaPdf As String)
+    Dim olApp As Object, mail As Object, doc As Object, rg As Object
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    If olApp Is Nothing Then Set olApp = CreateObject("Outlook.Application")
+    On Error GoTo 0
+
+    Set mail = olApp.CreateItem(0)
+    mail.Subject = "Tasas de Renta Fija - Per" & ChrW(250) & " al " & Format(fecha, "dd.mm.yyyy")
+    mail.Attachments.Add rutaPdf
+    mail.Attachments.Add rutaXlsx
+    mail.Display
+
+    Set doc = mail.GetInspector.WordEditor
+    wsC.Range(RANGO_CORREO).CopyPicture xlScreen, xlPicture
+
+    Set rg = doc.Range(0, 0)
+    rg.InsertBefore "Hola, adjuntamos las tasas y el reporte de Renta Fija Per" & ChrW(250) & _
+        " al " & Format(fecha, "dd.mm.yyyy") & vbCr
+    rg.Collapse 0
+    rg.Paste
+End Sub
