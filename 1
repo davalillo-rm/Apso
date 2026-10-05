@@ -1,3 +1,27 @@
+import sys
+
+def ruta_recurso(nombre):
+    """Archivos empaquetados dentro del .exe (logo)."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, nombre)
+
+def carpeta_app():
+    """Carpeta donde está el .exe (o el .py), para guardar archivos."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+
+
+
+
+
+
+
+
+
+
 """
 Validador de Calidad de Datos - Área Riesgos de Mercado
 
