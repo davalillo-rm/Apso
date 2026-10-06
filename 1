@@ -1,3 +1,13 @@
+python -m PyInstaller --clean --onefile --noconsole --name "Validador_TFRM" --add-data "logo.png;." --hidden-import xlrd --hidden-import win32timezone validador.py
+
+
+
+
+
+
+
+
+
     def _registrar_firma(self, status):
         control = leer_control()
         control.setdefault("envios_firmados", []).append({
