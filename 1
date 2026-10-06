@@ -1,3 +1,19 @@
+    def _registrar_firma(self, status):
+        control = leer_control()
+        control.setdefault("envios_firmados", []).append({
+            "fecha": f"{datetime.now():%d/%m/%Y}",
+            "hora": f"{datetime.now():%H:%M:%S}",
+            "validado_por": self.entry_validador.get().strip(),
+            "usuario_windows": os.getenv("USERNAME", ""),
+            "destinatario": destinatario(),
+            "estados": {nombre: estado for nombre, estado, _ in status},
+        })
+        guardar_control(control)
+
+
+
+
+
 Option Explicit
 
 Const HOJA_CORREO As String = "Correo"
