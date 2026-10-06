@@ -1,3 +1,513 @@
+
+"""
+Carga histórica de Renta Fija Segundo Nivel a SBP_RGTRABAJO.dbo.RF2
+
+La fecha de cada vuelta se LEE del cuadrito de la ventana (no se cuenta).
+
+Flujo por vuelta:
+  1. Click en generar Excel -> click en el aviso (Sí/No) -> F12 -> guarda en RUTA_EXCEL -> cierra Excel
+  2. Procesa el Excel y sube a SQL (si ya existe esa Fecha_Carga, la reemplaza)
+  3. Click en la flechita azul (sube la fecha) -> lee la fecha del cuadrito
+     (si cae en sábado o domingo, vuelve a subir) -> click en actualizar
+  4. Repite
+
+Si una vuelta falla, se registra la fecha en log_errores.txt (misma carpeta del script)
+y continúa con la siguiente.
+
+Modos:
+    python fechas_rf2.py                  carga completa
+    python fechas_rf2.py --probar-fecha   solo prueba la lectura de la fecha (sin Excel ni SQL)
+    python fechas_rf2.py --calibrar       prueba de 1 a 8 selecciones y muestra qué copia cada una
+
+Requisitos:
+    pip install pandas openpyxl pyautogui pyperclip pyodbc pywin32
+
+Abortar: mouse a la esquina superior izquierda, o Ctrl+C en la consola.
+"""
+
+import ctypes
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import date, datetime
+
+import pandas as pd
+import pyautogui
+import pyodbc
+import pyperclip
+
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
+# =====================================================================
+# CONFIGURACIÓN
+# =====================================================================
+
+# --- Fechas ----------------------------------------------------------
+# La ventana debe estar mostrando esta fecha al ejecutar (si no coincide, el script no arranca)
+FECHA_INICIO = date(2026, 4, 8)
+REPETICIONES = 500
+# Se detiene cuando la fecha pase de este día. None = sin tope
+FECHA_FIN = date.today()
+# No considerar sábados ni domingos
+SALTAR_FINES_DE_SEMANA = True
+
+# --- Coordenadas (x, y) ----------------------------------------------
+CLICK_GENERAR_EXCEL = (0, 0)          # TODO: botón que genera el Excel
+CLICK_CONFIRMAR_AVISO = (1616, 1052)  # aviso Sí/No que sale tras generar
+CLICK_INICIO_FECHA = (0, 0)           # TODO: borde izquierdo del texto, justo antes del "09" de 09-Abr-2026
+CLICK_FIN_FECHA = (0, 0)              # solo método "mouse": borde derecho del texto, después del "2026"
+CLICK_SUBIR_FECHA = (0, 0)            # TODO: flechita azul que aumenta la fecha
+CLICK_ACTUALIZAR = (0, 0)             # TODO: flecha que apunta a la derecha
+
+# --- Lectura de la fecha ---------------------------------------------
+# Se hace click en CLICK_INICIO_FECHA (inicio del texto), luego Ctrl+Shift+Derecha
+# 6 veces selecciona la fecha completa y se copia "09Abr2026"
+SELECCIONES_FECHA = 6
+# Pausa entre cada Ctrl+Shift+Derecha (sube a 0.3 o 0.5 si el campo no alcanza a responder)
+PAUSA_ENTRE_SELECCIONES = 0.2
+# Cómo seleccionar la fecha:
+#   "teclado" = Ctrl+Shift mantenidos + flecha derecha (enviado como teclado físico)
+#   "mouse"   = arrastrar desde CLICK_INICIO_FECHA hasta CLICK_FIN_FECHA
+METODO_SELECCION = "teclado"
+# Intentos de lectura antes de dar error
+INTENTOS_LECTURA = 3
+
+MESES = {
+    "Ene": 1, "Feb": 2, "Mar": 3, "Abr": 4, "May": 5, "Jun": 6,
+    "Jul": 7, "Ago": 8, "Set": 9, "Sep": 9, "Oct": 10, "Nov": 11, "Dic": 12,
+}
+
+# --- Esperas (segundos) ----------------------------------------------
+ESPERA_AVISO = 1.2             # entre generar y el click del aviso (sube a 2 o 3 si falla)
+ESPERA_EXCEL_ABRE = 5.0        # tras confirmar el aviso, hasta que abre Excel
+ESPERA_F12 = 4.0
+ESPERA_TRAS_PEGAR_RUTA = 2.0
+ESPERA_GUARDAR = 3.0
+ESPERA_TRAS_CERRAR = 3.0
+ESPERA_ANTES_DE_PROCESAR = 10.0
+ESPERA_TRAS_CLICK_FECHA = 1.0
+ESPERA_ACTUALIZAR = 5.0        # tras actualizar, hasta que cargan los datos
+CUENTA_REGRESIVA = 5
+
+# --- Rutas y SQL -----------------------------------------------------
+RUTA_EXCEL = r"C:\temp_Excel\segundo_nivel.xlsx"
+NOMBRE_SERVIDOR = r"PEGAR_AQUI_TU_SERVIDOR"   # copiar el mismo de Robotin_Final_Renato.py
+NOMBRE_BD = "SBP_RGTRABAJO"
+TABLA_SQL = "SBP_RGTRABAJO.dbo.RF2"           # usa RF2_STG para pruebas
+
+# --- Log (misma carpeta del script) ----------------------------------
+CARPETA_SCRIPT = os.path.dirname(os.path.abspath(__file__))
+RUTA_LOG = os.path.join(CARPETA_SCRIPT, "log_errores.txt")
+
+COLUMNAS_SQL = [
+    "Hora", "Tit", "Emis", "M", "Emision", "Vence", "FV",
+    "Pl", "Porc_T", "Porc_Pre", "Mo", "Columna_L",
+]
+
+pyautogui.PAUSE = 0.2
+pyautogui.FAILSAFE = True
+
+
+# =====================================================================
+# UTILIDADES
+# =====================================================================
+
+def nombres_coordenadas_fecha():
+    nombres = ["CLICK_INICIO_FECHA"]
+    if METODO_SELECCION == "mouse":
+        nombres.append("CLICK_FIN_FECHA")
+    return nombres
+
+
+def validar_coordenadas(nombres=None):
+    """Evita que un (0, 0) sin completar active el failsafe de pyautogui."""
+    todas = {
+        "CLICK_GENERAR_EXCEL": CLICK_GENERAR_EXCEL,
+        "CLICK_CONFIRMAR_AVISO": CLICK_CONFIRMAR_AVISO,
+        "CLICK_INICIO_FECHA": CLICK_INICIO_FECHA,
+        "CLICK_FIN_FECHA": CLICK_FIN_FECHA,
+        "CLICK_SUBIR_FECHA": CLICK_SUBIR_FECHA,
+        "CLICK_ACTUALIZAR": CLICK_ACTUALIZAR,
+    }
+    if nombres:
+        revisar = nombres
+    else:
+        revisar = [n for n in todas if n != "CLICK_FIN_FECHA" or METODO_SELECCION == "mouse"]
+    pendientes = [n for n in revisar if tuple(todas[n]) == (0, 0)]
+    if pendientes:
+        print("Faltan coordenadas por completar: " + ", ".join(pendientes))
+        sys.exit(1)
+
+
+def registrar_error(fecha, detalle):
+    marca = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(RUTA_LOG, "a", encoding="utf-8") as f:
+        f.write(f"{marca} | fecha {fecha:%Y-%m-%d} | {detalle}\n")
+
+
+def eliminar_temporal_seguro(ruta, intentos=5):
+    for _ in range(intentos):
+        if not os.path.exists(ruta):
+            return
+        try:
+            os.remove(ruta)
+            return
+        except Exception:
+            time.sleep(2)
+    raise RuntimeError(f"No se pudo borrar {ruta}")
+
+
+def cerrar_excel_maestro():
+    """Cierra Excel sin avisos y remata con taskkill para que no queden ventanas."""
+    try:
+        import win32com.client as win32
+        excel = win32.GetActiveObject("Excel.Application")
+        excel.DisplayAlerts = False
+        for wb in excel.Workbooks:
+            wb.Close(SaveChanges=False)
+        excel.Quit()
+    except Exception:
+        pass
+    try:
+        subprocess.run(
+            ["taskkill", "/f", "/im", "excel.exe"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+
+# --- Teclado enviado como teclado físico (scancodes), para controles que ignoran a pyautogui ---
+SC_CTRL, SC_SHIFT, SC_RIGHT, SC_C = 0x1D, 0x2A, 0x4D, 0x2E
+
+if sys.platform == "win32":
+    from ctypes import wintypes
+
+    class _KEYBDINPUT(ctypes.Structure):
+        _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+                    ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
+                    ("dwExtraInfo", ctypes.c_size_t)]
+
+    class _MOUSEINPUT(ctypes.Structure):
+        _fields_ = [("dx", wintypes.LONG), ("dy", wintypes.LONG),
+                    ("mouseData", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+                    ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.c_size_t)]
+
+    class _HARDWAREINPUT(ctypes.Structure):
+        _fields_ = [("uMsg", wintypes.DWORD), ("wParamL", wintypes.WORD),
+                    ("wParamH", wintypes.WORD)]
+
+    class _INPUT_UNION(ctypes.Union):
+        _fields_ = [("ki", _KEYBDINPUT), ("mi", _MOUSEINPUT), ("hi", _HARDWAREINPUT)]
+
+    class _INPUT(ctypes.Structure):
+        _fields_ = [("type", wintypes.DWORD), ("u", _INPUT_UNION)]
+
+    def _tecla_sc(scan, abajo, extendida=False):
+        flags = 0x0008  # KEYEVENTF_SCANCODE
+        if extendida:
+            flags |= 0x0001  # KEYEVENTF_EXTENDEDKEY
+        if not abajo:
+            flags |= 0x0002  # KEYEVENTF_KEYUP
+        entrada = _INPUT(type=1, u=_INPUT_UNION(ki=_KEYBDINPUT(0, scan, flags, 0, 0)))
+        ctypes.windll.user32.SendInput(1, ctypes.byref(entrada), ctypes.sizeof(_INPUT))
+else:
+    def _tecla_sc(scan, abajo, extendida=False):
+        raise RuntimeError("El envío por scancode solo funciona en Windows")
+
+
+def _seleccion_teclado(n):
+    """Mantiene Ctrl+Shift y toca la flecha derecha n veces, como a mano."""
+    _tecla_sc(SC_CTRL, True)
+    _tecla_sc(SC_SHIFT, True)
+    time.sleep(0.15)
+    try:
+        for _ in range(n):
+            _tecla_sc(SC_RIGHT, True, extendida=True)
+            time.sleep(0.05)
+            _tecla_sc(SC_RIGHT, False, extendida=True)
+            time.sleep(PAUSA_ENTRE_SELECCIONES)
+    finally:
+        _tecla_sc(SC_SHIFT, False)
+        _tecla_sc(SC_CTRL, False)
+
+
+def _seleccion_mouse():
+    """Arrastra desde el inicio hasta el fin del texto de la fecha."""
+    pyautogui.mouseDown(button="left")
+    try:
+        pyautogui.moveTo(*CLICK_FIN_FECHA, duration=0.4)
+    finally:
+        pyautogui.mouseUp(button="left")
+
+
+def _ctrl_c():
+    _tecla_sc(SC_CTRL, True)
+    time.sleep(0.05)
+    _tecla_sc(SC_C, True)
+    time.sleep(0.05)
+    _tecla_sc(SC_C, False)
+    time.sleep(0.05)
+    _tecla_sc(SC_CTRL, False)
+
+
+def _copiar_seleccion(n, pausa_visual=0.0):
+    """Click al inicio de la fecha, la selecciona (teclado o mouse) y copia. Devuelve el texto copiado."""
+    pyperclip.copy("")
+    pyautogui.click(*CLICK_INICIO_FECHA)
+    time.sleep(0.4)
+    if METODO_SELECCION == "mouse":
+        _seleccion_mouse()
+    else:
+        _seleccion_teclado(n)
+    time.sleep(0.2 + pausa_visual)
+    _ctrl_c()
+    time.sleep(0.6)
+    return pyperclip.paste().strip()
+
+
+def leer_fecha_ventana(verbose=False):
+    """Lee la fecha del cuadrito seleccionándola con el teclado y copiándola."""
+    patron = r"(\d{1,2})\D*([A-Za-zÁÉÍÓÚáéíóúñÑ]{3})\D*(\d{4})"
+    txt = ""
+    m = None
+    for intento in range(1, INTENTOS_LECTURA + 1):
+        txt = _copiar_seleccion(SELECCIONES_FECHA)
+        if verbose:
+            print(f"   Portapapeles (intento {intento}): {txt!r}")
+        m = re.search(patron, txt)
+        if m:
+            break
+    if not m:
+        raise ValueError(f"No pude leer la fecha del cuadrito. Copié: {txt!r}")
+    dia, mes, anio = m.groups()
+    mes = mes.capitalize()
+    if mes not in MESES:
+        raise ValueError(f"Mes no reconocido: {mes!r} (agrégalo a MESES)")
+    return date(int(anio), MESES[mes], int(dia))
+
+
+# =====================================================================
+# PASOS DE LA VUELTA
+# =====================================================================
+
+def generar_excel():
+    pyautogui.click(*CLICK_GENERAR_EXCEL)
+    time.sleep(ESPERA_AVISO)
+
+    # Aviso de Sí/No que sale tras generar
+    pyautogui.click(*CLICK_CONFIRMAR_AVISO)
+
+    time.sleep(ESPERA_EXCEL_ABRE)
+
+
+def guardar_excel():
+    eliminar_temporal_seguro(RUTA_EXCEL)
+    pyautogui.press("f12")
+    time.sleep(ESPERA_F12)
+    pyperclip.copy(RUTA_EXCEL)
+    pyautogui.hotkey("ctrl", "v")
+    time.sleep(ESPERA_TRAS_PEGAR_RUTA)
+    pyautogui.press("enter")
+    time.sleep(ESPERA_GUARDAR)
+
+
+def procesar_segundo_nivel(fecha):
+    df = pd.read_excel(RUTA_EXCEL)
+    if df.empty:
+        raise ValueError("Excel sin filas (sin data para esa fecha)")
+    df.columns = COLUMNAS_SQL
+    df["Fecha_Carga"] = fecha.strftime("%Y-%m-%d")
+    # Anti-HYC00: fechas y horas como texto
+    df["Hora"] = df["Hora"].astype(str)
+    df["Emision"] = df["Emision"].astype(str)
+    df["Vence"] = df["Vence"].astype(str)
+    return df
+
+
+def subir_a_sql_directo(df, tabla, fecha):
+    """Borra lo que exista de esa Fecha_Carga e inserta, todo en una sola transacción."""
+    fecha_txt = fecha.strftime("%Y-%m-%d")
+    df_seguro = df.astype(object).where(pd.notnull(df), None)
+
+    conn_str = (
+        f"DRIVER={{SQL Server}};SERVER={NOMBRE_SERVIDOR};"
+        f"DATABASE={NOMBRE_BD};Trusted_Connection=yes"
+    )
+    conexion = pyodbc.connect(conn_str)
+    try:
+        cursor = conexion.cursor()
+        cursor.execute(f"DELETE FROM {tabla} WHERE [Fecha_Carga] = ?", fecha_txt)
+        borradas = cursor.rowcount
+
+        columnas = ",".join([f"[{c}]" for c in df_seguro.columns])
+        marcadores = ",".join(["?" for _ in df_seguro.columns])
+        query = f"INSERT INTO {tabla} ({columnas}) VALUES ({marcadores})"
+        datos = [tuple(fila) for fila in df_seguro.values]
+        cursor.executemany(query, datos)
+
+        conexion.commit()
+        print(f"   SQL: {len(datos)} filas insertadas ({borradas} previas reemplazadas)")
+    except Exception:
+        conexion.rollback()
+        raise
+    finally:
+        conexion.close()
+
+
+def avanzar_fecha(fecha_actual):
+    """
+    Sube la fecha con la flechita azul, lee el cuadrito y, si cae en fin de semana,
+    sigue subiendo. Luego actualiza. Devuelve la fecha que muestra la ventana.
+    """
+    pyautogui.click(*CLICK_SUBIR_FECHA)
+    time.sleep(ESPERA_TRAS_CLICK_FECHA)
+    fecha_ventana = leer_fecha_ventana()
+
+    extra = 0
+    while SALTAR_FINES_DE_SEMANA and fecha_ventana.weekday() >= 5 and extra < 4:
+        pyautogui.click(*CLICK_SUBIR_FECHA)
+        time.sleep(ESPERA_TRAS_CLICK_FECHA)
+        fecha_ventana = leer_fecha_ventana()
+        extra += 1
+
+    if fecha_ventana <= fecha_actual:
+        raise RuntimeError(
+            f"La fecha de la ventana no avanzó (antes {fecha_actual:%Y-%m-%d}, ahora {fecha_ventana:%Y-%m-%d})"
+        )
+
+    pyautogui.click(*CLICK_ACTUALIZAR)
+    time.sleep(ESPERA_ACTUALIZAR)
+    return fecha_ventana
+
+
+# =====================================================================
+# MODOS
+# =====================================================================
+
+def cuenta_regresiva():
+    print(f"Iniciando en {CUENTA_REGRESIVA} s. Mouse a la esquina sup. izq. para abortar.")
+    for s in range(CUENTA_REGRESIVA, 0, -1):
+        print(s, end=" ", flush=True)
+        time.sleep(1)
+    print()
+
+
+def probar_fecha(n=3):
+    """Prueba solo la lectura del cuadrito y la flechita azul. No toca Excel ni SQL."""
+    validar_coordenadas(nombres_coordenadas_fecha() + ["CLICK_SUBIR_FECHA"])
+    cuenta_regresiva()
+    try:
+        for k in range(1, n + 1):
+            f = leer_fecha_ventana(verbose=True)
+            print(f"[{k}/{n}] Leída: {f:%Y-%m-%d} ({f:%A})")
+            if k < n:
+                pyautogui.click(*CLICK_SUBIR_FECHA)
+                time.sleep(ESPERA_TRAS_CLICK_FECHA)
+    except pyautogui.FailSafeException:
+        print("\nAbortado por failsafe (mouse en la esquina).")
+    print("Compara estas fechas con lo que ves en la ventana.")
+
+
+def calibrar_selecciones(maximo=8):
+    """Prueba de 1 a `maximo` veces Ctrl+Shift+Derecha y muestra qué se copia en cada caso."""
+    validar_coordenadas(nombres_coordenadas_fecha())
+    cuenta_regresiva()
+    try:
+        for n in (range(1, maximo + 1) if METODO_SELECCION == "teclado" else [0]):
+            texto = _copiar_seleccion(n, pausa_visual=1.0)
+            etiqueta = f"{n} veces" if METODO_SELECCION == "teclado" else "mouse"
+            print(f"{etiqueta} -> {texto!r}")
+    except pyautogui.FailSafeException:
+        print("\nAbortado por failsafe (mouse en la esquina).")
+    print("Usa en SELECCIONES_FECHA el menor número que copie la fecha completa.")
+
+
+def main():
+    validar_coordenadas()
+    if SALTAR_FINES_DE_SEMANA and FECHA_INICIO.weekday() >= 5:
+        print("FECHA_INICIO cae en fin de semana. Pon un día hábil.")
+        sys.exit(1)
+
+    cuenta_regresiva()
+
+    fallidas = 0
+    try:
+        fecha = leer_fecha_ventana()
+        if fecha != FECHA_INICIO:
+            print(
+                f"La ventana muestra {fecha:%d-%m-%Y} pero FECHA_INICIO es {FECHA_INICIO:%d-%m-%Y}. "
+                "Cambia la fecha en la ventana (o en el script) y vuelve a ejecutar."
+            )
+            sys.exit(1)
+
+        for i in range(1, REPETICIONES + 1):
+            if FECHA_FIN is not None and fecha > FECHA_FIN:
+                print(f"Se alcanzó FECHA_FIN ({FECHA_FIN:%Y-%m-%d}). Fin.")
+                break
+
+            print(f"[{i}/{REPETICIONES}] {fecha:%Y-%m-%d} ({fecha:%A})")
+            try:
+                generar_excel()
+                guardar_excel()
+                cerrar_excel_maestro()
+                time.sleep(ESPERA_TRAS_CERRAR)
+                time.sleep(ESPERA_ANTES_DE_PROCESAR)
+
+                df = procesar_segundo_nivel(fecha)
+                subir_a_sql_directo(df, TABLA_SQL, fecha)
+            except pyautogui.FailSafeException:
+                raise
+            except Exception as e:
+                fallidas += 1
+                print(f"   ERROR: {e}")
+                registrar_error(fecha, repr(e))
+                cerrar_excel_maestro()
+
+            if i < REPETICIONES:
+                try:
+                    fecha = avanzar_fecha(fecha)
+                except pyautogui.FailSafeException:
+                    raise
+                except Exception as e:
+                    # Sin fecha confiable no se sigue cargando, para no ensuciar la tabla
+                    registrar_error(fecha, f"fallo al avanzar o leer la fecha: {e!r}")
+                    print(f"   ERROR al avanzar la fecha: {e}")
+                    break
+
+    except KeyboardInterrupt:
+        print("\nDetenido por el usuario.")
+    except pyautogui.FailSafeException:
+        print("\nAbortado por failsafe (mouse en la esquina).")
+
+    print(f"Proceso terminado. Vueltas con error: {fallidas} (ver {RUTA_LOG})")
+    if winsound:
+        winsound.Beep(1000, 600)
+
+
+if __name__ == "__main__":
+    if "--calibrar" in sys.argv:
+        calibrar_selecciones()
+    elif "--probar-fecha" in sys.argv:
+        probar_fecha()
+    else:
+        main()
+
+
+
+
+
+
+
+
+
+
 """
 Carga histórica de Renta Fija Segundo Nivel a SBP_RGTRABAJO.dbo.RF2
 
