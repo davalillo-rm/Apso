@@ -1,3 +1,182 @@
+"""
+Da al archivo con encabezado de color (PE_ANX08_A) el mismo formato
+que el archivo de referencia sin color (MTM).
+
+Uso:
+    python convertir_formato_anexo8.py --entrada RUTA_CON_COLOR --referencia RUTA_SIN_COLOR --salida RUTA_NUEVA
+
+Procesa las hojas por posicion (hoja 1 con hoja 1, hoja 2 con hoja 2).
+"""
+import argparse
+import sys
+from copy import copy
+from datetime import datetime
+
+import pandas as pd
+from openpyxl import Workbook, load_workbook
+
+
+def parsear_fecha(valor):
+    """Convierte texto o Timestamp a datetime. Devuelve None si no se puede."""
+    if isinstance(valor, pd.Timestamp):
+        return valor.to_pydatetime()
+    if isinstance(valor, datetime):
+        return valor
+    texto = str(valor).strip()
+    for formato in ("%Y-%m-%d", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(texto, formato)
+        except ValueError:
+            continue
+    return None
+
+
+def parsear_numero(valor):
+    """Convierte a int o float. Devuelve None si no se puede."""
+    if isinstance(valor, bool):
+        return None
+    if isinstance(valor, (int, float)):
+        numero = float(valor)
+    else:
+        try:
+            numero = float(str(valor).strip().replace(",", ""))
+        except ValueError:
+            return None
+    if numero.is_integer() and abs(numero) < 1e15:
+        return int(numero)
+    return numero
+
+
+def tipo_columna(ws_ref, col, max_filas=200):
+    """Mira la referencia y devuelve (tipo, number_format) de la columna."""
+    for fila in range(2, min(ws_ref.max_row, max_filas) + 1):
+        celda = ws_ref.cell(row=fila, column=col)
+        v = celda.value
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            continue
+        if isinstance(v, datetime):
+            return "fecha", celda.number_format
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return "numero", celda.number_format
+        return "texto", celda.number_format
+    return "texto", "General"
+
+
+def copiar_estilo(origen, destino):
+    destino.font = copy(origen.font)
+    destino.fill = copy(origen.fill)
+    destino.border = copy(origen.border)
+    destino.alignment = copy(origen.alignment)
+    destino.number_format = origen.number_format
+    destino.protection = copy(origen.protection)
+
+
+def convertir(ruta_entrada, ruta_referencia, ruta_salida, filas_titulo=3):
+    hojas_entrada = pd.read_excel(ruta_entrada, sheet_name=None, header=None, dtype=object)
+    wb_ref = load_workbook(ruta_referencia)
+    hojas_ref = wb_ref.worksheets
+
+    if len(hojas_entrada) != len(hojas_ref):
+        print(f"Aviso: el archivo de entrada tiene {len(hojas_entrada)} hojas y la referencia {len(hojas_ref)}.")
+
+    wb_out = Workbook()
+    wb_out.remove(wb_out.active)
+
+    for idx, (nombre_in, df) in enumerate(hojas_entrada.items()):
+        if idx >= len(hojas_ref):
+            print(f"Hoja '{nombre_in}' sin hoja de referencia. Se omite.")
+            continue
+        ws_ref = hojas_ref[idx]
+        ws_out = wb_out.create_sheet(title=ws_ref.title)
+
+        # Quitar las filas de titulo
+        df = df.iloc[filas_titulo:].reset_index(drop=True)
+        df = df.dropna(how="all")
+        encabezados = [str(x).strip() if pd.notna(x) else "" for x in df.iloc[0].tolist()]
+        datos = df.iloc[1:].reset_index(drop=True)
+
+        # Verificar nombres de columnas contra la referencia
+        ref_enc = [c.value for c in ws_ref[1]]
+        while ref_enc and ref_enc[-1] is None:
+            ref_enc.pop()
+        if encabezados != ref_enc:
+            print(f"Aviso hoja {idx + 1}: los encabezados no coinciden con la referencia.")
+            for i in range(max(len(encabezados), len(ref_enc))):
+                a = encabezados[i] if i < len(encabezados) else None
+                b = ref_enc[i] if i < len(ref_enc) else None
+                if a != b:
+                    print(f"  columna {i + 1}: entrada={a!r} referencia={b!r}")
+
+        # Encabezado: se escribe el de la referencia con su estilo
+        for col in range(1, len(encabezados) + 1):
+            celda_ref = ws_ref.cell(row=1, column=col)
+            celda = ws_out.cell(row=1, column=col, value=encabezados[col - 1])
+            copiar_estilo(celda_ref, celda)
+
+        # Datos segun el tipo de cada columna en la referencia
+        tipos = [tipo_columna(ws_ref, col) for col in range(1, len(encabezados) + 1)]
+        for r, fila in enumerate(datos.itertuples(index=False), start=2):
+            for c, valor in enumerate(fila, start=1):
+                if c > len(encabezados):
+                    break
+                if valor is None or (not isinstance(valor, str) and pd.isna(valor)):
+                    continue
+                if isinstance(valor, str) and valor.strip() == "":
+                    continue
+                tipo, formato = tipos[c - 1]
+                convertido = valor
+                if tipo == "fecha":
+                    f = parsear_fecha(valor)
+                    convertido = f if f is not None else valor
+                elif tipo == "numero":
+                    n = parsear_numero(valor)
+                    convertido = n if n is not None else valor
+                elif isinstance(valor, pd.Timestamp):
+                    convertido = valor.to_pydatetime()
+                celda = ws_out.cell(row=r, column=c, value=convertido)
+                celda.number_format = formato
+
+        # Ancho de columnas igual a la referencia
+        for letra, dim in ws_ref.column_dimensions.items():
+            if dim.width:
+                ws_out.column_dimensions[letra].width = dim.width
+
+    wb_out.save(ruta_salida)
+    print(f"Archivo guardado en: {ruta_salida}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Aplica el formato del archivo sin color al archivo con color.")
+    parser.add_argument("--entrada", required=True, help="Ruta del archivo con encabezado de color")
+    parser.add_argument("--referencia", required=True, help="Ruta del archivo sin color (formato modelo)")
+    parser.add_argument("--salida", required=True, help="Ruta del archivo nuevo a guardar (.xlsx)")
+    parser.add_argument("--filas-titulo", type=int, default=3, help="Filas de titulo a eliminar (por defecto 3)")
+    args = parser.parse_args()
+
+    if args.salida.lower() == args.entrada.lower():
+        print("La ruta de salida no puede ser igual a la de entrada.")
+        sys.exit(1)
+
+    convertir(args.entrada, args.referencia, args.salida, args.filas_titulo)
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 """
 Carga histórica de Renta Fija Segundo Nivel a SBP_RGTRABAJO.dbo.RF2
