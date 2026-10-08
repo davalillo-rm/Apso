@@ -1,4 +1,311 @@
 """
+Convierte el reporte PE_ANX08_A (encabezado con color y 3 filas de titulo)
+al formato del archivo MTM (encabezado limpio en la fila 1).
+
+Pasos:
+  1) Detecta el formato REAL del archivo origen (xlsx, xls binario o XML SpreadsheetML).
+  2) Mapea las columnas del origen a los encabezados del archivo MTM.
+  3) Crea el reporte nuevo con los encabezados, el orden y el formato del MTM.
+
+Uso:
+    python convertir_formato_anexo8.py --entrada RUTA_ORIGEN --referencia RUTA_MTM --salida RUTA_NUEVA.xlsx
+
+Procesa las hojas por posicion (hoja 1 con hoja 1, hoja 2 con hoja 2).
+"""
+import argparse
+import os
+import sys
+import tempfile
+from copy import copy
+from datetime import datetime
+
+import pandas as pd
+from openpyxl import Workbook, load_workbook
+
+# ---------------------------------------------------------------------------
+# 1) PARAMETROS
+# ---------------------------------------------------------------------------
+FILAS_TITULO = 3  # filas de titulo que se eliminan arriba del encabezado
+
+# ---------------------------------------------------------------------------
+# 2) MAPEO DE COLUMNAS: nombre origen -> nombre destino (el del archivo MTM)
+#    Solo hace falta escribir las columnas cuyo nombre cambia.
+#    Las que no aparezcan aqui se asumen con el mismo nombre en origen y MTM.
+#    El orden de salida siempre es el del encabezado del archivo MTM.
+#    Ejemplo: "Cpty_Nombre_Origen": "Cpty_Nombre"
+# ---------------------------------------------------------------------------
+MAPEO_COLUMNAS = {}
+
+
+def _detectar_formato_real(ruta: str) -> str:
+    """Detecta el formato real del archivo mirando sus primeros bytes,
+    en lugar de confiar en la extension (los reportes suelen
+    exportar XML 'SpreadsheetML' con extension .xls falsa)."""
+    with open(ruta, "rb") as f:
+        inicio = f.read(16)
+
+    if inicio.startswith(b"PK\x03\x04"):
+        return "xlsx"
+    if inicio.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        return "xls_binario"
+    if inicio.lstrip().startswith(b"<?xml") or inicio.lstrip().startswith(b"<Work"):
+        return "xml_spreadsheet"
+    return "desconocido"
+
+
+def _convertir_con_excel_a_xlsx(ruta_origen: str) -> str:
+    """Convierte un XML SpreadsheetML (extension .xls falsa) a un
+    .xlsx real usando Excel instalado en la maquina (COM / win32com).
+    Requiere: pip install pywin32
+    Devuelve la ruta del .xlsx temporal generado (hay que borrarlo despues)."""
+    import win32com.client as win32
+
+    ruta_tmp = os.path.join(
+        tempfile.gettempdir(),
+        "temp_convertido_" + os.path.splitext(os.path.basename(ruta_origen))[0] + ".xlsx",
+    )
+
+    excel = win32.Dispatch("Excel.Application")
+    excel.Visible = False
+    excel.DisplayAlerts = False
+    try:
+        wb = excel.Workbooks.Open(os.path.abspath(ruta_origen))
+        wb.SaveAs(ruta_tmp, FileFormat=51)  # 51 = xlsx
+        wb.Close(False)
+    finally:
+        excel.Quit()
+
+    return ruta_tmp
+
+
+def _leer_origen(ruta_origen: str, filas_titulo: int):
+    """Lee todas las hojas del origen segun su formato real.
+    Devuelve un dict {nombre_hoja: DataFrame} con el encabezado ya aplicado."""
+    formato_real = _detectar_formato_real(ruta_origen)
+    print(f"Formato real detectado: {formato_real}")
+
+    archivo_a_leer = ruta_origen
+    archivo_temporal = None
+
+    try:
+        if formato_real == "xlsx":
+            engine = "openpyxl"
+        elif formato_real == "xls_binario":
+            engine = "xlrd"
+        elif formato_real == "xml_spreadsheet":
+            archivo_temporal = _convertir_con_excel_a_xlsx(ruta_origen)
+            archivo_a_leer = archivo_temporal
+            engine = "openpyxl"
+        else:
+            # Formato no identificado: se intenta con openpyxl por defecto
+            engine = "openpyxl"
+
+        return pd.read_excel(
+            archivo_a_leer,
+            sheet_name=None,
+            header=filas_titulo,
+            dtype=object,
+            engine=engine,
+        )
+    finally:
+        if archivo_temporal and os.path.exists(archivo_temporal):
+            os.remove(archivo_temporal)
+
+
+def parsear_fecha(valor):
+    """Convierte texto o Timestamp a datetime. Devuelve None si no se puede."""
+    if isinstance(valor, pd.Timestamp):
+        return valor.to_pydatetime()
+    if isinstance(valor, datetime):
+        return valor
+    texto = str(valor).strip()
+    for formato in ("%Y-%m-%d", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(texto, formato)
+        except ValueError:
+            continue
+    return None
+
+
+def parsear_numero(valor):
+    """Convierte a int o float. Devuelve None si no se puede."""
+    if isinstance(valor, bool):
+        return None
+    if isinstance(valor, (int, float)):
+        numero = float(valor)
+    else:
+        try:
+            numero = float(str(valor).strip().replace(",", ""))
+        except ValueError:
+            return None
+    if numero.is_integer() and abs(numero) < 1e15:
+        return int(numero)
+    return numero
+
+
+def _tipo_columna(ws_ref, col, max_filas=200):
+    """Mira el MTM y devuelve (tipo, number_format) de la columna."""
+    for fila in range(2, min(ws_ref.max_row, max_filas) + 1):
+        celda = ws_ref.cell(row=fila, column=col)
+        v = celda.value
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            continue
+        if isinstance(v, datetime):
+            return "fecha", celda.number_format
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return "numero", celda.number_format
+        return "texto", celda.number_format
+    return "texto", "General"
+
+
+def _copiar_estilo(origen, destino):
+    destino.font = copy(origen.font)
+    destino.fill = copy(origen.fill)
+    destino.border = copy(origen.border)
+    destino.alignment = copy(origen.alignment)
+    destino.number_format = origen.number_format
+    destino.protection = copy(origen.protection)
+
+
+def _vacio(valor):
+    if valor is None:
+        return True
+    if isinstance(valor, str):
+        return valor.strip() == ""
+    return bool(pd.isna(valor))
+
+
+def generar_reporte(ruta_origen, ruta_referencia, ruta_salida,
+                    filas_titulo=FILAS_TITULO, mapeo=None):
+    """Lee el origen, mapea las columnas y escribe el reporte con el formato MTM."""
+    mapeo = MAPEO_COLUMNAS if mapeo is None else mapeo
+    destino_a_origen = {dest: orig for orig, dest in mapeo.items()}
+
+    hojas_origen = _leer_origen(ruta_origen, filas_titulo)
+    wb_ref = load_workbook(ruta_referencia)
+    hojas_ref = wb_ref.worksheets
+
+    if len(hojas_origen) != len(hojas_ref):
+        print(f"Aviso: el origen tiene {len(hojas_origen)} hojas y el MTM {len(hojas_ref)}.")
+
+    wb_out = Workbook()
+    wb_out.remove(wb_out.active)
+
+    for idx, (nombre_hoja, df) in enumerate(hojas_origen.items()):
+        if idx >= len(hojas_ref):
+            print(f"Hoja '{nombre_hoja}' sin hoja equivalente en el MTM. Se omite.")
+            continue
+
+        ws_ref = hojas_ref[idx]
+        ws_out = wb_out.create_sheet(title=ws_ref.title)
+
+        # Encabezados destino = fila 1 del MTM
+        encabezados = [c.value for c in ws_ref[1]]
+        while encabezados and encabezados[-1] is None:
+            encabezados.pop()
+
+        # Columnas del origen (limpias de espacios) con su posicion
+        df.columns = [str(c).strip() for c in df.columns]
+        df = df.dropna(how="all").reset_index(drop=True)
+        cols_origen = list(df.columns)
+
+        # Mapeo destino -> columna de origen
+        usadas = set()
+        origen_de = {}
+        for dest in encabezados:
+            orig = destino_a_origen.get(dest, dest)
+            if orig in cols_origen:
+                origen_de[dest] = orig
+                usadas.add(orig)
+            else:
+                print(f"Aviso hoja {idx + 1}: '{dest}' no existe en el origen. Queda vacia.")
+        sobrantes = [c for c in cols_origen if c not in usadas]
+        if sobrantes:
+            print(f"Aviso hoja {idx + 1}: columnas del origen que no estan en el MTM y se omiten: {sobrantes}")
+
+        # Encabezado con el estilo del MTM
+        for col, nombre in enumerate(encabezados, start=1):
+            celda = ws_out.cell(row=1, column=col, value=nombre)
+            _copiar_estilo(ws_ref.cell(row=1, column=col), celda)
+
+        # Datos segun el tipo de cada columna en el MTM
+        tipos = [_tipo_columna(ws_ref, col) for col in range(1, len(encabezados) + 1)]
+        for r, (_, fila) in enumerate(df.iterrows(), start=2):
+            for c, dest in enumerate(encabezados, start=1):
+                orig = origen_de.get(dest)
+                if orig is None:
+                    continue
+                valor = fila[orig]
+                if _vacio(valor):
+                    continue
+                tipo, formato = tipos[c - 1]
+                convertido = valor
+                if tipo == "fecha":
+                    f = parsear_fecha(valor)
+                    convertido = f if f is not None else valor
+                elif tipo == "numero":
+                    n = parsear_numero(valor)
+                    convertido = n if n is not None else valor
+                elif isinstance(valor, pd.Timestamp):
+                    convertido = valor.to_pydatetime()
+                celda = ws_out.cell(row=r, column=c, value=convertido)
+                celda.number_format = formato
+
+        # Ancho de columnas igual al MTM
+        for letra, dim in ws_ref.column_dimensions.items():
+            if dim.width:
+                ws_out.column_dimensions[letra].width = dim.width
+
+    wb_out.save(ruta_salida)
+    print(f"Reporte generado correctamente en: {ruta_salida}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Convierte el PE_ANX08_A al formato del archivo MTM.")
+    parser.add_argument("--entrada", required=True, help="Ruta del archivo origen (PE_ANX08_A, con color)")
+    parser.add_argument("--referencia", required=True, help="Ruta del archivo MTM (formato modelo)")
+    parser.add_argument("--salida", required=True, help="Ruta del archivo nuevo a guardar (.xlsx)")
+    parser.add_argument("--filas-titulo", type=int, default=FILAS_TITULO,
+                        help=f"Filas de titulo a eliminar (por defecto {FILAS_TITULO})")
+    args = parser.parse_args()
+
+    if os.path.abspath(args.salida).lower() == os.path.abspath(args.entrada).lower():
+        print("La ruta de salida no puede ser igual a la de entrada.")
+        sys.exit(1)
+
+    generar_reporte(args.entrada, args.referencia, args.salida, args.filas_titulo)
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
 Da al archivo con encabezado de color (PE_ANX08_A) el mismo formato
 que el archivo de referencia sin color (MTM).
 
