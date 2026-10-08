@@ -1,0 +1,184 @@
+"""
+Deja el reporte PE_ANX08_A con el mismo formato del archivo MTM:
+sin las 3 filas de titulo, con los nombres de columnas del MTM
+y con fechas y numeros como valores reales.
+"""
+import os
+import tempfile
+from datetime import datetime
+
+import pandas as pd
+from openpyxl import Workbook, load_workbook
+
+# ---------------------------------------------------------------------------
+# 1) RUTAS - MODIFICAR AQUI
+# ---------------------------------------------------------------------------
+RUTA_ORIGEN = r"C:\ruta\PE_ANX08_A_20261006.xls"   # archivo con color
+RUTA_MTM = r"C:\ruta\MTM 20261006.xlsx"            # archivo modelo (sin color)
+RUTA_DESTINO = r"C:\ruta\Nuevo_MTM 20261006.xlsx"  # archivo nuevo
+FILAS_TITULO = 3
+
+# ---------------------------------------------------------------------------
+# 2) MAPEO DE COLUMNAS: nombre origen -> nombre destino (MTM)
+#    El orden del diccionario es el orden en que quedan en el reporte nuevo.
+# ---------------------------------------------------------------------------
+MAPEO_HOJA1 = {
+    "Cuenta_Contable":          "Cuenta_Contable",
+    "Compra_Venta":             "Compra_Venta",
+    "Separador_1":              "Separador_1",
+    "Cod_operacion":            "Cod_operacion",
+    "Saldo_Contable":           "Saldo_Contable",
+    "Moneda_Pactada":           "Moneda_Pactada",
+    "Nominal_Pactado":          "Nominal_Pactado",
+    "VM_Pos_larga":             "VM_Pos_larga",
+    "Dur_Mac_Pos_larga":        "Dur_Mac_Pos_larga",
+    "Dur_Mod_Pos_larga":        "Dur_Mod_Pos_larga",
+    "VM_Pos_corta":             "VM_Pos_corta",
+    "Dur_Mac_Pos_corta":        "Dur_Mac_Pos_corta",
+    "Dur_Mod_Pos_corta":        "Dur_Mod_Pos_corta",
+    "Mon_Entregada_oper":       "Mon_Entregada_oper",
+    "Mon_Recibida_oper":        "Mon_Recibida_oper",
+    "Fec_inicio_oper":          "Fec_inicio_oper",
+    "Fec_vencimiento_oper":     "Fec_vencimiento_oper",
+    "Cpty_Nombre":              "Cpty_Nombre",
+    "Cpty_Residencia":          "Cpty_Residencia",
+    "Cpty_Pais":                "Cpty_Pais",
+    "Cpty_Documento":           "Cpty_Documento",
+    "Cpty_YNFinanciero":        "Cpty_YNFinanciero",
+    "Cpty_Codigo_SBS":          "Cpty_Codigo_SBS",
+    "Cpty_Codigo_deudor":       "Cpty_Codigo_deudor",
+    "Cpty_Pond_venc_residual":  "Cpty_Pond_venc_residual",
+    "Cpty_Conv_marco_contra":   "Cpty_Conv_marco_contra",
+    "TC_Spot_Inicial":          "TC_Spot_Inicial",
+    "TC_Spot_Fec_reporte":      "TC_Spot_Fec_reporte",
+    "TC_Spot_Pactado":          "TC_Spot_Pactado",
+    "VM_Tasa_Interes":          "VM_Tasa_Interes",
+    "VM_Tipo_Cambio":           "VM_Tipo_Cambio",
+    "VM_Total":                 "VM_Total",
+    "Intencion_Contratacion":   "Intencion_Contratacion",
+    "Partida_Cubierta":         "Partida_Cubierta",
+    "Porcentaje_Cobertura":     "Porcentaje_Cobertura",
+    "Eficacia_Cobertura":       "Eficacia_Cobertura",
+    "Forma_Pago":               "Forma_Pago",
+    "Tlfp_Mon_Entregada":       "Tlfp_Mon_Entregada",
+    "Tlfp_Mon_Recibida":        "Tlfp_Mon_Recibida",
+    "Tlfr_Mon_Entregada":       "Tlfr_Mon_Entregada",
+    "Tlfr_Mon_Recibida":        "Tlfr_Mon_Recibida",
+    "Separador_2":              "Separador_2",
+    "Cod_BT":                   "Cod_BT",
+    "Cod_Cartera":              "Cod_Cartera",
+}
+
+# Hoja 2 (swaps): pendiente de completar. Mientras este vacia, la hoja 2 no se procesa.
+MAPEO_HOJA2 = {}
+
+MAPEOS = [MAPEO_HOJA1, MAPEO_HOJA2]
+
+
+def detectar_formato_real(ruta):
+    """Detecta el formato real mirando los primeros bytes, no la extension."""
+    with open(ruta, "rb") as f:
+        inicio = f.read(16)
+    if inicio.startswith(b"PK\x03\x04"):
+        return "xlsx"
+    if inicio.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        return "xls_binario"
+    if inicio.lstrip().startswith(b"<?xml") or inicio.lstrip().startswith(b"<Work"):
+        return "xml_spreadsheet"
+    return "desconocido"
+
+
+def convertir_con_excel_a_xlsx(ruta_origen):
+    """Convierte un XML SpreadsheetML (.xls falso) a .xlsx real con Excel (win32com)."""
+    import win32com.client as win32
+
+    ruta_tmp = os.path.join(tempfile.gettempdir(), "temp_convertido.xlsx")
+    excel = win32.Dispatch("Excel.Application")
+    excel.Visible = False
+    excel.DisplayAlerts = False
+    try:
+        wb = excel.Workbooks.Open(os.path.abspath(ruta_origen))
+        wb.SaveAs(ruta_tmp, FileFormat=51)
+        wb.Close(False)
+    finally:
+        excel.Quit()
+    return ruta_tmp
+
+
+def leer_origen(ruta):
+    """Lee todas las hojas del origen. La fila FILAS_TITULO+1 queda como encabezado."""
+    formato = detectar_formato_real(ruta)
+    temporal = None
+    engine = "xlrd" if formato == "xls_binario" else "openpyxl"
+    if formato == "xml_spreadsheet":
+        temporal = convertir_con_excel_a_xlsx(ruta)
+        ruta = temporal
+    try:
+        return pd.read_excel(ruta, sheet_name=None, header=FILAS_TITULO, dtype=object, engine=engine)
+    finally:
+        if temporal and os.path.exists(temporal):
+            os.remove(temporal)
+
+
+def convertir_valor(valor, tipo):
+    """Pasa el valor al tipo que tiene la columna en el MTM (fecha, numero o texto)."""
+    if tipo is datetime:
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                return datetime.strptime(str(valor).strip()[:10], fmt)
+            except ValueError:
+                pass
+    elif tipo in (int, float):
+        try:
+            numero = float(str(valor).replace(",", ""))
+            return int(numero) if numero.is_integer() else numero
+        except ValueError:
+            pass
+    return valor
+
+
+def generar_reporte():
+    hojas_origen = list(leer_origen(RUTA_ORIGEN).values())
+    wb_mtm = load_workbook(RUTA_MTM)
+    wb_out = Workbook()
+    wb_out.remove(wb_out.active)
+
+    for i, (df, ws_mtm, mapeo) in enumerate(zip(hojas_origen, wb_mtm.worksheets, MAPEOS), start=1):
+        if not mapeo:
+            print(f"Hoja {i}: sin mapeo de columnas, se omite.")
+            continue
+
+        df.columns = [str(c).strip() for c in df.columns]
+        faltan = [c for c in mapeo if c not in df.columns]
+        if faltan:
+            raise ValueError(f"Hoja {i}: columnas del mapeo que no estan en el origen: {faltan}")
+
+        # Quedarse con las columnas del mapeo, en ese orden, y renombrarlas
+        df = df[list(mapeo.keys())].rename(columns=mapeo).dropna(how="all")
+
+        # Tipo y formato de cada columna segun el MTM (se busca por nombre destino)
+        nombres_mtm = [c.value for c in ws_mtm[1]]
+        tipos, formatos = [], []
+        for nombre in df.columns:
+            if nombre not in nombres_mtm:
+                raise ValueError(f"Hoja {i}: '{nombre}' no existe en el encabezado del MTM")
+            celda = ws_mtm.cell(row=2, column=nombres_mtm.index(nombre) + 1)
+            tipos.append(type(celda.value))
+            formatos.append(celda.number_format)
+
+        ws = wb_out.create_sheet(ws_mtm.title)
+        ws.append(list(df.columns))
+        for fila in df.itertuples(index=False):
+            ws.append([None if pd.isna(v) else convertir_valor(v, t) for v, t in zip(fila, tipos)])
+
+        for c, fmt in enumerate(formatos, start=1):
+            for col in ws.iter_cols(min_col=c, max_col=c, min_row=2):
+                for celda in col:
+                    celda.number_format = fmt
+
+    wb_out.save(RUTA_DESTINO)
+    print(f"Reporte generado correctamente en: {RUTA_DESTINO}")
+
+
+if __name__ == "__main__":
+    generar_reporte()
