@@ -1,4 +1,291 @@
 """
+Convierte PE_ANX08_A_YYYYMMDD.xls al formato del archivo MTM YYYYMMDD.xlsx
+
+- Hoja1: Operaciones a Futuro con ME (44 columnas, de Cuenta_Contable a Cod_Cartera)
+- Hoja2: Operaciones a Futuro de Tasas de Interes (42 columnas, de Cuenta Contable a Codigo Cartera)
+- Se eliminan las 3 filas de titulo del reporte, el encabezado queda en la fila 1
+- Fechas en dd/mm/yyyy y codigos/documentos como numeros, igual que el MTM
+
+Uso:
+    python convertir_anexo8_a_mtm.py PE_ANX08_A_20261007.xls
+    python convertir_anexo8_a_mtm.py PE_ANX08_A_20261007.xls "C:\\carpeta\\salida"
+"""
+import re
+import sys
+from io import StringIO
+from pathlib import Path
+
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+
+# ====== RUTAS: cambia solo estas dos lineas ======
+# Archivo de entrada (PE_ANX08_A)
+RUTA_ENTRADA = r"C:\Users\TU_USUARIO\Downloads\PE_ANX08_A_20261007.xls"
+# Carpeta o archivo de salida. Si lo dejas vacio, se crea junto al de entrada como "MTM AAAAMMDD.xlsx"
+RUTA_SALIDA = r""
+# ==================================================
+
+# ---------------------------------------------------------------------------
+# Formato MTM - Hoja1 (Operaciones a Futuro con ME)
+# ---------------------------------------------------------------------------
+COLS_HOJA1 = [
+    "Cuenta_Contable", "Compra_Venta", "Separador_1", "Cod_operacion", "Saldo_Contable",
+    "Moneda_Pactada", "Nominal_Pactado", "VM_Pos_larga", "Dur_Mac_Pos_larga",
+    "Dur_Mod_Pos_larga", "VM_Pos_corta", "Dur_Mac_Pos_corta", "Dur_Mod_Pos_corta",
+    "Mon_Entregada_oper", "Mon_Recibida_oper", "Fec_inicio_oper", "Fec_vencimiento_oper",
+    "Cpty_Nombre", "Cpty_Residencia", "Cpty_Pais", "Cpty_Documento", "Cpty_YNFinanciero",
+    "Cpty_Codigo_SBS", "Cpty_Codigo_deudor", "Cpty_Pond_venc_residual",
+    "Cpty_Conv_marco_contra", "TC_Spot_Inicial", "TC_Spot_Fec_reporte", "TC_Spot_Pactado",
+    "VM_Tasa_Interes", "VM_Tipo_Cambio", "VM_Total", "Intencion_Contratacion",
+    "Partida_Cubierta", "Porcentaje_Cobertura", "Eficacia_Cobertura", "Forma_Pago",
+    "Tlfp_Mon_Entregada", "Tlfp_Mon_Recibida", "Tlfr_Mon_Entregada", "Tlfr_Mon_Recibida",
+    "Separador_2", "Cod_BT", "Cod_Cartera",
+]
+NUM_HOJA1 = {
+    "Saldo_Contable", "Nominal_Pactado", "VM_Pos_larga", "Dur_Mac_Pos_larga",
+    "Dur_Mod_Pos_larga", "VM_Pos_corta", "Dur_Mac_Pos_corta", "Dur_Mod_Pos_corta",
+    "Cpty_Documento", "Cpty_Codigo_SBS", "Cpty_Codigo_deudor", "Cpty_Pond_venc_residual",
+    "TC_Spot_Inicial", "TC_Spot_Fec_reporte", "TC_Spot_Pactado", "VM_Tasa_Interes",
+    "VM_Tipo_Cambio", "VM_Total", "Porcentaje_Cobertura", "Eficacia_Cobertura",
+    "Tlfp_Mon_Entregada", "Tlfp_Mon_Recibida", "Tlfr_Mon_Entregada", "Tlfr_Mon_Recibida",
+    "Cod_BT", "Cod_Cartera",
+}
+FECHAS_HOJA1 = {"Fec_inicio_oper", "Fec_vencimiento_oper"}
+
+# ---------------------------------------------------------------------------
+# Formato MTM - Hoja2 (Operaciones a Futuro de Tasas de Interes)
+# La columna AN (indice 39) queda en blanco, como en el MTM
+# ---------------------------------------------------------------------------
+COLS_HOJA2 = [
+    "Cuenta Contable", "Por Cada Contrato u Operacion Vigente", "Codigo de la operacion",
+    "Saldo Contable", "Moneda pactada", "Monto Nominal Pactado",
+    "Posicion larga a Valor de Mercado", "Duracion de Macaulay posicion larga",
+    "Duracion modificada posicion larga", "Posicion corta a Valor de Mercado",
+    "Duracion de Macaulay posicion corta", "Duracion modificada posicion corta",
+    "Tasas de Interes entregada", "Tasas de Interes recibida", "Moneda",
+    "Fecha de Inicio", "Fecha de Vencimiento", "Nombre", "Residente / No Residente",
+    "Pais", "Documento", "Financiero / No Financiero", "Codigo SBS", "Codigo de deudor",
+    "Ponderacion por vencimiento residual (riesgo de credito)",
+    "Convenio marco de contratacion", "Inicial", "Al cierre en la fecha de reporte",
+    "Inicial", "Al cierre en la fecha de reporte", "Tasa Entregada", "Tasa Recibida",
+    "Valor de Mercado (Valor Actual)", "Intencion de Contratacion", "Partida Cubierta",
+    "Porcentaje de cobertura", "Eficacia de Cobertura", "Con delivery/ Sin delivery",
+    "Descripcion", "", "Codigo BT", "Codigo Cartera",
+]
+POS_BLANCO_HOJA2 = 39
+NUM_HOJA2 = {
+    "Saldo Contable", "Monto Nominal Pactado", "Posicion larga a Valor de Mercado",
+    "Duracion de Macaulay posicion larga", "Duracion modificada posicion larga",
+    "Posicion corta a Valor de Mercado", "Duracion de Macaulay posicion corta",
+    "Duracion modificada posicion corta", "Documento", "Codigo SBS", "Codigo de deudor",
+    "Ponderacion por vencimiento residual (riesgo de credito)", "Inicial",
+    "Al cierre en la fecha de reporte", "Tasa Entregada", "Tasa Recibida",
+    "Valor de Mercado (Valor Actual)", "Porcentaje de cobertura", "Eficacia de Cobertura",
+    "Codigo BT", "Codigo Cartera",
+}
+FECHAS_HOJA2 = {"Fecha de Inicio", "Fecha de Vencimiento"}
+
+
+# ---------------------------------------------------------------------------
+# Lectura del archivo (detecta el formato real aunque diga .xls)
+# ---------------------------------------------------------------------------
+def _hojas_spreadsheetml(ruta: Path) -> list:
+    import xml.etree.ElementTree as ET
+
+    ns = "{urn:schemas-microsoft-com:office:spreadsheet}"
+    root = ET.parse(ruta).getroot()
+    hojas = []
+    for ws in root.iter(ns + "Worksheet"):
+        filas = []
+        for row in ws.iter(ns + "Row"):
+            fila = []
+            for cell in row.findall(ns + "Cell"):
+                idx = cell.get(ns + "Index")
+                if idx:
+                    fila.extend([None] * (int(idx) - 1 - len(fila)))
+                d = cell.find(ns + "Data")
+                fila.append(d.text if d is not None else None)
+            filas.append(fila)
+        hojas.append(pd.DataFrame(filas))
+    return hojas
+
+
+def leer_hojas(ruta: Path) -> list:
+    contenido = ruta.read_bytes()
+    inicio = contenido[:8192].lower()
+
+    if contenido.startswith(b"\xd0\xcf\x11\xe0"):
+        return list(pd.read_excel(ruta, sheet_name=None, header=None,
+                                  dtype=object, engine="xlrd").values())
+    if contenido.startswith(b"PK"):
+        return list(pd.read_excel(ruta, sheet_name=None, header=None,
+                                  dtype=object, engine="openpyxl").values())
+    if b"urn:schemas-microsoft-com:office:spreadsheet" in inicio:
+        return _hojas_spreadsheetml(ruta)
+    if b"<table" in inicio or b"<html" in inicio:
+        try:
+            texto = contenido.decode("utf-8")
+        except UnicodeDecodeError:
+            texto = contenido.decode("latin-1")
+        tablas = pd.read_html(StringIO(texto), header=None)
+        return [t for t in tablas if len(t) > 3]
+    raise ValueError("No se reconoce el formato del archivo de entrada")
+
+
+def fila_encabezado(raw: pd.DataFrame) -> int:
+    for i in range(min(len(raw), 15)):
+        v = str(raw.iloc[i, 0]).strip().replace(" ", "_").lower()
+        if v == "cuenta_contable":
+            return i
+    raise ValueError("No se encontro la fila de encabezados (Cuenta_Contable)")
+
+
+def clasificar(raw: pd.DataFrame) -> str:
+    h = fila_encabezado(raw)
+    segunda = str(raw.iloc[h, 1]).strip().lower()
+    if segunda.startswith("compra_venta"):
+        return "ME"
+    if segunda.startswith("por cada"):
+        return "IR"
+    raise ValueError(f"No se pudo identificar la hoja (segunda columna: {segunda!r})")
+
+
+# ---------------------------------------------------------------------------
+# Transformacion
+# ---------------------------------------------------------------------------
+def a_fecha(serie: pd.Series) -> pd.Series:
+    t = serie.astype(str).str.strip().str.slice(0, 10)
+    iso = pd.to_datetime(t, format="%Y-%m-%d", errors="coerce")
+    dmy = pd.to_datetime(t, format="%d/%m/%Y", errors="coerce")
+    return iso.fillna(dmy)
+
+
+def preparar(raw, esperado, nombres_num, nombres_fecha, pos_blanco=None, etiqueta=""):
+    h = fila_encabezado(raw)
+    origen = ["" if pd.isna(x) else str(x).strip() for x in raw.iloc[h].tolist()]
+    datos = raw.iloc[h + 1:].dropna(how="all").reset_index(drop=True)
+    datos.columns = range(datos.shape[1])
+
+    n = len(esperado)
+    if pos_blanco is not None and datos.shape[1] == n - 1:
+        datos.insert(pos_blanco, "blanco", None)
+        origen.insert(pos_blanco, "")
+    if datos.shape[1] < n:
+        raise ValueError(f"{etiqueta}: el archivo tiene {datos.shape[1]} columnas y se esperaban {n}")
+    datos = datos.iloc[:, :n].copy()
+    datos.columns = range(n)
+    origen = origen[:n]
+
+    difs = [(get_column_letter(i + 1), o, e)
+            for i, (o, e) in enumerate(zip(origen, esperado)) if o != e]
+    if difs:
+        print(f"AVISO {etiqueta}: encabezados distintos a los esperados (columna, origen, esperado):")
+        for d in difs:
+            print("   ", d)
+
+    for i, nombre in enumerate(esperado):
+        if nombre in nombres_num:
+            limpio = datos[i].astype(str).str.replace(",", "", regex=False).str.strip()
+            conv = pd.to_numeric(limpio, errors="coerce")
+            datos[i] = conv.where(conv.notna(), datos[i])
+        elif nombre in nombres_fecha:
+            conv = a_fecha(datos[i])
+            datos[i] = conv.where(conv.notna(), datos[i])
+    return datos
+
+
+def valor(v):
+    if v is None:
+        return None
+    if isinstance(v, str):
+        return v if v.strip() else None
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(v, pd.Timestamp):
+        return v.to_pydatetime()
+    if hasattr(v, "item"):
+        v = v.item()
+    if isinstance(v, float) and v.is_integer():
+        return int(v)
+    return v
+
+
+def escribir_hoja(ws, esperado, datos, nombres_fecha):
+    ws.append([c if c else None for c in esperado])
+    for fila in datos.itertuples(index=False):
+        ws.append([valor(v) for v in fila])
+    for j, nombre in enumerate(esperado, start=1):
+        if nombre in nombres_fecha:
+            for i in range(2, ws.max_row + 1):
+                ws.cell(row=i, column=j).number_format = "dd/mm/yyyy"
+
+
+# ---------------------------------------------------------------------------
+def nombre_salida(ruta_entrada: Path) -> str:
+    m = re.search(r"(\d{8})", ruta_entrada.stem)
+    return f"MTM {m.group(1)}.xlsx" if m else "MTM.xlsx"
+
+
+def main() -> None:
+    if len(sys.argv) > 1:
+        entrada = Path(sys.argv[1])
+        salida = Path(sys.argv[2]) if len(sys.argv) > 2 else entrada.parent
+    else:
+        entrada = Path(RUTA_ENTRADA)
+        salida = Path(RUTA_SALIDA) if RUTA_SALIDA else entrada.parent
+
+    if salida.is_dir() or salida.suffix == "":
+        salida.mkdir(parents=True, exist_ok=True)
+        salida = salida / nombre_salida(entrada)
+
+    hojas = {}
+    for raw in leer_hojas(entrada):
+        try:
+            hojas[clasificar(raw)] = raw
+        except ValueError:
+            continue
+    if "ME" not in hojas or "IR" not in hojas:
+        raise ValueError("No se encontraron las dos hojas del Anexo 08 (ME y Tasas de Interes)")
+
+    d1 = preparar(hojas["ME"], COLS_HOJA1, NUM_HOJA1, FECHAS_HOJA1, etiqueta="Hoja1 (ME)")
+    d2 = preparar(hojas["IR"], COLS_HOJA2, NUM_HOJA2, FECHAS_HOJA2,
+                  pos_blanco=POS_BLANCO_HOJA2, etiqueta="Hoja2 (Tasas de Interes)")
+
+    wb = Workbook()
+    ws1 = wb.active
+    ws1.title = "Hoja1"
+    escribir_hoja(ws1, COLS_HOJA1, d1, FECHAS_HOJA1)
+    ws2 = wb.create_sheet("Hoja2")
+    escribir_hoja(ws2, COLS_HOJA2, d2, FECHAS_HOJA2)
+    wb.save(salida)
+
+    print(f"Listo: {salida}")
+    print(f"   Hoja1: {len(d1)} filas, {len(COLS_HOJA1)} columnas")
+    print(f"   Hoja2: {len(d2)} filas, {len(COLS_HOJA2)} columnas")
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
 Convierte PE_RTK_SWP_YYYYMMDD.xls al formato de CarteraDerivados_RTK:
 mismos nombres de columna y mismo orden.
 
