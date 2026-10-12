@@ -1,3 +1,182 @@
+
+"""
+Convierte PE_RTK_SWP_YYYYMMDD.xls al formato de CarteraDerivados_RTK:
+mismos nombres de columna y mismo orden.
+
+Uso:
+    python convertir_swp_a_cartera.py PE_RTK_SWP_20261007.xls
+    python convertir_swp_a_cartera.py PE_RTK_SWP_20261007.xls salida.xlsx
+"""
+import re
+import sys
+from pathlib import Path
+
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
+
+# ====== RUTAS: cambia solo estas dos lineas ======
+# Archivo de entrada (PE_RTK_SWP)
+RUTA_ENTRADA = r"C:\Users\TU_USUARIO\Downloads\PE_RTK_SWP_20261007.xls"
+# Archivo de salida. Si lo dejas vacio, se crea junto al de entrada con el nombre CarteraDerivados_RTK_AAAA.MM.DD.xlsx
+RUTA_SALIDA = r""
+# ==================================================
+
+# (nombre en PE_RTK_SWP, nombre en CarteraDerivados) en el orden de CarteraDerivados
+MAPEO = [
+    ("SwapDealId", "Swap Deal Id"),
+    ("SwapDeals_Id", "SwapDeals_Id"),
+    ("DealStatus", "DealStatus"),
+    ("InputMode", "InputMode"),
+    ("BlockNumber", "Block Number"),
+    ("TradeDate", "Trade Date"),
+    ("ValueDate", "Value Date"),
+    ("MaturityDate", "Maturity"),
+    ("Folders", "Folder"),
+    ("CptyShortName", "Cpty"),
+    ("CptyName", "Cpty Name"),
+    ("TypeOfInstrShortName", "Type Of Instrument ShortName"),
+    ("DealSubType", "DealSubType"),
+    ("DealCurrencyShortName", "Deal Currency ShortName"),
+    ("PrincipalCurrencyShortName", "Principal Currency ShortName"),
+    ("LegType", "LegType"),
+    ("NominalExchange", "NominalExchange"),
+    ("TypeOfEvent", "TypeOfEvent"),
+    ("FixingRate", "FixingRate"),
+    ("LiquidationDate", "LiquidationDate"),
+    ("IsCollateralized", "IsCollateralized"),
+    ("Currencies_Id_Collat", "Currencies_Id_Collat"),
+    ("Indexation", "Indexation"),
+    ("FloatingRateShortName", "Floating Rate ShortName"),
+    ("AdditiveMargin", "AdditiveMargin"),
+    ("FixedRate", "FixedRate"),
+    ("ClientMargin", "ClientMargin"),
+    ("TypeSwap", "Type Swap"),
+    ("PrincipalAmount", "Notional"),
+    ("Accrued", "Accrued"),
+    ("RiskData_Bpv", "Bpv"),
+    ("CurrencyShortName", "Currency Short Name"),
+    ("ForexRates_FxRateRepCur", "FxRate Rep. Cur."),
+    ("PLCompData_CouponCumul", "Coupon Cumul"),
+    ("Npv", "NPV"),
+    ("PL", "P/L Currency"),
+    ("ReportPL", "P/L Report"),
+    ("RiskData_Duration", "Duration"),
+    ("RiskData_ModDuration", "Mod Duration"),
+]
+
+# Formatos numericos de CarteraDerivados
+FORMATOS = {
+    "SwapDeals_Id": "#,##0",
+    "FixingRate": "0.00",
+    "AdditiveMargin": "0.00",
+    "FixedRate": "0.00",
+    "ClientMargin": "0.00",
+    "Notional": "#,##0.00",
+    "Accrued": "#,##0.00",
+    "Bpv": "0.00",
+    "FxRate Rep. Cur.": "0.0000000",
+    "Coupon Cumul": "#,##0.00",
+    "NPV": "#,##0.00",
+    "P/L Currency": "#,##0.00",
+    "P/L Report": "#,##0.00",
+    "Duration": "0.00",
+    "Mod Duration": "0.000",
+}
+
+FILA_ENCABEZADO_ENTRADA = 2  # en PE_RTK_SWP el encabezado esta en la fila 3 (indice 2)
+
+
+def leer_swp(ruta: Path) -> pd.DataFrame:
+    df = pd.read_excel(ruta, header=FILA_ENCABEZADO_ENTRADA, dtype=object)
+    df.columns = [str(c).strip() for c in df.columns]
+    faltantes = [orig for orig, _ in MAPEO if orig not in df.columns]
+    if faltantes:
+        raise ValueError(f"Faltan columnas en el archivo de entrada: {faltantes}")
+    df = df.dropna(how="all")
+    return df
+
+
+def construir_salida(df: pd.DataFrame) -> pd.DataFrame:
+    salida = pd.DataFrame({nuevo: df[orig] for orig, nuevo in MAPEO})
+    for col in FORMATOS:
+        salida[col] = pd.to_numeric(salida[col], errors="coerce")
+    return salida
+
+
+def escribir_excel(salida: pd.DataFrame, ruta_salida: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Swap Deals"
+
+    ws["A1"] = "Financial Report"
+    ws["A2"] = "Swap Deals"
+    ws["A1"].font = Font(bold=True, italic=True)
+    ws["A2"].font = Font(bold=True)
+
+    fila_enc = 4
+    relleno = PatternFill("solid", fgColor="D9D9D9")
+    for j, col in enumerate(salida.columns, start=1):
+        c = ws.cell(row=fila_enc, column=j, value=col)
+        c.font = Font(bold=True, italic=True)
+        c.fill = relleno
+
+    for i, fila in enumerate(salida.itertuples(index=False), start=fila_enc + 1):
+        for j, valor in enumerate(fila, start=1):
+            if pd.isna(valor):
+                valor = None
+            ws.cell(row=i, column=j, value=valor)
+
+    for j, col in enumerate(salida.columns, start=1):
+        fmt = FORMATOS.get(col)
+        if fmt:
+            for i in range(fila_enc + 1, fila_enc + 1 + len(salida)):
+                ws.cell(row=i, column=j).number_format = fmt
+        ws.column_dimensions[get_column_letter(j)].width = max(14, len(col) + 3)
+
+    wb.save(ruta_salida)
+
+
+def nombre_salida(ruta_entrada: Path) -> Path:
+    m = re.search(r"(\d{4})(\d{2})(\d{2})", ruta_entrada.stem)
+    if m:
+        sufijo = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+        return ruta_entrada.with_name(f"CarteraDerivados_RTK_{sufijo}.xlsx")
+    return ruta_entrada.with_name("CarteraDerivados_RTK.xlsx")
+
+
+def main() -> None:
+    if len(sys.argv) > 1:
+        entrada = Path(sys.argv[1])
+        salida_ruta = Path(sys.argv[2]) if len(sys.argv) > 2 else nombre_salida(entrada)
+    else:
+        entrada = Path(RUTA_ENTRADA)
+        salida_ruta = Path(RUTA_SALIDA) if RUTA_SALIDA else nombre_salida(entrada)
+
+    df = leer_swp(entrada)
+    salida = construir_salida(df)
+    escribir_excel(salida, salida_ruta)
+    print(f"Listo: {salida_ruta} ({len(salida)} filas, {len(salida.columns)} columnas)")
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 """
 Deja el reporte PE_ANX08_A con el mismo formato del archivo MTM:
 sin las 3 filas de titulo, con los nombres de columnas del MTM
