@@ -1,3 +1,18 @@
+=SUMAR.SI('Anexo 8 Unid.'!$A$14:$A$2000,"7106*",'Anexo 8 Unid.'!$E$14:$E$2000)
+
+
+
+=SUMAR.SI.CONJUNTO('Anexo 8 Unid.'!$E$14:$E$2000,'Anexo 8 Unid.'!$B$14:$B$2000,"Forward de Compra")
+
+
+
+=SUMAR.SI.CONJUNTO(W128:W985,D128:D985,"Forward de Compra")*$AB$3
+
+
+
+
+
+
 =SI(Y(D138="Forward de Compra",E138=F138),SI(O(G138="PEN",BUSCARV(E138,TablaTC,3,FALSO)>=1),H138*N138,H138/N138),SI(Y(D138="Forward de Compra",E138<>F138),H138/N138,""))
 
 =SI(Y(D533="Forward de Venta",E533=G533),SI(O(F533="PEN",BUSCARV(E533,TablaTC,3,FALSO)>=1),H533*N533,H533/N533),SI(Y(D533="Forward de Venta",E533<>G533),H533/N533,""))
