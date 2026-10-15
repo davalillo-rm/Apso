@@ -1,3 +1,20 @@
+
+SELECT cuenta_cont,
+       CAST(Orden AS int) AS Orden,
+       CASE WHEN Orden <= 120 THEN CAST(Orden AS varchar(5)) + 'M'
+            WHEN Orden <= 140 THEN CAST(Orden - 110 AS varchar(5)) + 'Y'
+            ELSE '50Y+' END AS Gap,
+       SUM(CAPITAL) AS CAPITAL
+FROM Gaps
+GROUP BY cuenta_cont, Orden
+ORDER BY cuenta_cont, Orden
+
+
+
+
+
+
+
 DECLARE @fecha date = 'yyyy-mm-dd'
 
 WITH SaldoData AS (
