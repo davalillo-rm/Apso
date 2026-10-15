@@ -1,3 +1,69 @@
+DECLARE @fecha date = 'yyyy-mm-dd'
+
+WITH SaldoData AS (
+    SELECT VND10CTA, VND10OPER, LEFT(VND10RUB, 6) AS cuenta_cont,
+           VND10MOD, VND10TOPE, VND10SBOP
+    FROM [SBP_RGHISTORICA].[dbo].[NombreTabla] WITH (NOLOCK)
+    WHERE VND10ENT = 1
+      AND LEFT(VND10RUB, 8) IN ('14110423','14110424','14210423','14210424')
+      AND VND10MOD IN (20,30,31,32,39,44,45,64,92,131,136,180)
+    GROUP BY VND10CTA, VND10OPER, LEFT(VND10RUB, 6), VND10MOD, VND10TOPE, VND10SBOP
+),
+CapitalRaw AS (
+    SELECT PPCTA, PPOPER, PPMOD, PPTOPE, PPFVTO, PPSBOP,
+           SUM(PPCAP) AS CAPITAL,
+           ROW_NUMBER() OVER (
+               PARTITION BY PPCTA, PPOPER, PPMOD, PPTOPE, PPFVTO, PPSBOP
+               ORDER BY PGCOD DESC) AS rn
+    FROM [SBP_RGHISTORICA].[dbo].[fsd601_BASE] WITH (NOLOCK)
+    WHERE TRY_CONVERT(date, CONVERT(varchar(8), PPFVTO)) IS NOT NULL
+      AND PPMOD IN (20,30,31,32,39,44,45,64,92,131,136,180)
+      AND PGCOD = 1
+      AND DATEDIFF(DAY, @fecha, TRY_CONVERT(date, CONVERT(varchar(8), PPFVTO))) > 0
+    GROUP BY PPCTA, PPOPER, PPMOD, PPTOPE, PGCOD, PPFVTO, PPSBOP
+),
+Distribucion AS (
+    -- Une saldo con capital y calcula los días que faltan para el vencimiento
+    SELECT s.cuenta_cont,
+           c.CAPITAL,
+           DATEDIFF(DAY, @fecha, TRY_CONVERT(date, CONVERT(varchar(8), c.PPFVTO))) AS Residual
+    FROM SaldoData s
+    JOIN CapitalRaw c
+      ON  c.rn = 1
+      AND s.VND10CTA  = c.PPCTA
+      AND s.VND10OPER = c.PPOPER
+      AND s.VND10MOD  = c.PPMOD
+      AND s.VND10TOPE = c.PPTOPE
+      AND s.VND10SBOP = c.PPSBOP
+),
+Gaps AS (
+    -- Número de gap en base 360
+    SELECT cuenta_cont, CAPITAL,
+           CASE WHEN Residual <= 3600  THEN CEILING(Residual / 30.0)        -- 1 a 120 = meses
+                WHEN Residual <= 10800 THEN 110 + CEILING(Residual / 360.0)  -- 121 a 140 = años 11 a 30
+                ELSE 141 END AS Orden                                        -- 141 = 50 años a más
+    FROM Distribucion
+)
+SELECT cuenta_cont,
+       CASE WHEN Orden <= 120 THEN CAST(Orden AS varchar(5)) + 'M'
+            WHEN Orden <= 140 THEN CAST(Orden - 110 AS varchar(5)) + 'Y'
+            ELSE '50Y+' END AS Gap,
+       SUM(CAPITAL) AS CAPITAL
+FROM Gaps
+GROUP BY cuenta_cont, Orden
+ORDER BY cuenta_cont, Orden
+
+
+
+
+
+
+
+
+
+
+
+
 =SI(E140="USD",H140,SI(BUSCARV(E140,TablaTC,3,FALSO)>=1,H140*N140,H140/N140))
 
 
