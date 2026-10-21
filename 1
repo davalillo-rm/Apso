@@ -1,3 +1,79 @@
+Sub TraerBidT1()
+    Const CELDA_FECHA_T1 As String = "Q22"
+    Const FILA_INI_T1 As Long = 24
+    Const COL_SOB As String = "Q"
+    Const COL_BID_T1 As String = "R"
+
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Worksheets("RF2")
+    Dim fecha As Date
+    fecha = CDate(ws.Range(CELDA_FECHA_T1).Value)
+    Dim fTxt As String: fTxt = Format(fecha, "yyyymmdd")
+
+    Dim sep As String: sep = Chr(59)
+    Dim cs As String
+    cs = "Provider=SQLOLEDB" & sep & "Data Source=" & SERVIDOR & sep & _
+         "Initial Catalog=" & BASE_DATOS & sep & "Integrated Security=SSPI"
+
+    Dim cn As Object: Set cn = CreateObject("ADODB.Connection")
+    Dim rs As Object
+    Dim dic As Object: Set dic = CreateObject("Scripting.Dictionary")
+    Dim colNem As String: colNem = "[Nem" & ChrW(243) & "nico]"
+
+    On Error GoTo Fallo
+    cn.Open cs
+    Set rs = cn.Execute("SELECT " & colNem & ", BID FROM " & TABLA & _
+                        " WHERE Fecha = '" & fTxt & "'")
+    Do While Not rs.EOF
+        If Not IsNull(rs.Fields(1).Value) Then
+            dic(UCase(Trim(rs.Fields(0).Value))) = CDbl(rs.Fields(1).Value)
+        End If
+        rs.MoveNext
+    Loop
+    rs.Close
+    cn.Close
+
+    If dic.Count = 0 Then
+        MsgBox "No hay datos en SQL para el " & Format(fecha, "dd/mm/yyyy"), vbExclamation
+        Exit Sub
+    End If
+
+    Dim r As Long, nem As String, faltan As String
+    r = FILA_INI_T1
+    Do While Trim(ws.Range(COL_SOB & r).Value & "") <> ""
+        nem = Nemonico(ws.Range(COL_SOB & r).Value)
+        If dic.Exists(nem) Then
+            ws.Range(COL_BID_T1 & r).Value = dic(nem)
+        Else
+            ws.Range(COL_BID_T1 & r).ClearContents
+            faltan = faltan & nem & " "
+        End If
+        r = r + 1
+    Loop
+
+    If faltan <> "" Then
+        MsgBox "Sin BID en SQL para: " & faltan, vbExclamation
+    End If
+    Exit Sub
+
+Fallo:
+    Dim msg As String: msg = Err.Description
+    On Error Resume Next
+    cn.Close
+    MsgBox "No se pudo traer el BID de T-1." & vbCrLf & msg, vbCritical
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
 Option Explicit
 
 ' ====== AJUSTAR ESTOS DATOS ======
