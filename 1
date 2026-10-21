@@ -1,3 +1,141 @@
+Option Explicit
+
+' ====== AJUSTAR ESTOS DATOS ======
+Const SERVIDOR As String = "NOMBRE_DEL_SERVIDOR"
+Const BASE_DATOS As String = "SBP_RGTRABAJO"
+Const TABLA As String = "dbo.NOMBRE_DE_LA_TABLA"
+Const HOJA As String = "RF2"
+Const CELDA_FECHA As String = "W22"
+Const FILA_INI As Long = 7
+Const COL_SOBERANO As String = "AF"
+Const COL_BID As String = "AG"
+Const COL_ASK As String = "AH"
+Const COL_LAST As String = "AI"
+Const INCLUIR_FILA_VACIA As Boolean = True
+' =================================
+
+Sub SubirTasasSQL()
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Worksheets(HOJA)
+    Dim fecha As Date
+    fecha = CDate(ws.Range(CELDA_FECHA).Value)
+    Dim fTxt As String: fTxt = Format(fecha, "yyyymmdd")
+
+    ' Leer la tabla de la hoja
+    Dim nem(1 To 60) As String, bid(1 To 60) As Variant
+    Dim ask(1 To 60) As Variant, lst(1 To 60) As Variant
+    Dim n As Long, r As Long
+    If INCLUIR_FILA_VACIA Then
+        n = 1
+        nem(1) = "SB00ENE1900": bid(1) = Null: ask(1) = Null: lst(1) = Null
+    End If
+    For r = FILA_INI To FILA_INI + 50
+        If Trim(ws.Range(COL_SOBERANO & r).Value & "") = "" Then Exit For
+        n = n + 1
+        nem(n) = Nemonico(ws.Range(COL_SOBERANO & r).Value)
+        bid(n) = ValorONulo(ws.Range(COL_BID & r).Value)
+        ask(n) = ValorONulo(ws.Range(COL_ASK & r).Value)
+        lst(n) = ValorONulo(ws.Range(COL_LAST & r).Value)
+    Next r
+    If n = 0 Then MsgBox "No se encontraron datos en " & HOJA, vbExclamation: Exit Sub
+
+    ' Conexion (el separador de la cadena se arma con Chr(59))
+    Dim sep As String: sep = Chr(59)
+    Dim cs As String
+    cs = "Provider=SQLOLEDB" & sep & "Data Source=" & SERVIDOR & sep & _
+         "Initial Catalog=" & BASE_DATOS & sep & "Integrated Security=SSPI"
+
+    Dim cn As Object: Set cn = CreateObject("ADODB.Connection")
+    Dim cmd As Object, rs As Object
+    Dim colNem As String: colNem = "[Nem" & ChrW(243) & "nico]"
+    Dim enTrans As Boolean
+
+    On Error GoTo Fallo
+    cn.Open cs
+
+    ' Revisar si ya hay datos de esa fecha
+    Set rs = cn.Execute("SELECT COUNT(*) FROM " & TABLA & " WHERE Fecha = '" & fTxt & "'")
+    If rs.Fields(0).Value > 0 Then
+        If MsgBox("Ya existen " & rs.Fields(0).Value & " filas del " & Format(fecha, "dd/mm/yyyy") & _
+                  ". Quieres reemplazarlas?", vbYesNo + vbQuestion) = vbNo Then
+            cn.Close: Exit Sub
+        End If
+    End If
+    rs.Close
+
+    cn.BeginTrans: enTrans = True
+    cn.Execute "DELETE FROM " & TABLA & " WHERE Fecha = '" & fTxt & "'"
+
+    Set cmd = CreateObject("ADODB.Command")
+    Set cmd.ActiveConnection = cn
+    cmd.CommandText = "INSERT INTO " & TABLA & " (Fecha, " & colNem & ", BID, ASK, [LAST]) VALUES (?,?,?,?,?)"
+    cmd.Parameters.Append cmd.CreateParameter("f", 200, 1, 8)
+    cmd.Parameters.Append cmd.CreateParameter("n", 200, 1, 20)
+    cmd.Parameters.Append cmd.CreateParameter("b", 5, 1)
+    cmd.Parameters.Append cmd.CreateParameter("a", 5, 1)
+    cmd.Parameters.Append cmd.CreateParameter("l", 5, 1)
+
+    Dim i As Long
+    For i = 1 To n
+        cmd.Parameters(0).Value = fTxt
+        cmd.Parameters(1).Value = nem(i)
+        cmd.Parameters(2).Value = bid(i)
+        cmd.Parameters(3).Value = ask(i)
+        cmd.Parameters(4).Value = lst(i)
+        cmd.Execute
+    Next i
+
+    cn.CommitTrans: enTrans = False
+    cn.Close
+    MsgBox "Se subieron " & n & " filas del " & Format(fecha, "dd/mm/yyyy") & " a " & TABLA, vbInformation
+    Exit Sub
+
+Fallo:
+    Dim msg As String: msg = Err.Description
+    On Error Resume Next
+    If enTrans Then cn.RollbackTrans
+    cn.Close
+    MsgBox "No se pudo subir. No se guardo nada." & vbCrLf & msg, vbCritical
+End Sub
+
+Private Function ValorONulo(v As Variant) As Variant
+    If IsError(v) Then
+        ValorONulo = Null
+    ElseIf IsEmpty(v) Or Trim(v & "") = "" Then
+        ValorONulo = Null
+    ElseIf IsNumeric(v) Then
+        ValorONulo = CDbl(v)
+    Else
+        ValorONulo = Null
+    End If
+End Function
+
+Private Function Nemonico(v As Variant) As String
+    Dim meses As Variant
+    meses = Array("ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SET", "OCT", "NOV", "DIC")
+    Dim d As Long, m As String, a As Long, p() As String
+    If IsDate(v) And VarType(v) = vbDate Then
+        d = Day(v): m = meses(Month(v) - 1): a = Year(v)
+    ElseIf IsNumeric(v) Then
+        d = Day(CDate(v)): m = meses(Month(CDate(v)) - 1): a = Year(CDate(v))
+    Else
+        p = Split(Trim(v), "-")
+        d = Val(p(0)): m = UCase(Left(p(1), 3)): a = Val(p(2))
+        If a < 100 Then a = 2000 + a
+    End If
+    Nemonico = "SB" & Format(d, "00") & m & a
+End Function
+
+
+
+
+
+
+
+
+
+
+
+
 pyinstaller --onefile --windowed --icon=logo.ico --add-data "logo_scotia.jpeg;." --add-data "headline.png;." --add-data "logo.ico;." --hidden-import win32timezone --name "Deadline Organizer" "Deadline Organizer.py"
 
 
