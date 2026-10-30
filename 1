@@ -1,4 +1,158 @@
 """
+Lanzador del proceso diario (12:00 a 13:30).
+
+Se ejecuta al iniciar sesión cualquier usuario. Queda en espera hasta las
+12:00 evitando que Windows suspenda el equipo, y luego corre el proceso.
+Si alguien inicia sesión entre 12:00 y 13:30, corre de inmediato.
+Si inicia sesión después de las 13:30, no hace nada.
+"""
+
+import ctypes
+import datetime as dt
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+# ---------------- CONFIGURACIÓN ----------------
+SCRIPT_PROCESO = r"C:\RUTA\A\TU\proceso.py"   # el código de Python que debe correr
+PYTHON_EXE = sys.executable                    # o la ruta fija a python.exe
+CARPETA_TRABAJO = r"C:\RUTA\A\TU"              # carpeta desde donde corre el proceso
+CARPETA_LOGS = r"C:\RUTA\A\LOGS_LANZADOR"      # carpeta compartida accesible para todos
+
+HORA_INICIO = dt.time(12, 0)
+HORA_FIN = dt.time(13, 30)
+SOLO_DIAS_HABILES = True   # lunes a viernes
+# -----------------------------------------------
+
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+
+carpeta_logs = Path(CARPETA_LOGS)
+carpeta_logs.mkdir(parents=True, exist_ok=True)
+
+
+def log(msg):
+    ahora = dt.datetime.now()
+    archivo = carpeta_logs / f"lanzador_{ahora:%Y%m%d}.log"
+    linea = f"{ahora:%Y-%m-%d %H:%M:%S} [{os.environ.get('USERNAME', '?')}] {msg}\n"
+    with open(archivo, "a", encoding="utf-8") as f:
+        f.write(linea)
+
+
+def evitar_suspension():
+    # La pantalla puede apagarse o bloquearse, pero el equipo no se suspende
+    ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+
+
+def permitir_suspension():
+    ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+
+
+def proceso_vivo(pid):
+    try:
+        salida = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}"],
+            capture_output=True, text=True,
+        ).stdout
+        return str(pid) in salida
+    except Exception:
+        return False
+
+
+def tomar_bloqueo(hoy):
+    """Evita que dos instancias (o dos usuarios) corran el proceso el mismo día."""
+    bloqueo = carpeta_logs / f"bloqueo_{hoy:%Y%m%d}.lock"
+    try:
+        fd = os.open(str(bloqueo), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        return True
+    except FileExistsError:
+        try:
+            pid = int(bloqueo.read_text().strip())
+        except Exception:
+            pid = None
+        if pid and proceso_vivo(pid):
+            return False
+        # Bloqueo huérfano (la sesión anterior murió antes de terminar)
+        if (carpeta_logs / f"ejecutado_{hoy:%Y%m%d}.ok").exists():
+            return False
+        bloqueo.write_text(str(os.getpid()))
+        log("Bloqueo huérfano recuperado, esta instancia toma el relevo")
+        return True
+
+
+def main():
+    ahora = dt.datetime.now()
+    hoy = ahora.date()
+
+    if SOLO_DIAS_HABILES and hoy.weekday() >= 5:
+        log("Fin de semana, no corresponde ejecutar")
+        return
+
+    if (carpeta_logs / f"ejecutado_{hoy:%Y%m%d}.ok").exists():
+        log("El proceso ya se ejecutó hoy, salgo")
+        return
+
+    fin = dt.datetime.combine(hoy, HORA_FIN)
+    inicio = dt.datetime.combine(hoy, HORA_INICIO)
+
+    if ahora > fin:
+        log("Inicio de sesión posterior a la ventana, no se ejecuta")
+        return
+
+    if not tomar_bloqueo(hoy):
+        log("Ya hay otra instancia activa, salgo")
+        return
+
+    log(f"Lanzador armado, esperando hasta {HORA_INICIO:%H:%M}")
+    evitar_suspension()
+
+    try:
+        while dt.datetime.now() < inicio:
+            time.sleep(20)
+            evitar_suspension()  # se refuerza por si algo lo reinicia
+
+        if dt.datetime.now() > fin:
+            log("Se pasó la ventana mientras esperaba, no se ejecuta")
+            return
+
+        log("Iniciando proceso")
+        res = subprocess.run(
+            [PYTHON_EXE, SCRIPT_PROCESO],
+            cwd=CARPETA_TRABAJO,
+            capture_output=True, text=True,
+        )
+        log(f"Proceso terminó con código {res.returncode}")
+        if res.stdout:
+            log("STDOUT: " + res.stdout[-2000:])
+        if res.stderr:
+            log("STDERR: " + res.stderr[-2000:])
+
+        (carpeta_logs / f"ejecutado_{hoy:%Y%m%d}.ok").write_text(
+            f"codigo={res.returncode} hora={dt.datetime.now():%H:%M:%S}"
+        )
+    except Exception as e:
+        log(f"ERROR en el lanzador: {e!r}")
+    finally:
+        permitir_suspension()
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+"""
 Prueba de bloqueo del mouse físico (solo el mouse real, no los clics del script).
 
 Uso:
