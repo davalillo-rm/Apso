@@ -1,4 +1,98 @@
 """
+Prueba de bloqueo del mouse físico (solo el mouse real, no los clics del script).
+
+Uso:
+    pip install pynput
+    python prueba_bloqueo_mouse.py            -> bloquea 10 minutos
+    python prueba_bloqueo_mouse.py 2          -> bloquea 2 minutos
+
+Salidas para recuperar el mouse:
+    - Presionar Esc 3 veces seguidas (el teclado nunca se bloquea)
+    - Cerrar este proceso (el bloqueo muere con él)
+    - Se libera solo al terminar el tiempo
+"""
+
+import sys
+import threading
+import time
+
+from pynput import keyboard, mouse
+
+MINUTOS = float(sys.argv[1]) if len(sys.argv) > 1 else 10.0
+LLMHF_INJECTED = 0x01
+
+detener = threading.Event()
+esc_tiempos = []
+bloqueados = 0
+permitidos = 0
+
+
+def filtro(msg, data):
+    """Descarta el mouse físico y deja pasar el generado por programas."""
+    global bloqueados, permitidos
+    if data.flags & LLMHF_INJECTED:
+        permitidos += 1
+    else:
+        bloqueados += 1
+        listener_mouse.suppress_event()
+
+
+def al_presionar(key):
+    if key == keyboard.Key.esc:
+        ahora = time.time()
+        esc_tiempos.append(ahora)
+        esc_tiempos[:] = [t for t in esc_tiempos if ahora - t < 2.0]
+        if len(esc_tiempos) >= 3:
+            print("Esc x3 detectado, liberando el mouse")
+            detener.set()
+            return False
+
+
+def autoprueba():
+    """Mueve el cursor por programa para comprobar que los eventos inyectados pasan."""
+    ctl = mouse.Controller()
+    x0, y0 = ctl.position
+    ctl.move(40, 0)
+    time.sleep(0.3)
+    x1, y1 = ctl.position
+    ctl.position = (x0, y0)
+    if x1 != x0:
+        print("Autoprueba OK: el movimiento generado por programa SÍ pasa")
+    else:
+        print("Autoprueba FALLÓ: el movimiento por programa fue bloqueado")
+
+
+listener_mouse = mouse.Listener(win32_event_filter=filtro)
+listener_teclado = keyboard.Listener(on_press=al_presionar)
+
+listener_mouse.start()
+listener_teclado.start()
+time.sleep(0.5)
+
+print(f"Mouse físico bloqueado por {MINUTOS} minutos")
+print("Para liberarlo antes: presiona Esc tres veces seguidas")
+autoprueba()
+
+try:
+    detener.wait(timeout=MINUTOS * 60)
+finally:
+    listener_mouse.stop()
+    listener_teclado.stop()
+    print(f"Mouse liberado. Eventos físicos bloqueados: {bloqueados}, "
+          f"eventos de programas permitidos: {permitidos}")
+
+
+
+
+
+
+
+
+
+
+
+
+"""
 Monitor de posturas de soberanos (dbo.DATATEC_SOBERANOS)
 
 Cada REVISION_MIN minutos (por defecto 3) revisa:
