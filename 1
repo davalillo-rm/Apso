@@ -1,0 +1,202 @@
+"""
+Monitor de posturas de soberanos (dbo.DATATEC_SOBERANOS)
+
+Cada REVISION_MIN minutos (por defecto 3) revisa:
+  - La ultima ventana (Rango_Hora de 5 min) ya cerrada -> ALERTA con beep si hay problemas
+  - La ventana en curso -> solo informativa (amarillo), sin beep
+
+Valida que:
+  1. Haya llegado algo a SQL
+  2. No vengan todas las filas con Vence NULL
+  3. Para cada Vence distinto de NULL haya al menos un Bid y al menos un Ask
+
+Uso:
+  python monitor_posturas.py            -> monitoreo continuo
+  python monitor_posturas.py --una-vez  -> una sola revision y sale
+"""
+import csv
+import os
+import sys
+import time
+from datetime import datetime, timedelta
+
+import pyodbc
+
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
+# ============================ CONFIGURACION ============================
+# Pega aqui la misma cadena de conexion que ya usas en tus otros scripts
+CONN_STR = (
+    "DRIVER={ODBC Driver 17 for SQL Server}:"
+    "SERVER=COMPLETAR_SERVIDOR\\SQL1,275:"
+    "DATABASE=SBP_RGTRABAJO:"
+    "Trusted_Connection=yes"
+).replace(":", chr(59))
+
+TABLA = "dbo.DATATEC_SOBERANOS"
+VENTANA_MIN = 5          # tamano de la ventana de datos (Rango_Hora)
+REVISION_MIN = 3         # cada cuantos minutos se revisa
+GRACIA_SEG = 45          # segundos de espera despues de cerrar una ventana
+EVALUAR_EN_CURSO = True  # mostrar tambien la ventana en curso (informativa)
+HORA_INI = "08:30"       # solo monitorea dentro de este horario
+HORA_FIN = "17:00"
+SOLO_VALIDAS = True      # True: una postura cuenta solo si Yield y Notional NO son NULL
+                         # False: basta con que exista la fila Bid/Ask
+LOG = "monitor_posturas_log.csv"
+REFRESCO_SEG = 10        # cada cuanto mira el reloj
+# =======================================================================
+
+os.system("")  # activa colores ANSI en la consola de Windows
+ROJO, VERDE, AMARILLO, FIN = "\033[91m", "\033[92m", "\033[93m", "\033[0m"
+
+
+def inicio_ventana(dt):
+    return dt.replace(minute=dt.minute - dt.minute % VENTANA_MIN, second=0, microsecond=0)
+
+
+def etiqueta(ini):
+    fin = ini + timedelta(minutes=VENTANA_MIN)
+    return f"{ini:%H:%M}-{fin:%H:%M}"
+
+
+def en_horario(dt):
+    return HORA_INI <= f"{dt:%H:%M}" <= HORA_FIN
+
+
+def evaluar(fecha, rango):
+    """Devuelve (total_filas, n_vences, lista_de_problemas)"""
+    cn = pyodbc.connect(CONN_STR, timeout=15)
+    try:
+        cur = cn.cursor()
+        cur.execute(f"SELECT COUNT(*) FROM {TABLA} WHERE Fecha = ? AND Rango_Hora = ?", fecha, rango)
+        total = cur.fetchone()[0]
+
+        cur.execute(
+            f"""
+            SELECT Vence, Tipo,
+                   COUNT(*) AS filas,
+                   SUM(CASE WHEN Yield IS NOT NULL AND Notional IS NOT NULL THEN 1 ELSE 0 END) AS validas
+            FROM {TABLA}
+            WHERE Fecha = ? AND Rango_Hora = ? AND Vence IS NOT NULL
+            GROUP BY Vence, Tipo
+            """,
+            fecha, rango,
+        )
+        datos = {}
+        for vence, tipo, filas, validas in cur.fetchall():
+            tipo = (tipo or "").strip().upper()
+            datos.setdefault(vence, {})[tipo] = validas if SOLO_VALIDAS else filas
+    finally:
+        cn.close()
+
+    problemas = []
+    if total == 0:
+        problemas.append("No llego ninguna fila a SQL para esta ventana")
+    elif not datos:
+        problemas.append("Llegaron filas pero todas con Vence NULL (posturas vacias)")
+    else:
+        for vence in sorted(datos):
+            faltan = [t for t in ("BID", "ASK") if not datos[vence].get(t)]
+            if faltan:
+                problemas.append(f"{vence}: falta {' y '.join(faltan)}")
+    return total, len(datos), problemas
+
+
+def registrar(rango, tipo_ventana, estado, total, n_vences, problemas):
+    nuevo = not os.path.exists(LOG)
+    with open(LOG, "a", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        if nuevo:
+            w.writerow(["timestamp", "rango_hora", "ventana", "estado", "filas", "vences", "detalle"])
+        w.writerow([f"{datetime.now():%Y-%m-%d %H:%M:%S}", rango, tipo_ventana, estado,
+                    total, n_vences, " | ".join(problemas)])
+
+
+def alarma():
+    if winsound:
+        for _ in range(3):
+            winsound.Beep(1000, 600)
+            time.sleep(0.2)
+
+
+def revisar(objetivo, estados, en_curso=False):
+    fecha, rango = objetivo.date().isoformat(), etiqueta(objetivo)
+    hora = f"{datetime.now():%H:%M:%S}"
+    tipo_ventana = "EN CURSO" if en_curso else "CERRADA"
+
+    try:
+        total, n_vences, problemas = evaluar(fecha, rango)
+    except Exception as e:
+        msg = f"Error consultando SQL: {e}"
+        print(f"{ROJO}[{hora}] {rango} ({tipo_ventana}) -> {msg}{FIN}")
+        registrar(rango, tipo_ventana, "ERROR", 0, 0, [msg])
+        if not en_curso:
+            alarma()
+        return
+
+    # ----- ventana en curso: solo informativa -----
+    if en_curso:
+        if problemas:
+            print(f"{AMARILLO}[{hora}] {rango} (EN CURSO) -> incompleta aun ({total} filas, {len(problemas)} pendientes){FIN}")
+            registrar(rango, tipo_ventana, "INCOMPLETA", total, n_vences, problemas)
+        else:
+            print(f"{VERDE}[{hora}] {rango} (EN CURSO) -> completa ({n_vences} vences, {total} filas){FIN}")
+            registrar(rango, tipo_ventana, "OK", total, n_vences, [])
+        return
+
+    # ----- ventana cerrada: alerta con beep solo si el problema es nuevo o cambia -----
+    previo = estados.get(rango)
+    actual = frozenset(problemas)
+    estados[rango] = actual
+
+    if problemas:
+        sigue = " (sigue)" if previo == actual else ""
+        print(f"{ROJO}[{hora}] {rango} (CERRADA) -> ALERTA{sigue}: {len(problemas)} problemas, {total} filas{FIN}")
+        for p in problemas:
+            print(f"{ROJO}    - {p}{FIN}")
+        registrar(rango, tipo_ventana, "ALERTA", total, n_vences, problemas)
+        if previo != actual:
+            alarma()
+    else:
+        if previo:
+            print(f"{VERDE}[{hora}] {rango} (CERRADA) -> REGULARIZADO ({n_vences} vences, {total} filas){FIN}")
+            registrar(rango, tipo_ventana, "REGULARIZADO", total, n_vences, [])
+        else:
+            print(f"{VERDE}[{hora}] {rango} (CERRADA) -> OK ({n_vences} vences, {total} filas){FIN}")
+            registrar(rango, tipo_ventana, "OK", total, n_vences, [])
+
+
+def main():
+    una_vez = "--una-vez" in sys.argv
+    modo = "solo posturas validas (Yield y Notional no NULL)" if SOLO_VALIDAS else "solo existencia de fila"
+    print(f"Monitor iniciado: revision cada {REVISION_MIN} min, ventanas de {VENTANA_MIN} min. Criterio: {modo}")
+
+    estados = {}
+    proxima = datetime.now()
+    while True:
+        ahora = datetime.now()
+        if ahora >= proxima:
+            ini = inicio_ventana(ahora)
+            transcurrido = (ahora - ini).total_seconds()
+            # ultima ventana ya cerrada (con el margen de gracia)
+            cerrada = ini - timedelta(minutes=VENTANA_MIN if transcurrido >= GRACIA_SEG else 2 * VENTANA_MIN)
+
+            if en_horario(cerrada):
+                revisar(cerrada, estados)
+            if EVALUAR_EN_CURSO and en_horario(ini):
+                revisar(ini, estados, en_curso=True)
+
+            proxima = ahora + timedelta(minutes=REVISION_MIN)
+            if una_vez:
+                return
+        time.sleep(REFRESCO_SEG)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Monitor detenido")
