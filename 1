@@ -1,3 +1,19 @@
+            # Fila 4: destinatario de escalamiento (si vence el plazo)
+            ctk.CTkLabel(frame_dinamico, text="Escalation recipient (if overdue):", text_color=SCOTIA_SUBTEXT,
+                         font=("Trebuchet MS", 11)).pack(anchor="w", pady=(8, 0))
+            entry_escalamiento_sd = ctk.CTkEntry(frame_dinamico, width=400, placeholder_text="Optional")
+            entry_escalamiento_sd.pack(anchor="w", pady=(2, 0))
+            agregar_autocomplete(entry_escalamiento_sd)
+
+
+
+
+
+
+
+
+
+
 """
 Lanzador del proceso diario (12:00 a 13:30).
 
