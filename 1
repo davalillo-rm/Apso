@@ -1,3 +1,12 @@
+dir.create("C:/Temp_R", showWarnings = FALSE)
+Sys.setenv(TMPDIR = "C:/Temp_R", TEMP = "C:/Temp_R", TMP = "C:/Temp_R")
+tempdir(check = TRUE)
+
+
+
+
+
+
 #Reemplazo de datos
 lastRow = xlSheet_SWAP.UsedRange.Rows.Count
 mapa = {c[0]: str(c[1]) for c in cadena}
