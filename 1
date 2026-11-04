@@ -1,3 +1,15 @@
+#Reemplazo de datos
+lastRow = xlSheet_SWAP.UsedRange.Rows.Count
+mapa = {c[0]: str(c[1]) for c in cadena}
+colA = xlSheet_SWAP.Range("A4:A" + str(lastRow - 1)).Value
+for idx, fila in enumerate(colA):
+    clave = str(fila[0])
+    if clave in mapa:
+        xlSheet_SWAP.Range("A" + str(4 + idx)).Value = mapa[clave]
+
+
+
+
 if not os.path.exists(xlRuta_a):
     raise FileNotFoundError(xlRuta_a)
 xlBook_SWAP = xlApp.Workbooks.Open(xlRuta_a, UpdateLinks=0, ReadOnly=True)
