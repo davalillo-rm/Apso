@@ -1,3 +1,64 @@
+        elif tipo == "escalamiento":
+            correo.Subject = f"Escalation: {nombre_proceso} overdue (notice {intento} of {total})"
+            html += f"<h3 style='color: #ED0006; margin-top: 20px; margin-bottom: 5px;'>{nombre_proceso}: Overdue Report</h3>"
+            html += "<p style='margin-top: 5px;'>The deadline for this report has passed and the following items have not been received:</p>"
+            html += "<ol style='margin-top: 5px;'>"
+            for n in (faltantes or []):
+                html += f"<li><b>{n}</b></li>"
+            html += "</ol>"
+
+
+
+
+            # NUEVO: escalamiento si el plazo venció y sigue pendiente
+            dest_esc = config_sd.get("destinatario_escalamiento", "")
+            hora_limite = config_sd.get("hora_limite")
+            dia_hoy = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"][hoy.weekday()]
+            if dest_esc and hora_limite is not None and dia_hoy in config_sd.get("dias", []):
+                if estado.get("fecha_escalamiento") != hoy:
+                    estado["fecha_escalamiento"] = hoy
+                    estado["escalamientos_enviados"] = 0
+                    estado["ultimo_escalamiento"] = None
+
+                inicio_esc = datetime.datetime.combine(hoy, hora_limite) + datetime.timedelta(minutes=ESC_UMBRAL_MIN)
+                fin_esc = inicio_esc + datetime.timedelta(minutes=ESC_INTERVALO_MIN * ESC_MAX_ENVIOS + 20)
+                ult_esc = estado["ultimo_escalamiento"]
+
+                if (inicio_esc <= ahora <= fin_esc
+                        and estado["escalamientos_enviados"] < ESC_MAX_ENVIOS
+                        and (ult_esc is None or (ahora - ult_esc) >= datetime.timedelta(minutes=ESC_INTERVALO_MIN))):
+                    faltantes_esc = [f["nombre_display"] for f in datos.get("faltantes", [])]
+                    self._enviar_correo_specific_days(
+                        dest_esc, nombre_proc, tipo="escalamiento",
+                        faltantes=faltantes_esc,
+                        intento=estado["escalamientos_enviados"] + 1, total=ESC_MAX_ENVIOS
+                    )
+                    estado["escalamientos_enviados"] += 1
+                    estado["ultimo_escalamiento"] = ahora
+
+
+
+
+    ahora_dt = datetime.datetime.now()
+
+
+
+
+            inicio_dt = datetime.datetime.combine(hoy, config_sd["hora_inicio"])
+            fin_dt = datetime.datetime.combine(hoy, config_sd["hora_limite"])
+            if config_sd.get("destinatario_escalamiento"):
+                fin_dt += datetime.timedelta(minutes=ESC_UMBRAL_MIN + ESC_INTERVALO_MIN * ESC_MAX_ENVIOS + 25)
+            if ahora_dt < inicio_dt or ahora_dt > fin_dt:
+                continue
+
+
+
+
+
+
+
+
+
 valor_tiempo = f"{dias_str}|{hora_inicio_txt}|{hora_limite_txt}|{intervalo_num}|{destinatario_txt}|{escalamiento_txt}"
 
 
