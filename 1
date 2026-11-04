@@ -1,3 +1,7 @@
+valor_tiempo = f"{dias_str}|{hora_inicio_txt}|{hora_limite_txt}|{intervalo_num}|{destinatario_txt}|{escalamiento_txt}"
+
+
+
 escalamiento_txt = entry_escalamiento_sd.get().strip() if entry_escalamiento_sd else ""
 if escalamiento_txt and not escalamiento_txt.lower().endswith("@scotiabank.com.pe"):
     messagebox.showwarning("Unauthorized Domain", "The escalation recipient must end with @scotiabank.com.pe", parent=v)
