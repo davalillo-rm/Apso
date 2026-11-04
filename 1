@@ -1,3 +1,12 @@
+escalamiento_txt = entry_escalamiento_sd.get().strip() if entry_escalamiento_sd else ""
+if escalamiento_txt and not escalamiento_txt.lower().endswith("@scotiabank.com.pe"):
+    messagebox.showwarning("Unauthorized Domain", "The escalation recipient must end with @scotiabank.com.pe", parent=v)
+    return
+
+
+
+
+
             # Fila 4: destinatario de escalamiento (si vence el plazo)
             ctk.CTkLabel(frame_dinamico, text="Escalation recipient (if overdue):", text_color=SCOTIA_SUBTEXT,
                          font=("Trebuchet MS", 11)).pack(anchor="w", pady=(8, 0))
