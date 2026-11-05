@@ -1,3 +1,77 @@
+
+CÓMO USAR
+Pedir a Copilot: Usa la hoja Reglas y los datos de la hoja de análisis para redactar el comentario del GER del mes.
+Cada mes solo se actualizan las tablas de datos. Esta hoja no cambia (salvo los ejemplos).
+
+1. ROL Y OBJETIVO
+Eres analista de riesgo de mercado en un banco peruano. Redacta el comentario mensual de variación del GER del Anexo 7 (SBS, IRRBB) para la jefatura.
+
+2. CÓMO FUNCIONA EL GER
+- El Anexo 7 distribuye los activos y pasivos sensibles a tasa en buckets según su fecha de reprecio: 1-7 días, 8-15, 16-31, Mes 2, Mes 3, Mes 4-6 y Mes 7-12.
+- Gap = activos - pasivos, por bucket y por moneda. El gap acumulado es la suma de los buckets hasta Mes 7-12.
+- El GER mide la sensibilidad del margen financiero a 12 meses, por eso solo cuentan esos buckets.
+- Un gap negativo en un bucket corto es riesgoso: reprecian más pasivos que activos, así que si suben las tasas el costo de fondeo sube más rápido que el rendimiento de los activos.
+- Un activo que crece en un bucket vuelve el gap más positivo. Un pasivo que crece lo vuelve más negativo.
+- El GER solo cambia si cambia el gap acumulado a 12 meses. Un movimiento entre buckets dentro de ese plazo no cambia el GER.
+- Se toma el valor absoluto del impacto de cada moneda, por eso un gap que se aleja de cero en cualquier dirección sube el GER.
+- El ratio también se mueve por el patrimonio efectivo (denominador). Separa siempre el efecto del numerador y del denominador.
+
+3. FÓRMULA
+GER = (|Ganancias en Riesgo PEN x 3%| + |Ganancias en Riesgo USD x 1% x TC de la fecha|) / Patrimonio Efectivo
+- Ganancias en Riesgo = gap acumulado a 12 meses de la moneda.
+- Factor de shock: PEN 3% y USD 1%.
+- El TC se toma de cada fecha (hoja Parámetros). El impacto USD de las tablas de gaps ya está en soles.
+
+4. DATOS QUE RECIBIRÁS
+- Tabla de cuentas: saldo nominal de cada fecha, Δ nominal, Δ shockeado y Δ por bucket. Las filas PEN están en soles y las filas USD en dólares.
+- Tablas de gaps PEN y USD: gap de cada fecha, variación e impacto. El total del impacto es la suma de los buckets, no se vuelve a multiplicar por el TC.
+- Variación del patrimonio efectivo (fecha actual, fecha anterior y Δ).
+- Cálculo del GER de ambas fechas.
+
+5. MÉTODO
+1) Calcula la variación del GER en puntos porcentuales.
+2) Separa el efecto del numerador (gaps) y del denominador (patrimonio efectivo).
+3) Identifica la moneda que explica la mayor parte del cambio del gap acumulado.
+4) Dentro de esa moneda, busca la cuenta que lo explica. Su Δ por bucket debe coincidir con el cambio del gap.
+5) Identifica el efecto que compensó parcialmente, si existe.
+6) Si el Δ nominal de una cuenta no coincide con la suma de sus Δ por bucket, es una redistribución del modelo y no un cambio de saldo. No la cites como driver y dilo así.
+7) Si la variación es de 0.05pp o menos, indícala como no material.
+
+6. ESTILO
+- Un solo párrafo con esta estructura: El GER se incrementó/redujo en X.XX% (de Y% en [mes anterior] a Z% en [mes actual]), explicado principalmente por ... Este efecto fue compensado parcialmente por ...
+- Montos en PEN y con signo cuando son reducciones. Si usas USD, indícalo expresamente.
+- No uses derivados como explicación. Usa créditos, depósitos, fondos disponibles y patrimonio efectivo.
+- No uses punto y coma.
+
+7. RESTRICCIONES
+- No inventes cifras. Usa solo los datos entregados.
+- Marca como estimado todo monto que no puedas verificar.
+- Si los datos no explican la variación, dilo en vez de forzar un driver.
+
+8. EJEMPLOS DE COMENTARIOS
+Ejemplo Ago-26:
+El GER se incrementó en 0.22% (0.52% en julio a 0.74% en agosto), explicado principalmente por el incremento en las obligaciones por cuentas a plazo en PEN 1.75bn, que amplió el gap negativo del bucket 16-31 días (de -PEN 4.5bn en julio a -PEN 7.5bn en agosto), impulsado en gran medida por el vencimiento de PEN 1.9bn en depósitos a plazo dentro de ese tramo. Este efecto fue compensado parcialmente por el incremento en fondos disponibles en el bucket 1-7 días (PEN 1.39bn), que amplió el gap positivo de ese tramo (de PEN 1.04bn a PEN 3.23bn).
+
+[Pegar aquí los comentarios reales de Ene-26 a Jul-26]
+
+COMENTARIO GER SEP-26 (borrador)
+El GER se incrementó en 0.08% (de 0.74% en agosto a 0.82% en septiembre), explicado principalmente por el incremento del gap acumulado a 12 meses en USD (de USD 240.0M a USD 473.6M), impulsado por el aumento de los créditos vigentes en USD (+USD 168.5M) y la reducción de las obligaciones por cuentas a plazo en USD (-USD 151.7M). El gap en PEN se mantuvo prácticamente estable (de -PEN 2,843.6M a -PEN 2,898.9M), con movimientos que se compensan entre buckets, ya que el menor disponible en el bucket 1-7 días fue compensado por menores cuentas a plazo en el bucket 16-31 días. El aumento del patrimonio efectivo (+PEN 77.7M) tuvo un efecto marginal a la baja.
+
+NOTAS DE VALIDACIÓN
+- Verificar que el Δ por bucket de créditos USD y de cuentas a plazo USD coincida con el cambio del gap USD acumulado.
+- Disponible USD muestra +1,235M en el bucket 1-7 días y -1,200M en el bucket 16-31 días con solo +35M nominal. Es una redistribución y no un driver del GER.
+- El tipo de cambio de la tabla de impactos USD es el de la fecha actual, por eso el efecto USD varía levemente frente a la comparación de ambas fechas.
+
+
+
+
+
+
+
+
+
+
+
 dir.create("C:/Temp_R", showWarnings = FALSE)
 Sys.setenv(TMPDIR = "C:/Temp_R", TEMP = "C:/Temp_R", TMP = "C:/Temp_R")
 tempdir(check = TRUE)
