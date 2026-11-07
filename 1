@@ -1,3 +1,212 @@
+
+CHECKERS = {
+    "s1516216": "J. Rodríguez",
+    "s3878416": "R. Quispe",
+}
+
+NOMBRES_CORREO = {
+    "s1516216": "J. Rodríguez",
+    "s3878416": "R. Quispe",
+    "s1685257": "R. Enriquez",
+}
+
+EXCLUIR_DEL_STATUS = {"s7398771"}
+DESTINATARIOS_STATUS = ""
+ENVIAR_DIRECTO = False
+FERIADOS = {"08/12/2026", "25/12/2026", "01/01/2027"}
+
+
+
+def nombre_corto(codigo):
+    return NOMBRES_CORREO.get(codigo.lower(), nombre_display(codigo))
+
+
+def _parse_hora(hora_str):
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.datetime.strptime(str(hora_str).strip(), fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
+def _hora_am_pm(hora_str):
+    t = _parse_hora(hora_str)
+    if not t:
+        return str(hora_str)
+    return datetime.datetime.combine(datetime.date.today(), t).strftime("%I:%M %p").lstrip("0").lower()
+
+
+def dia_habil_anterior(fecha):
+    d = fecha - datetime.timedelta(days=1)
+    while d.weekday() >= 5 or d.strftime("%d/%m/%Y") in FERIADOS:
+        d -= datetime.timedelta(days=1)
+    return d
+
+
+def frecuencia_es(txt):
+    t = (txt or "").lower()
+    if t.startswith(("monthly", "mensual")):
+        return "Mensual"
+    if t.startswith(("weekly", "semanal")):
+        return "Semanal"
+    return "Diario"
+
+
+def leer_procesos_status(codigo):
+    ruta = os.path.join(RUTA_BASE, f"{codigo}_status.xlsx")
+    procesos = {}
+    if not os.path.exists(ruta):
+        return procesos
+    try:
+        wb = openpyxl.load_workbook(ruta, data_only=True, read_only=True)
+        ws = wb["Status Actual"] if "Status Actual" in wb.sheetnames else wb.active
+        actual = None
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            fila = list(row) + [None] * 8
+            if fila[0]:
+                actual = str(fila[0]).strip()
+            if not actual:
+                continue
+            p = procesos.setdefault(actual, {"avance": "", "items": [], "frecuencia": "", "desde": ""})
+            if fila[2]:
+                p["avance"] = str(fila[2]).strip()
+            p["items"].append({"hora": str(fila[4] or "").strip(),
+                               "validacion": str(fila[5] or "").strip()})
+            if fila[6]:
+                p["frecuencia"] = str(fila[6]).strip()
+            if fila[7]:
+                p["desde"] = str(fila[7]).strip()
+        wb.close()
+    except Exception as e:
+        print(f"Error leyendo status de {codigo}: {e}")
+    return procesos
+
+
+def armar_filas_status(codigos, eventos_por_usuario, hoy_str):
+    hoy = datetime.datetime.strptime(hoy_str, "%d/%m/%Y").date()
+    filas = []
+    for codigo in codigos:
+        eventos = eventos_por_usuario.get(codigo, [])
+        for nombre, p in leer_procesos_status(codigo).items():
+            n_rec = sum(1 for e in eventos
+                        if e.get("fecha") == hoy_str and e.get("proceso") == nombre
+                        and e.get("tipo") == "RECORDATORIO ENVIADO")
+
+            completo = False
+            if "/" in p["avance"]:
+                a = p["avance"].split("/")[0].strip()
+                b = p["avance"].split("/")[-1].strip()
+                completo = (a == b and b not in ("", "0"))
+            observado = any(i["validacion"].upper() == "OBSERVADO" for i in p["items"])
+            horas = [i["hora"] for i in p["items"] if _parse_hora(i["hora"])]
+
+            if observado:
+                status = "Observado"
+            elif completo:
+                status = "Enviado"
+            elif n_rec > 0:
+                status = "Esperando Envío"
+            else:
+                status = "Pendiente"
+
+            hora = "-"
+            if horas and status in ("Enviado", "Observado"):
+                hora = _parse_hora(max(horas, key=_parse_hora)).strftime("%H:%M")
+
+            frec = frecuencia_es(p["frecuencia"])
+            recordatorios = str(n_rec)
+            if frec == "Mensual" and status == "Pendiente" and p["desde"]:
+                try:
+                    if datetime.datetime.strptime(p["desde"], "%d/%m/%Y").date() > hoy:
+                        recordatorios = f"Se enviarán a partir del {p['desde']}"
+                except ValueError:
+                    pass
+
+            filas.append({"frecuencia": frec, "reporte": nombre, "status": status,
+                          "hora": hora, "recordatorios": recordatorios,
+                          "responsable": nombre_corto(codigo)})
+    return filas
+
+
+def _tabla_status_html(filas):
+    orden = {"Semanal": 0, "Mensual": 1, "Diario": 2}
+    filas = sorted(filas, key=lambda f: orden.get(f["frecuencia"], 3))
+    colores = {"Enviado": "#2E7D32", "Esperando Envío": "#E69500",
+               "Observado": "#C62828", "Pendiente": "#000000"}
+    th = ("border:1px solid #BFBFBF; padding:6px 10px; text-align:left; "
+          "background:#F2F2F2; font-weight:bold;")
+    html = ('<table style="border-collapse:collapse; font-family:Calibri,Arial,sans-serif; '
+            'font-size:14px;"><tr>'
+            f'<th style="{th}">Frecuencia</th><th style="{th}">Reporte</th>'
+            f'<th style="{th}">Status</th><th style="{th}">Hora</th>'
+            f'<th style="{th}">N° Recordatorios enviados</th><th style="{th}">Responsable</th>'
+            '</tr>')
+    previo = None
+    for f in filas:
+        grupo = "diario" if f["frecuencia"] == "Diario" else "sem_men"
+        borde = "border-top:3px solid #7F7F7F;" if (previo == "sem_men" and grupo == "diario") else ""
+        previo = grupo
+        color = colores.get(f["status"], "#000000")
+        td = f"border:1px solid #BFBFBF; padding:6px 10px; {borde}"
+        html += (
+            "<tr>"
+            f'<td style="{td}">{f["frecuencia"]}</td>'
+            f'<td style="{td}">{f["reporte"]}</td>'
+            f'<td style="{td} color:{color}; font-weight:bold;">{f["status"]}</td>'
+            f'<td style="{td}">{f["hora"] or "-"}</td>'
+            f'<td style="{td}">{f["recordatorios"]}</td>'
+            f'<td style="{td}">{f["responsable"]}</td>'
+            "</tr>"
+        )
+    return html + "</table>"
+
+
+def armar_html_status(hoy_str, checkers_filas, t1_str, t1_obs, filas):
+    partes = []
+    for nombre, hora in checkers_filas:
+        if hora:
+            partes.append(f"<b>{nombre}</b> at {hora}")
+        else:
+            partes.append(f'<b style="color:#ED0006;">{nombre}</b> '
+                          f'<span style="color:#ED0006;">(did not open the tool)</span>')
+    linea_checkers = " and ".join(partes)
+
+    if t1_obs:
+        lis = "".join(f"<li><b>{p}</b> - {i}</li>" for p, i in t1_obs)
+        bloque_t1 = (f"<p>Observations were flagged on the T-1 reports ({t1_str}):</p>"
+                     f"<ul style='margin-top:5px;'>{lis}</ul>")
+    else:
+        bloque_t1 = f"<p>No observations were flagged on the T-1 reports ({t1_str}).</p>"
+
+    return f"""
+    <html><body style="font-family: 'Segoe UI', Arial, sans-serif; color: #262626; line-height: 1.6;">
+    <h2 style="color: #ED0006; border-bottom: 2px solid #ED0006; padding-bottom: 5px;">
+        Report Monitoring: Status - {hoy_str}
+    </h2>
+    <p>The tool was opened today by: {linea_checkers}.</p>
+    {bloque_t1}
+    <h3 style="color: #ED0006; margin-top: 20px; margin-bottom: 5px;">Current status of Processes</h3>
+    {_tabla_status_html(filas)}
+    <br><p style="font-size: 11px; color: #555555; border-top: 1px solid #ccc; padding-top: 10px;">
+    Atentamente,<br><b>Área de Riesgos de Mercado</b><br>Scotiabank Perú<br>
+    <i>*Este es un mensaje generado automáticamente por el Monitor de Reportes.*</i>
+    </p></body></html>
+    """
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 try:
     mapa_vt = {p.get("nombre"): p.get("valor_tiempo", "") for p in leer_procesos()}
 except Exception:
