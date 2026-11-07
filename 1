@@ -1,3 +1,7 @@
+
+print("DEBUG frec:", datos["nombre"], repr(datos.get("valor_tiempo")), dias_sd)
+
+
 frec = datos.get("frecuencia", "")
 if frec == "Specific Days":
     dias_sd = parsear_specific_days(str(datos.get("valor_tiempo", "")))["dias"]
