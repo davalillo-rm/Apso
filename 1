@@ -1,4 +1,92 @@
+    def _enviar_status_email(self):
+        self.lbl_status.configure(text="Building status email...")
+        threading.Thread(target=self._worker_status_email, daemon=True).start()
 
+    def _worker_status_email(self):
+        pythoncom.CoInitialize()
+        try:
+            hoy = datetime.date.today()
+            hoy_str = hoy.strftime("%d/%m/%Y")
+            t1_str = dia_habil_anterior(hoy).strftime("%d/%m/%Y")
+
+            eventos_por_usuario = {}
+            for codigo in self._usuarios_cache:
+                try:
+                    eventos_por_usuario[codigo] = leer_historico_usuario(codigo).get("eventos", [])
+                except Exception:
+                    eventos_por_usuario[codigo] = []
+
+            # 1. Checkers que abrieron la app hoy
+            checkers_filas = []
+            for cod, nombre in CHECKERS.items():
+                horas = []
+                for c, evs in eventos_por_usuario.items():
+                    if c.lower() == cod:
+                        horas += [e["hora"] for e in evs
+                                  if e.get("fecha") == hoy_str and e.get("tipo") == "APP ABIERTA"
+                                  and _parse_hora(e.get("hora"))]
+                primera = min(horas, key=_parse_hora) if horas else None
+                checkers_filas.append((nombre, _hora_am_pm(primera) if primera else None))
+
+            # 2. Observaciones del día hábil anterior
+            t1_obs = []
+            for evs in eventos_por_usuario.values():
+                for e in evs:
+                    if e.get("fecha") == t1_str and e.get("tipo") == "CORREO OBSERVADO":
+                        par = (e.get("proceso", ""), e.get("item", ""))
+                        if par not in t1_obs:
+                            t1_obs.append(par)
+
+            # 3. Estado actual de procesos
+            codigos = [c for c in self._usuarios_cache if c.lower() not in EXCLUIR_DEL_STATUS]
+            filas = armar_filas_status(codigos, eventos_por_usuario, hoy_str)
+
+            html = armar_html_status(hoy_str, checkers_filas, t1_str, t1_obs, filas)
+
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            correo = outlook.CreateItem(0)
+            correo.To = DESTINATARIOS_STATUS
+            correo.Subject = f"Report Monitoring: Status - {hoy_str}"
+            correo.HTMLBody = html
+            if ENVIAR_DIRECTO:
+                correo.Send()
+                msg = "Status email sent."
+            else:
+                correo.Display()
+                msg = "Status email opened in Outlook for review."
+            self.after(0, lambda m=msg: self.lbl_status.configure(text=m))
+        except Exception as e:
+            self.after(0, lambda err=e: self.lbl_status.configure(text=f"Error building status email: {err}"))
+        finally:
+            pythoncom.CoUninitialize()
+
+
+
+
+        ctk.CTkButton(
+            bar, text="Send Status Email", width=140, height=20,
+            fg_color=ROJO_OSCURO, hover_color="#6B0609",
+            text_color="white", font=("Trebuchet MS", 10), corner_radius=4,
+            command=self._enviar_status_email
+        ).pack(side="right", padx=8)
+
+
+
+
+        and e.get("tipo") not in ("REGLA ACTIVADA", "APP ABIERTA", "RECORDATORIO ENVIADO",
+                                  "ESCALAMIENTO ENVIADO", "CORREO OBSERVADO")
+
+
+
+
+
+
+
+
+
+
+
+. 
 CHECKERS = {
     "s1516216": "J. Rodríguez",
     "s3878416": "R. Quispe",
