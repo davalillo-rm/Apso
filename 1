@@ -1,0 +1,18 @@
+frec = datos.get("frecuencia", "")
+if frec == "Specific Days":
+    dias_sd = parsear_specific_days(str(datos.get("valor_tiempo", "")))["dias"]
+    frec = "Diario" if len(dias_sd) >= 5 else "Semanal"
+
+
+ws.append([nombre_g, estado, avance, rec["nombre"], rec["hora"], val_str, frec])
+
+
+ws.append([datos["nombre"], estado, avance, falt["nombre_regla"], "PENDIENTE", "PENDIENTE", frec])
+
+encabezados = ["Proceso", "Estado", "Avance", "Item / Correo", "Hora Recibido", "Validación", "Frecuencia"]
+
+
+for col in range(1, 8):
+
+
+anchos = {'A': 25, 'B': 15, 'C': 12, 'D': 35, 'E': 15, 'F': 15, 'G': 15}
