@@ -1,3 +1,29 @@
+try:
+    mapa_vt = {p.get("nombre"): p.get("valor_tiempo", "") for p in leer_procesos()}
+except Exception:
+    mapa_vt = {}
+
+
+
+dias_sd = parsear_specific_days(str(datos.get("valor_tiempo") or mapa_vt.get(datos["nombre"], "")))["dias"]
+
+
+print("DEBUG frec:", datos["nombre"], repr(mapa_vt.get(datos["nombre"])), dias_sd)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 print("DEBUG frec:", datos["nombre"], repr(datos.get("valor_tiempo")), dias_sd)
 
