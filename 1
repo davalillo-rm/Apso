@@ -1,0 +1,25 @@
+entry_mesfin_sd = None
+
+nonlocal entry_mesfin_sd
+
+# Fila 5: regla de fin de mes (opcional)
+ctk.CTkLabel(frame_dinamico, text="Month-end rule: start N business days before (optional):", text_color=SCOTIA_SUBTEXT,
+             font=("Trebuchet MS", 11)).pack(anchor="w", pady=(8, 0))
+entry_mesfin_sd = ctk.CTkEntry(frame_dinamico, width=80, placeholder_text="2")
+entry_mesfin_sd.pack(anchor="w", pady=(2, 0))
+
+
+if not dias_marcados and not entry_mesfin_sd.get().strip():
+
+
+mesfin_txt = entry_mesfin_sd.get().strip()
+if mesfin_txt:
+    if not mesfin_txt.isdigit():
+        messagebox.showwarning("Invalid Value", "Month-end days must be a whole number (e.g., 2).", parent=v)
+        return
+    dias_str = "MESFIN:" + mesfin_txt
+else:
+    dias_str = "-".join(dias_marcados)
+
+
+
