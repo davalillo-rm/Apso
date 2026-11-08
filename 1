@@ -1,3 +1,48 @@
+ventanas.append((corte, ini, fin_h, fin))
+
+
+
+    activa = None
+    proxima = None
+    for corte, ini, fin, fin_cal in ventanas_fechas(hoy, cortes, plazo, en_habiles, aviso, meses):
+        if corte <= hoy <= max(fin, fin_cal):
+            activa = (corte, ini, fin)
+            break
+        if corte > hoy and proxima is None:
+            proxima = (corte, ini, fin)
+    if activa:
+        cfg["corte"] = activa[0]
+        cfg["desde"] = activa[1]
+        cfg["silencioso"] = not (activa[1] <= hoy <= activa[2] and es_habil(hoy))
+        if hoy != activa[2]:
+            cfg["destinatario_escalamiento"] = ""
+    else:
+        cfg["dias"] = []
+        cfg["desde"] = proxima[1] if proxima else None
+
+
+
+if dia_hoy_str not in config_sd["dias"]:
+    continue
+
+
+
+if config_sd.get("silencioso"):
+    continue
+
+
+if config_sd.get("silencioso"):
+    datos_proc_estado_especial = "esperando"
+elif ahora_hora < config_sd["hora_inicio"]:
+
+
+
+
+
+
+
+
+
 
 "asunto_ini": itm["asunto"].strip().lower(),
 
