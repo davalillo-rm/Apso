@@ -1,3 +1,64 @@
+FERIADOS = {"08/12/2026", "25/12/2026", "01/01/2027"}
+
+def dias_habiles_del_mes(anio, mes):
+    import calendar
+    ultimo = calendar.monthrange(anio, mes)[1]
+    dias = []
+    for d in range(1, ultimo + 1):
+        f = datetime.date(anio, mes, d)
+        if f.weekday() < 5 and f.strftime("%d/%m/%Y") not in FERIADOS:
+            dias.append(f)
+    return dias
+
+def rango_mesfin(fecha, n):
+    habiles = dias_habiles_del_mes(fecha.year, fecha.month)
+    if not habiles:
+        return None, None
+    return habiles[max(len(habiles) - 1 - n, 0)], habiles[-1]
+
+
+
+
+def parsear_specific_days(valor_tiempo):
+    texto = str(valor_tiempo or "")
+    partes = texto.split("|")
+    if not partes[0].startswith("MESFIN:"):
+        return _parsear_sd_base(texto)
+    try:
+        n = int(partes[0].split(":")[1])
+    except Exception:
+        n = 2
+    hoy = datetime.date.today()
+    ini, fin = rango_mesfin(hoy, n)
+    nombres = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
+    partes[0] = nombres[hoy.weekday()]
+    cfg = _parsear_sd_base("|".join(partes))
+    activo = ini is not None and ini <= hoy <= fin and hoy.strftime("%d/%m/%Y") not in FERIADOS
+    if not activo:
+        cfg["dias"] = []
+    if hoy != fin:
+        cfg["destinatario_escalamiento"] = ""
+    cfg["desde"] = ini
+    return cfg
+
+
+
+
+fecha_limite = config_sd.get("desde") or hoy
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     def _enviar_status_email(self):
         self.lbl_status.configure(text="Building status email...")
         threading.Thread(target=self._worker_status_email, daemon=True).start()
