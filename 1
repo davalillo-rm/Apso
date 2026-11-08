@@ -1,3 +1,30 @@
+# Procesos Specific Days que hoy no se evaluaron (semanal de otro dia, mensual fuera de rango)
+listados = {d["nombre"] for d in procesos}
+items_cfg = cargar_items_con_ignorados()
+for p in leer_procesos():
+    if p.get("frecuencia") != "Specific Days" or p["nombre"] in listados:
+        continue
+    vt_p = str(p.get("valor_tiempo") or "")
+    cfg_p = parsear_specific_days(vt_p)
+    if vt_p.startswith("MESFIN"):
+        frec_p = "Mensual"
+        d_p = cfg_p.get("desde")
+        desde_p = d_p.strftime("%d/%m/%Y") if d_p else ""
+    else:
+        frec_p = "Diario" if len(cfg_p["dias"]) >= 5 else "Semanal"
+        desde_p = ""
+    lista_p = items_cfg.get(p["nombre"], [])
+    nombres_p = [i["nombre"] for i in lista_p] or [""]
+    for n_item in nombres_p:
+        ws.append([p["nombre"], "PROGRAMADO", "0/" + str(len(lista_p)), n_item, "PENDIENTE", "PENDIENTE", frec_p, desde_p, cfg_p.get("destinatario", "")])
+
+
+
+
+
+
+
+
 cfg_sd = datos.get("config_sd") or {}
 dest_resp = cfg_sd.get("destinatario", "")
 desde_txt = ""
