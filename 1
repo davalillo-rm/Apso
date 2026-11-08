@@ -1,3 +1,16 @@
+
+"asunto_ini": itm["asunto"].strip().lower(),
+
+
+if es_remitente_correcto and all(p in asun_msg for p in pend["palabras_clave"]):
+
+
+if es_remitente_correcto and asun_msg.strip().startswith(pend["asunto_ini"]):
+
+
+
+
+
 if codigo.lower() not in {k.lower() for k in CHECKERS}:
     continue
 
