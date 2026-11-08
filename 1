@@ -1,3 +1,9 @@
+pyinstaller --noconfirm --onefile --windowed --name "Deadline Organizer" --collect-all customtkinter --hidden-import win32com.client --hidden-import pythoncom --hidden-import pywintypes "Deadline Organizer_V1.py"
+
+
+
+
+
 def asunto_coincide(asunto_correo, patron):
     patron = patron.strip().lower()
     asunto_correo = asunto_correo.strip().lower()
