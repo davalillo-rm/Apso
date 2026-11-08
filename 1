@@ -1,3 +1,8 @@
+pyinstaller --onefile --windowed --icon=logo.ico --add-data "logo_scotia.jpeg;." --add-data "headline.png;." --add-data "logo.ico;." --hidden-import win32timezone --name "Deadline Organizer" "Deadline Organizer.py"
+
+
+
+
 pyinstaller --onefile --windowed --name "Deadline Organizer" --collect-all customtkinter --hidden-import win32timezone --hidden-import tkcalendar --hidden-import babel.numbers "Deadline Organizer_V1.py"
 
 
