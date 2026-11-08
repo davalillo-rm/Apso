@@ -1,0 +1,54 @@
+entry_cortes_sd = None
+entry_plazo_sd = None
+entry_aviso_sd = None
+entry_meses_sd = None
+
+
+
+nonlocal entry_cortes_sd, entry_plazo_sd, entry_aviso_sd, entry_meses_sd
+
+
+
+
+# Fila 6: regla por fechas de corte (opcional)
+def _campo(texto, ph, ancho):
+    ctk.CTkLabel(frame_dinamico, text=texto, text_color=SCOTIA_SUBTEXT,
+                 font=("Trebuchet MS", 11)).pack(anchor="w", pady=(6, 0))
+    e = ctk.CTkEntry(frame_dinamico, width=ancho, placeholder_text=ph)
+    e.pack(anchor="w", pady=(2, 0))
+    return e
+
+entry_cortes_sd = _campo("Cut days rule (optional): days of the month", "7,15,22,FIN", 160)
+entry_plazo_sd = _campo("Deadline: days after the cut (5h = business days)", "2", 80)
+entry_aviso_sd = _campo("Start reminding N days before deadline (empty = from the cut)", "3", 80)
+entry_meses_sd = _campo("Only in these months (empty = every month)", "3,6,9,12", 160)
+
+
+
+if not dias_marcados and not entry_mesfin_sd.get().strip() and not entry_cortes_sd.get().strip():
+
+
+
+cortes_txt = entry_cortes_sd.get().strip().upper().replace(" ", "")
+mesfin_txt = entry_mesfin_sd.get().strip()
+if cortes_txt:
+    plazo_txt = entry_plazo_sd.get().strip().lower() or "2"
+    aviso_txt = entry_aviso_sd.get().strip()
+    meses_txt = entry_meses_sd.get().strip().replace(" ", "")
+    lista_cortes = cortes_txt.split(",")
+    lista_meses = meses_txt.split(",") if meses_txt else []
+    ok = all(c == "FIN" or (c.isdigit() and 1 <= int(c) <= 31) for c in lista_cortes)
+    ok = ok and plazo_txt.rstrip("h").isdigit()
+    ok = ok and (aviso_txt == "" or aviso_txt.isdigit())
+    ok = ok and all(m.isdigit() and 1 <= int(m) <= 12 for m in lista_meses)
+    if not ok:
+        messagebox.showwarning("Invalid Value", "Check cut days (e.g. 7,15,22,FIN), deadline (2 or 5h), reminder start and months.", parent=v)
+        return
+    dias_str = "FECHAS:" + "-".join(lista_cortes) + "/" + plazo_txt + "/" + aviso_txt + "/" + "-".join(lista_meses)
+elif mesfin_txt:
+    if not mesfin_txt.isdigit():
+        messagebox.showwarning("Invalid Value", "Month-end days must be a whole number (e.g., 2).", parent=v)
+        return
+    dias_str = "MESFIN:" + mesfin_txt
+else:
+    dias_str = "-".join(dias_marcados)
