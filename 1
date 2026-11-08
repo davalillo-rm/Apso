@@ -1,3 +1,17 @@
+cfg_sd = datos.get("config_sd") or {}
+dest_resp = cfg_sd.get("destinatario", "")
+desde_txt = ""
+vt_sd = str(datos.get("valor_tiempo") or mapa_vt.get(datos["nombre"], ""))
+if vt_sd.startswith("MESFIN"):
+    frec = "Mensual"
+    d_ini = cfg_sd.get("desde")
+    desde_txt = d_ini.strftime("%d/%m/%Y") if d_ini else ""
+
+
+
+
+
+
 entry_mesfin_sd = None
 
 nonlocal entry_mesfin_sd
