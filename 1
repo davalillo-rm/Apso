@@ -1,4 +1,14 @@
-
+if completo:
+    if estado.get("visto_incompleto") and not estado["confirmado_hoy"]:
+        self._enviar_correo_specific_days(
+            "Ramon.davalillo@scotiabank.com.pe", nombre_proc, tipo="confirmacion"
+        )
+        estado["confirmado_hoy"] = True
+        estado["fecha_confirmado"] = hoy
+        estado["ultimo_recordatorio"] = None
+    estado["visto_incompleto"] = False
+    continue
+estado["visto_incompleto"] = True
 
 
 
