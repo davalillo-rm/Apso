@@ -1,3 +1,115 @@
+
+
+
+
+
+
+
+
+def asunto_coincide(asunto_correo, patron):
+    patron = patron.strip().lower()
+    asunto_correo = asunto_correo.strip().lower()
+    if patron.startswith("*"):
+        return patron[1:].strip() in asunto_correo
+    return asunto_correo.startswith(patron)
+
+
+if es_remitente_correcto and asunto_coincide(asun_msg, pend["asunto_ini"]):
+
+
+
+elif ahora_hora < config_sd["hora_inicio"]:
+    config_sd["silencioso"] = True
+    datos_proc_estado_especial = "esperando"
+
+
+
+    def _correo_checker(self):
+        try:
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            usuario = outlook.Session.CurrentUser.AddressEntry.GetExchangeUser()
+            return usuario.PrimarySmtpAddress
+        except Exception:
+            return "Ramon.davalillo@scotiabank.com.pe"
+
+
+
+config_sd = datos.get("config_sd")
+if not config_sd or not config_sd.get("destinatario"):
+    continue
+
+
+
+if config_sd.get("silencioso"):
+    continue
+
+
+
+
+if completo:
+    if estado.get("visto_incompleto") and not estado["confirmado_hoy"]:
+        self._enviar_correo_specific_days(
+            self._correo_checker(), nombre_proc, tipo="confirmacion"
+        )
+        estado["confirmado_hoy"] = True
+        estado["fecha_confirmado"] = hoy
+        estado["ultimo_recordatorio"] = None
+    estado["visto_incompleto"] = False
+    continue
+estado["visto_incompleto"] = True
+
+
+
+
+
+
+fecha_min = hoy
+for datos_c, _ in resultados:
+    cfg_c = datos_c.get("config_sd") or {}
+    f_c = cfg_c.get("corte") or cfg_c.get("desde") or hoy
+    if f_c < fecha_min:
+        fecha_min = f_c
+
+
+max_correos = min(800, mensajes.Count)
+
+
+
+if msg.ReceivedTime.date() < fecha_min: break
+
+
+cfg_p = datos.get("config_sd") or {}
+corte_p = cfg_p.get("corte") or cfg_p.get("desde") or hoy
+if msg.ReceivedTime.date() < corte_p:
+    continue
+
+
+if es_remitente_correcto and asunto_coincide(asun_msg, itm["asunto"]):
+
+
+
+
+if codigo.lower() != USUARIO_TABLA.lower():
+    continue
+
+
+if completo:
+    if estado.get("visto_incompleto") and not estado["confirmado_hoy"]:
+        self._enviar_correo_specific_days(
+            "Ramon.davalillo@scotiabank.com.pe", nombre_proc, tipo="confirmacion"
+        )
+        estado["confirmado_hoy"] = True
+        estado["fecha_confirmado"] = hoy
+        estado["ultimo_recordatorio"] = None
+    estado["visto_incompleto"] = False
+    continue
+estado["visto_incompleto"] = True
+
+
+
+
+
+
                     elif ahora_hora < config_sd["hora_inicio"]:
                         config_sd["silencioso"] = True
                         datos_proc_estado_especial = "esperando"
