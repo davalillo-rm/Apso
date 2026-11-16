@@ -1,0 +1,112 @@
+import numpy as np, pandas as pd
+from datetime import date, datetime, timedelta
+
+rng = np.random.default_rng(42)
+ini, fin = date(2026, 9, 1), date(2026, 11, 13)
+feriados = {date(2026, 10, 8)}
+
+def hab(d):
+    return d.weekday() < 5 and d not in feriados
+
+def sig_hab(d):
+    while not hab(d):
+        d += timedelta(1)
+    return d
+
+dias_h = [ini + timedelta(i) for i in range((fin - ini).days + 1)]
+dias_h = [d for d in dias_h if hab(d)]
+
+# proceso, area, frecuencia, tipo, hora deadline, maker, checker, inicio
+P = [
+    ("Reporte 6C", "Trading", "Diario", "Regulatorio", "11:00", "Rafaela", "J. Rodríguez", ini),
+    ("Reporte 6", "Trading", "Diario", "Regulatorio", "11:00", "Rafaela", "J. Rodríguez", ini),
+    ("Reporte 8", "Trading", "Diario", "Regulatorio", "11:00", "Rafaela", "J. Rodríguez", ini),
+    ("Envios a BCRP", "Trading", "Diario", "Regulatorio", "11:00", "Rafaela", "R. Quispe", ini),
+    ("Anexo 15B", "Trading", "Diario", "Regulatorio", "15:00", "Joaquín", "R. Quispe", ini),
+    ("Reporte 5", "Trading", "Diario", "Interno", "18:30", "Rafaela", "R. Davalillo", ini),
+    ("Anexo 8 A", "Trading", "Semanal", "Regulatorio", "18:00", "Rafaela", "J. Rodríguez", ini),
+    ("Anexo 1C", "Trading", "Semanal", "Regulatorio", "18:00", "Renato", "R. Quispe", ini),
+    ("Anexo 8 B", "Trading", "Mensual", "Regulatorio", "19:00", "Joaquín", "J. Rodríguez", ini),
+    ("Anexo 1", "Trading", "Mensual", "Regulatorio", "18:00", "Renato", "R. Quispe", ini),
+    ("Anexo 9", "Trading", "Mensual", "Regulatorio", "18:00", "Joaquín", "R. Quispe", ini),
+    ("Reporte 2B1", "Trading", "Mensual", "Interno", "18:00", "Renato", "R. Quispe", ini),
+    ("ALM - Brechas de liquidez", "ALM", "Diario", "Regulatorio", "10:00", "Maker ALM 1", "R. Davalillo", date(2026, 10, 19)),
+    ("ALM - Sensibilidad tasas", "ALM", "Semanal", "Interno", "17:00", "Maker ALM 2", "R. Davalillo", date(2026, 10, 19)),
+    ("ALM - Reporte mensual IRRBB", "ALM", "Mensual", "Regulatorio", "18:00", "Maker ALM 1", "R. Davalillo", date(2026, 10, 19)),
+]
+proc = pd.DataFrame(P, columns=["Proceso", "Area", "Frecuencia", "Tipo", "HoraDeadline",
+                                "Maker", "Checker", "FechaInicioMonitoreo"])
+
+def fechas(frec, nombre):
+    if frec == "Diario":
+        return dias_h
+    out = []
+    if frec == "Semanal":
+        for m in (8, 9, 10, 11):
+            fm = date(2026, m + 1, 1) - timedelta(1)
+            for c in (date(2026, m, 7), date(2026, m, 15), date(2026, m, 22), fm):
+                out.append(sig_hab(c + timedelta(2)))
+    elif nombre == "Reporte 2B1":
+        for m in (9, 10, 11):
+            d, n = date(2026, m, 1), 0
+            while True:
+                if hab(d):
+                    n += 1
+                if n == 5:
+                    break
+                d += timedelta(1)
+            out.append(d)
+    else:
+        for m in (8, 9, 10):
+            fm = date(2026, m + 1, 1) - timedelta(1)
+            out.append(sig_hab(fm + timedelta(15)))
+    return out
+
+media = {"Diario": 70, "Semanal": 300, "Mensual": 900}
+rows = []
+for nombre, area, frec, tipo, h, maker, chk, start in P:
+    hora = datetime.strptime(h, "%H:%M").time()
+    for d in sorted(set(fechas(frec, nombre))):
+        if d < ini or d > fin or d < start:
+            continue
+        dl = datetime.combine(d, hora)
+        r = rng.random()
+        pt = 0.90 if area == "Trading" else 0.84
+        est = "A tiempo" if r < pt else ("Tarde" if r < pt + 0.07 else "No enviado")
+        recv, esc = None, 0
+        if est == "A tiempo":
+            lead = min(rng.exponential(media[frec]) + 5, media[frec] * 4)
+            recv = dl - timedelta(minutes=float(lead))
+            rec = int(rng.choice([0, 1, 2], p=[.78, .17, .05]))
+        elif est == "Tarde":
+            late = int(rng.integers(3, 70 if frec == "Diario" else 240))
+            recv = dl + timedelta(minutes=late)
+            rec = int(rng.choice([1, 2, 3], p=[.35, .4, .25]))
+            esc = int(rng.random() < .3)
+        else:
+            rec, esc = int(rng.choice([2, 3, 4])), 1
+        obs = int(est != "No enviado" and rng.random() < .07)
+        hol = None if recv is None else round((dl - recv).total_seconds() / 60)
+        rows.append([d, nombre, area, frec, tipo, chk, dl, recv, hol, rec, esc, obs, est, int(est == "A tiempo")])
+
+cum = pd.DataFrame(rows, columns=["Fecha", "Proceso", "Area", "Frecuencia", "Tipo", "Checker",
+                                  "Deadline", "HoraRecibido", "HolguraMin", "Recordatorios",
+                                  "Escalado", "Observado", "Estado", "DentroDeadline"])
+cum = cum.sort_values(["Fecha", "Deadline"]).reset_index(drop=True)
+
+uso_cfg = {"J. Rodríguez": (.93, 545), "R. Quispe": (.88, 565), "R. Davalillo": (.97, 530)}
+u = []
+for chk, (prob, mu) in uso_cfg.items():
+    for d in dias_h:
+        if rng.random() < prob:
+            m = int(np.clip(rng.normal(mu, 25), 500, 660))
+            u.append([d, chk, datetime(d.year, d.month, d.day, m // 60, m % 60), int(rng.integers(1, 6))])
+uso = pd.DataFrame(u, columns=["Fecha", "Checker", "HoraPrimeraApertura", "NumAperturas"])
+
+with pd.ExcelWriter("Datos_Simulados_Dashboard.xlsx", engine="openpyxl",
+                    datetime_format="dd/mm/yyyy hh:mm", date_format="dd/mm/yyyy") as w:
+    cum.to_excel(w, sheet_name="Cumplimiento", index=False)
+    uso.to_excel(w, sheet_name="UsoApp", index=False)
+    proc.to_excel(w, sheet_name="Procesos", index=False)
+
+print(cum.shape, uso.shape, cum["Estado"].value_counts(normalize=True).round(3))
