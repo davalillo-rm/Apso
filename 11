@@ -1,4 +1,6 @@
 
+Holgura Prom Min = AVERAGE(Cumplimiento[HolguraMin])
+
 
 
 Dias de Uso = COUNTROWS(UsoApp)
