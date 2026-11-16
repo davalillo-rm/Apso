@@ -1,3 +1,35 @@
+
+
+
+Dias de Uso = COUNTROWS(UsoApp)
+% Dias con App = DIVIDE(COUNTROWS(UsoApp), DISTINCTCOUNT(UsoApp[Fecha]) * DISTINCTCOUNT(UsoApp[Checker]))
+Hora Prom Apertura = FORMAT(AVERAGE(UsoApp[MinApertura]) / 1440, "hh:mm")
+
+
+
+
+
+Total Reportes = COUNTROWS(Cumplimiento)
+Reportes A Tiempo = CALCULATE(COUNTROWS(Cumplimiento), Cumplimiento[Estado] = "A tiempo")
+% A Tiempo = DIVIDE([Reportes A Tiempo], [Total Reportes])
+Enviados Tarde = CALCULATE(COUNTROWS(Cumplimiento), Cumplimiento[Estado] = "Tarde")
+Incumplidos = CALCULATE(COUNTROWS(Cumplimiento), Cumplimiento[Estado] = "No enviado")
+Holgura Prom (min) = AVERAGE(Cumplimiento[HolguraMin])
+% Sin Correccion =
+DIVIDE(
+    CALCULATE(COUNTROWS(Cumplimiento), Cumplimiento[Observado] = 0, Cumplimiento[Estado] <> "No enviado"),
+    CALCULATE(COUNTROWS(Cumplimiento), Cumplimiento[Estado] <> "No enviado"))
+Recordatorios = SUM(Cumplimiento[Recordatorios])
+Escalamientos = SUM(Cumplimiento[Escalado])
+Meta % = 0.95
+
+
+
+
+
+
+
+
 import numpy as np, pandas as pd
 from datetime import date, datetime, timedelta
 
