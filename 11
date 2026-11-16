@@ -1,3 +1,12 @@
+Incumplidos = CALCULATE(COUNTROWS(Cumplimiento), Cumplimiento[Estado] = "No enviado")
+Escalamientos = SUM(Cumplimiento[Escalado])
+Meta = 0.95
+Dias de Uso = COUNTROWS(UsoApp)
+Pct Dias con App = DIVIDE(COUNTROWS(UsoApp), DISTINCTCOUNT(UsoApp[Fecha]) * DISTINCTCOUNT(UsoApp[Checker]))
+Pct Sin Correccion = DIVIDE(CALCULATE(COUNTROWS(Cumplimiento), Cumplimiento[Observado] = 0, Cumplimiento[Estado] <> "No enviado"), CALCULATE(COUNTROWS(Cumplimiento), Cumplimiento[Estado] <> "No enviado"))
+
+
+
 
 Holgura Prom Min = AVERAGE(Cumplimiento[HolguraMin])
 
