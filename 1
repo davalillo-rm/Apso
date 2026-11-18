@@ -1,3 +1,29 @@
+def choose(select, value, page):
+    def safe_content():
+        try:
+            return page.content()
+        except PlaywrightError:
+            return None  # la página está navegando
+
+    old_html = safe_content()
+    select.select_option(value=value)
+    page.wait_for_timeout(3_000)
+    try:
+        page.wait_for_load_state("networkidle", timeout=15_000)
+    except PlaywrightTimeoutError:
+        pass
+    for _ in range(10):
+        new_html = safe_content()
+        if new_html is not None and new_html != old_html:
+            return
+        page.wait_for_timeout(1_000)
+
+
+
+
+
+
+
 SELECT
     VND10MDA,
     VND10CTA,
