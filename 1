@@ -1,3 +1,22 @@
+
+
+SELECT TOP 50
+    a.VND10CTA,
+    a.VND10MDA,  b.MONEDA_BT,
+    a.VND10OPER, b.OPERACION,
+    a.VND10MOD,  b.MODULO,
+    a.VND10TOPE, b.TIPO_OPERACION,
+    a.VND10RUB,  b.RUBRO,
+    a.VND10NAT,  b.TIPO_PERSONA,
+    a.VND10TASA, b.TASA_ACREEDORA
+FROM Sbp_rghistorica.dbo.blprnjbt_lvnd10_20251231_PROCESADO a
+INNER JOIN dbo.NMD_BNS b
+    ON a.VND10CTA = b.CUENTA_BT
+
+
+
+
+
 https://youtu.be/Y6X2vMvHpHo?si=DfReN3enshlTbGMV
 
 
