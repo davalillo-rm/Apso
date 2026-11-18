@@ -1,5 +1,142 @@
 Option Explicit
 
+Private Const CELDA_FECHA As String = "O16"
+Private Const HOJA_SALIDA As String = "MA_DART"
+Private Const TABLA As String = "RMERCADO.MA_DART"
+
+Private Const adVarChar As Long = 200
+Private Const adParamInput As Long = 1
+Private Const adCmdText As Long = 1
+
+Public Sub Descargar_MA_DART()
+
+    Dim wsFecha As Worksheet, wsOut As Worksheet
+    Dim fSQL As String, ok As Boolean
+    Dim cn As Object, cmd As Object, rs As Object
+    Dim k As Long, nFilas As Long
+
+    Set wsFecha = ActiveSheet
+    If wsFecha.Name = HOJA_SALIDA Then
+        MsgBox "Ejecuta la macro desde la hoja que tiene la fecha en " & CELDA_FECHA, vbExclamation
+        Exit Sub
+    End If
+
+    fSQL = FechaSQL(wsFecha.Range(CELDA_FECHA).Value2, ok)
+    If Not ok Then
+        MsgBox "La celda " & CELDA_FECHA & " no tiene una fecha valida.", vbCritical
+        Exit Sub
+    End If
+
+    Application.ScreenUpdating = False
+    On Error GoTo ErrSQL
+
+    Set cn = CreateObject("ADODB.Connection")
+    cn.Provider = "sqloledb"
+    cn.Open "Server=PEPGVIPR1DS9672.PER.BNS\SQL1,275;" & _
+            "Database=SBP_RGTRABAJO;" & _
+            "Trusted_Connection=yes"
+
+    Set cmd = CreateObject("ADODB.Command")
+    With cmd
+        .ActiveConnection = cn
+        .CommandType = adCmdText
+        .CommandText = "SELECT * FROM " & TABLA & " WHERE [Date] = ?"
+        .Parameters.Append .CreateParameter("p1", adVarChar, adParamInput, 10, fSQL)
+    End With
+    Set rs = cmd.Execute
+
+    If rs.EOF Then
+        rs.Close
+        cn.Close
+        Application.ScreenUpdating = True
+        MsgBox "No hay datos en " & TABLA & " para la fecha " & fSQL, vbExclamation
+        Exit Sub
+    End If
+
+    'Hoja de salida (se crea o se limpia)
+    On Error Resume Next
+    Set wsOut = ThisWorkbook.Worksheets(HOJA_SALIDA)
+    On Error GoTo ErrSQL
+    If wsOut Is Nothing Then
+        Set wsOut = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsOut.Name = HOJA_SALIDA
+    Else
+        wsOut.Cells.Clear
+    End If
+
+    'Encabezados y formato de fechas
+    For k = 0 To rs.Fields.Count - 1
+        wsOut.Cells(1, k + 1).Value = rs.Fields(k).Name
+        Select Case rs.Fields(k).Type
+            Case 7, 133, 135    'adDate, adDBDate, adDBTimeStamp
+                wsOut.Columns(k + 1).NumberFormat = "yyyy-mm-dd"
+        End Select
+    Next k
+    wsOut.Range("A1").Resize(1, rs.Fields.Count).Font.Bold = True
+
+    'Datos
+    wsOut.Range("A2").CopyFromRecordset rs
+    nFilas = wsOut.Cells(wsOut.Rows.Count, 1).End(xlUp).Row - 1
+
+    rs.Close
+    cn.Close
+
+    wsOut.Columns.AutoFit
+    wsFecha.Activate
+    Application.ScreenUpdating = True
+    MsgBox nFilas & " filas descargadas de " & TABLA & " para " & fSQL, vbInformation
+    Exit Sub
+
+ErrSQL:
+    Dim desc As String
+    desc = Err.Description
+    On Error Resume Next
+    If Not rs Is Nothing Then rs.Close
+    If Not cn Is Nothing Then cn.Close
+    Application.ScreenUpdating = True
+    MsgBox "Fallo la descarga:" & vbCrLf & vbCrLf & desc, vbCritical
+
+End Sub
+
+'Devuelve la fecha como yyyy-mm-dd (acepta fecha real de Excel o texto dd/mm/yyyy)
+Private Function FechaSQL(ByVal v As Variant, ByRef ok As Boolean) As String
+    Dim p() As String
+    Dim txt As String
+
+    On Error GoTo Malo
+    ok = True
+
+    If VarType(v) = vbDouble Or VarType(v) = vbDate Then
+        FechaSQL = Format(CDate(v), "yyyy-mm-dd")
+        Exit Function
+    End If
+
+    txt = Trim(CStr(v))
+    p = Split(txt, "/")
+    If UBound(p) = 2 Then
+        FechaSQL = Format(DateSerial(CLng(p(2)), CLng(p(1)), CLng(p(0))), "yyyy-mm-dd")
+    ElseIf IsDate(txt) Then
+        FechaSQL = Format(CDate(txt), "yyyy-mm-dd")
+    Else
+        GoTo Malo
+    End If
+    Exit Function
+
+Malo:
+    ok = False
+    FechaSQL = ""
+End Function
+
+
+
+
+
+
+
+
+
+Option Explicit
+
 '==============================================================
 ' Sube la hoja de indicadores a SBP_RGTRABAJO.RMERCADO.MA_INDICADORES
 ' 1) Lee la hoja (columnas C a J, encabezado FECHA en la columna C)
