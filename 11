@@ -1,3 +1,208 @@
+Option Explicit
+
+'==============================================================
+' Sube la hoja de indicadores a SBP_RGTRABAJO.RMERCADO.MA_INDICADORES
+' 1) Lee la hoja (columnas C a J, encabezado FECHA en la columna C)
+' 2) Valida todo ANTES de tocar SQL
+' 3) En una sola transaccion hace DELETE + INSERT
+'    Si algo falla se hace ROLLBACK y la tabla queda como estaba
+'==============================================================
+
+Private Const NOMBRE_HOJA As String = "Hoja1"
+Private Const TABLA As String = "RMERCADO.MA_INDICADORES"
+Private Const COL_INICIO As Long = 3            'Columna C = FECHA
+Private Const BORRAR_TODO As Boolean = True     'True = vacia la tabla / False = borra solo las fechas que estan en la hoja
+Private Const PEDIR_CONFIRMACION As Boolean = True
+
+'Constantes de ADO (late binding)
+Private Const adVarChar As Long = 200
+Private Const adDouble As Long = 5
+Private Const adParamInput As Long = 1
+Private Const adCmdText As Long = 1
+
+Public Sub Cargar_Indicadores()
+
+    Dim ws As Worksheet
+    Dim celdaEnc As Range
+    Dim filaEnc As Long, ultFila As Long, i As Long, k As Long
+    Dim n As Long
+    Dim dat() As Variant
+    Dim fechas As Object
+    Dim f As String, ok As Boolean, v As Variant
+    Dim errores As String
+    Dim cn As Object, cmd As Object
+    Dim enTrans As Boolean
+    Dim fecha As Variant
+    Dim msg As String
+
+    '---------- 1. Leer y validar la hoja ----------
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(NOMBRE_HOJA)
+    On Error GoTo 0
+    If ws Is Nothing Then
+        MsgBox "No existe la hoja " & NOMBRE_HOJA, vbCritical
+        Exit Sub
+    End If
+
+    Set celdaEnc = ws.Columns(COL_INICIO).Find(What:="FECHA", LookIn:=xlValues, LookAt:=xlWhole)
+    If celdaEnc Is Nothing Then
+        MsgBox "No encontre el encabezado FECHA en la columna " & COL_INICIO, vbCritical
+        Exit Sub
+    End If
+    filaEnc = celdaEnc.Row
+    ultFila = ws.Cells(ws.Rows.Count, COL_INICIO).End(xlUp).Row
+
+    If ultFila <= filaEnc Then
+        MsgBox "No hay datos debajo del encabezado.", vbExclamation
+        Exit Sub
+    End If
+
+    ReDim dat(1 To ultFila - filaEnc, 1 To 8)
+    Set fechas = CreateObject("Scripting.Dictionary")
+
+    For i = filaEnc + 1 To ultFila
+        If Len(Trim(CStr(ws.Cells(i, COL_INICIO).Value2))) > 0 Then
+            n = n + 1
+
+            f = FechaSQL(ws.Cells(i, COL_INICIO).Value2, ok)
+            If Not ok Then errores = errores & "Fila " & i & ": fecha invalida" & vbCrLf
+            dat(n, 1) = f
+            fechas(f) = 1
+
+            For k = 2 To 7
+                dat(n, k) = Trim(CStr(ws.Cells(i, COL_INICIO + k - 1).Value2))
+            Next k
+
+            v = ws.Cells(i, COL_INICIO + 7).Value2
+            If IsEmpty(v) Or Not IsNumeric(v) Then
+                errores = errores & "Fila " & i & ": VALOR no numerico" & vbCrLf
+            Else
+                dat(n, 8) = CDbl(v)
+            End If
+        End If
+    Next i
+
+    If n = 0 Then
+        MsgBox "No hay filas para cargar.", vbExclamation
+        Exit Sub
+    End If
+
+    If Len(errores) > 0 Then
+        MsgBox "No se cargo nada. Corrige esto primero:" & vbCrLf & vbCrLf & Left(errores, 800), vbCritical
+        Exit Sub
+    End If
+
+    '---------- 2. Confirmacion ----------
+    If PEDIR_CONFIRMACION Then
+        msg = n & " filas listas para cargar en " & TABLA & vbCrLf & _
+              "Fechas: "
+        For Each fecha In fechas.Keys
+            msg = msg & fecha & "  "
+        Next fecha
+        msg = msg & vbCrLf & vbCrLf
+        If BORRAR_TODO Then
+            msg = msg & "Se BORRARA toda la tabla y se cargara esta informacion."
+        Else
+            msg = msg & "Se borraran solo esas fechas y se volveran a cargar."
+        End If
+        If MsgBox(msg & vbCrLf & "Continuar?", vbYesNo + vbQuestion) <> vbYes Then Exit Sub
+    End If
+
+    '---------- 3. DELETE + INSERT en una transaccion ----------
+    Application.ScreenUpdating = False
+    On Error GoTo ErrSQL
+
+    Set cn = CreateObject("ADODB.Connection")
+    cn.Provider = "sqloledb"
+    cn.Open "Server=PEPGVIPR1DS9672.PER.BNS\SQL1,275;" & _
+            "Database=SBP_RGTRABAJO;" & _
+            "Trusted_Connection=yes"
+
+    cn.BeginTrans
+    enTrans = True
+
+    If BORRAR_TODO Then
+        cn.Execute "DELETE FROM " & TABLA
+    Else
+        For Each fecha In fechas.Keys
+            cn.Execute "DELETE FROM " & TABLA & " WHERE FECHA = '" & fecha & "'"
+        Next fecha
+    End If
+
+    Set cmd = CreateObject("ADODB.Command")
+    With cmd
+        .ActiveConnection = cn
+        .CommandType = adCmdText
+        .CommandText = "INSERT INTO " & TABLA & " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        For k = 1 To 7
+            .Parameters.Append .CreateParameter("p" & k, adVarChar, adParamInput, 200)
+        Next k
+        .Parameters.Append .CreateParameter("p8", adDouble, adParamInput)
+    End With
+
+    For i = 1 To n
+        For k = 1 To 8
+            cmd.Parameters(k - 1).Value = dat(i, k)
+        Next k
+        cmd.Execute
+    Next i
+
+    cn.CommitTrans
+    enTrans = False
+    cn.Close
+
+    Application.ScreenUpdating = True
+    MsgBox "Listo: " & n & " filas cargadas en " & TABLA, vbInformation
+    Exit Sub
+
+ErrSQL:
+    Dim desc As String
+    desc = Err.Description
+    On Error Resume Next
+    If enTrans Then cn.RollbackTrans
+    If Not cn Is Nothing Then cn.Close
+    Application.ScreenUpdating = True
+    MsgBox "Fallo la carga y se hizo ROLLBACK (la tabla no cambio)." & vbCrLf & vbCrLf & desc, vbCritical
+
+End Sub
+
+'Devuelve la fecha como yyyy-mm-dd (acepta fecha real de Excel o texto dd/mm/yyyy)
+Private Function FechaSQL(ByVal v As Variant, ByRef ok As Boolean) As String
+    Dim p() As String
+    Dim txt As String
+
+    On Error GoTo Malo
+    ok = True
+
+    If VarType(v) = vbDouble Or VarType(v) = vbDate Then
+        FechaSQL = Format(CDate(v), "yyyy-mm-dd")
+        Exit Function
+    End If
+
+    txt = Trim(CStr(v))
+    p = Split(txt, "/")
+    If UBound(p) = 2 Then
+        FechaSQL = Format(DateSerial(CLng(p(2)), CLng(p(1)), CLng(p(0))), "yyyy-mm-dd")
+    ElseIf IsDate(txt) Then
+        FechaSQL = Format(CDate(txt), "yyyy-mm-dd")
+    Else
+        GoTo Malo
+    End If
+    Exit Function
+
+Malo:
+    ok = False
+    FechaSQL = ""
+End Function
+
+
+
+
+
+
+
+
+
 Incumplidos = CALCULATE(COUNTROWS(Cumplimiento), Cumplimiento[Estado] = "No enviado")
 Escalamientos = SUM(Cumplimiento[Escalado])
 Meta = 0.95
