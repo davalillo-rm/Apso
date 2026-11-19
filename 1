@@ -1,3 +1,63 @@
+
+Sub TraerLastWeekMonth()
+    Dim cn As Object, ws As Worksheet
+    Dim fRef As Date, dSem As Object, dMes As Object
+    Dim r As Long, k As String
+
+    Set ws = ThisWorkbook.Sheets("Face")
+    Set cn = CreateObject("ADODB.Connection")
+    cn.Open "Provider=SQLOLEDB;Data Source=TU_SERVIDOR;" & _
+            "Initial Catalog=SBP_RGTRABAJO;Integrated Security=SSPI;"
+
+    ' Fecha de referencia = última fecha cargada
+    Dim rs As Object
+    Set rs = cn.Execute("SELECT MAX(fecha) FROM dbo.RM_Historico_RentaFija_Diaria")
+    fRef = rs(0).Value
+    rs.Close
+
+    Set dSem = BidsPorFecha(cn, DateAdd("d", -7, fRef))
+    Set dMes = BidsPorFecha(cn, DateAdd("m", -1, fRef))
+
+    ' Filas 28 a 39 (SOB28 ... SOB55)
+    For r = 28 To 39
+        k = Mid(ws.Cells(r, 2).Value, 4, 2)   ' "SOB28" -> "28"
+        If dSem.Exists(k) Then ws.Cells(r, 5).Value = dSem(k) Else ws.Cells(r, 5).ClearContents
+        If dMes.Exists(k) Then ws.Cells(r, 6).Value = dMes(k) Else ws.Cells(r, 6).ClearContents
+    Next r
+
+    cn.Close
+    MsgBox "Listo. Semana: " & Format(DateAdd("d", -7, fRef), "dd/mm/yyyy") & _
+           " / Mes: " & Format(DateAdd("m", -1, fRef), "dd/mm/yyyy")
+End Sub
+
+Private Function BidsPorFecha(cn As Object, f As Date) As Object
+    Dim d As Object, rs As Object, sql As String
+    Set d = CreateObject("Scripting.Dictionary")
+
+    sql = "SELECT [Nemónico], BID FROM dbo.RM_Historico_RentaFija_Diaria " & _
+          "WHERE fecha = (SELECT MAX(fecha) FROM dbo.RM_Historico_RentaFija_Diaria " & _
+          "WHERE fecha <= '" & Format(f, "yyyymmdd") & "') " & _
+          "AND [Nemónico] LIKE 'SB12%'"
+
+    Set rs = cn.Execute(sql)
+    Do While Not rs.EOF
+        If Not IsNull(rs(1).Value) Then d(Right(rs(0).Value, 2)) = CDbl(rs(1).Value)
+        rs.MoveNext
+    Loop
+    rs.Close
+    Set BidsPorFecha = d
+End Function
+
+
+
+
+
+
+
+
+
+
+
 def choose(select, value, page):
     def safe_content():
         try:
