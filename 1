@@ -1,3 +1,22 @@
+import win32com.client as win32
+
+ruta = r"C:\ruta\Tasas_RF.xlsm"
+macro = "perugovt"
+
+excel = win32.DispatchEx("Excel.Application")
+excel.Visible = False
+excel.DisplayAlerts = False
+
+try:
+    wb = excel.Workbooks.Open(ruta)
+    excel.Run(f"'{wb.Name}'!{macro}")
+    wb.Close(SaveChanges=True)
+finally:
+    excel.Quit()
+
+
+
+
 
 Sub TraerLastWeekMonth()
     Dim cn As Object, ws As Worksheet
