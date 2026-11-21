@@ -1,4 +1,48 @@
 
+    balance_n = None
+    fecha_bal = None
+    if plazo_txt.upper().startswith("BAL"):
+        txt_bal = plazo_txt[3:]
+        n_txt = txt_bal
+        if "@" in txt_bal:
+            n_txt, f_txt = txt_bal.split("@", 1)
+            try:
+                fecha_bal = datetime.datetime.strptime(f_txt.strip(), "%d-%m-%Y").date()
+            except ValueError:
+                fecha_bal = None
+        balance_n = n_txt.strip() or "2"
+        plazo_txt = "0"
+        if fecha_bal is not None:
+            corte_ref = fecha_bal.replace(day=1) - datetime.timedelta(days=1)
+            plazo_txt = str((fecha_bal - corte_ref).days)
+
+
+
+
+    if fecha_bal is not None:
+        meses = [corte_ref.month]
+
+
+
+
+    if balance_n is not None and fecha_bal is None:
+        cfg["dias"] = []
+        cfg["desde"] = None
+        cfg["balance_txt"] = "Balance T+" + balance_n
+        cfg["frec_label"] = "Mensual"
+        return cfg
+
+
+
+
+
+
+
+
+
+
+
+
 intervalo_min = config_sd.get("intervalo_min", 15)
 fin_plazo = config_sd.get("plazo_fin")
 if fin_plazo is not None:
