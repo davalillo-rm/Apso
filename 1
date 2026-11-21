@@ -1,3 +1,30 @@
+
+intervalo_min = config_sd.get("intervalo_min", 15)
+fin_plazo = config_sd.get("plazo_fin")
+if fin_plazo is not None:
+    restantes = 0
+    d = hoy
+    while d < fin_plazo:
+        d += datetime.timedelta(days=1)
+        if es_habil(d):
+            restantes += 1
+    if restantes <= 1:
+        intervalo_min = 180
+    elif restantes == 2:
+        intervalo_min = 360
+intervalo = datetime.timedelta(minutes=intervalo_min)
+
+
+
+
+
+
+
+
+
+
+
+
 import win32com.client as win32
 
 ruta = r"C:\ruta\Tasas_RF.xlsm"
