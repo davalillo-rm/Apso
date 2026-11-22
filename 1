@@ -1,3 +1,11 @@
+        try:
+            n_ind = consolidar_indicadores()
+            print("Indicadores: " + str(n_ind) + " filas nuevas")
+        except Exception as err:
+            print("Indicadores: error " + str(err))
+
+
+
 
 
 RUTA_INDICADORES = r"\\fs2\riesgos de mercado\Carpetas personales\Ramon\Indicadores\registro_indicadores.xlsx"
