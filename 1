@@ -1,3 +1,16 @@
+            try:
+                f_ev = datetime.datetime.strptime(e["fecha"], "%d/%m/%Y").date()
+            except Exception:
+                continue
+            if f_ev < FECHA_INICIO_INDICADORES:
+                continue
+
+
+
+
+
+
+
         try:
             n_ind = consolidar_indicadores()
             print("Indicadores: " + str(n_ind) + " filas nuevas")
