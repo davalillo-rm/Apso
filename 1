@@ -1,4 +1,15 @@
 
+if es_observador():
+    print("Modo observador: correo no enviado a " + str(destinatario))
+    return
+
+
+if es_observador():
+    print("Modo observador: correo no enviado a " + str(destinatario))
+    return
+
+
+
 def es_observador():
     return os.path.exists("observador.txt")
 
