@@ -1,3 +1,34 @@
+def proxima_fecha_dias(dias):
+    nombres = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"]
+    hoy = datetime.date.today()
+    for i in range(0, 8):
+        d = hoy + datetime.timedelta(days=i)
+        if nombres[d.weekday()] in dias:
+            return d
+    return None
+
+
+
+elif frec == "Semanal" and datos.get("frecuencia") == "Specific Days":
+    f_prox = proxima_fecha_dias(dias_sd)
+    desde_txt = f_prox.strftime("%d/%m/%Y") if f_prox else ""
+
+
+
+
+f_prox_p = proxima_fecha_dias(cfg_p["dias"]) if frec_p == "Semanal" else None
+desde_p = f_prox_p.strftime("%d/%m/%Y") if f_prox_p else ""
+
+
+
+
+
+
+
+
+
+
+
 
 DESTINATARIOS_STATUS = [
     "correo1@scotiabank.com.pe",
