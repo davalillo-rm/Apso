@@ -1,3 +1,23 @@
+
+DESTINATARIOS_STATUS = [
+    "correo1@scotiabank.com.pe",
+    "correo2@scotiabank.com.pe",
+]
+CC_STATUS = [
+    "correo3@scotiabank.com.pe",
+]
+
+
+
+correo.To = "; ".join(DESTINATARIOS_STATUS)
+correo.CC = "; ".join(CC_STATUS)
+
+
+
+
+
+
+
 if os.path.exists("alm.txt"):
     RUTA_COMPARTIDA = r"\\fs2\riesgos de mercado\Carpetas personales\Ramon\Status_ALM"
     RUTA_REGLAS = r"\\fs2\riesgos de mercado\Carpetas personales\Ramon\Reglas_ALM"
