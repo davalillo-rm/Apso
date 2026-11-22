@@ -1,4 +1,17 @@
 
+fin_d = cfg_sd.get("plazo_fin")
+if fin_d:
+    dl_txt = fin_d.strftime("%d/%m/%Y")
+else:
+    dl_txt = cfg_sd.get("balance_txt", "")
+
+
+
+
+
+
+
+
     balance_n = None
     fecha_bal = None
     if plazo_txt.upper().startswith("BAL"):
