@@ -1,3 +1,56 @@
+def consolidar_estado(filas, hoy_str):
+    """Guarda en el Excel maestro una fila por proceso y dia con el status."""
+    hoy_d = datetime.datetime.strptime(hoy_str, "%d/%m/%Y").date()
+    if hoy_d < FECHA_INICIO_INDICADORES:
+        return
+    encabezado = ["Equipo", "Fecha", "Frecuencia", "Proceso", "Estado",
+                  "Hora envio", "Recordatorios", "Deadline Interno", "Responsable"]
+    if os.path.exists(RUTA_INDICADORES):
+        wb = openpyxl.load_workbook(RUTA_INDICADORES)
+    else:
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+    if "Estado_Diario" not in wb.sheetnames:
+        ws = wb.create_sheet("Estado_Diario")
+        ws.append(encabezado)
+    else:
+        ws = wb["Estado_Diario"]
+
+    existentes = {}
+    for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        r = list(r) + [None] * 9
+        existentes[(str(r[0]).strip(), str(r[1]).strip(), str(r[3]).strip())] = i
+
+    for f in filas:
+        valores = [EQUIPO, hoy_str, f["frecuencia"], f["reporte"], f["status"],
+                   f["hora"], f["recordatorios"], f["deadline"], f["responsable"]]
+        llave = (EQUIPO, hoy_str, f["reporte"])
+        if llave in existentes:
+            for col, v in enumerate(valores, start=1):
+                ws.cell(row=existentes[llave], column=col, value=v)
+        else:
+            ws.append(valores)
+
+    wb.save(RUTA_INDICADORES)
+
+
+
+        try:
+            consolidar_estado(filas, hoy_str)
+        except Exception as err:
+            print("Estado diario: error " + str(err))
+
+
+
+
+
+
+
+
+
+
+
+
             try:
                 f_ev = datetime.datetime.strptime(e["fecha"], "%d/%m/%Y").date()
             except Exception:
