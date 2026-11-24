@@ -1,3 +1,64 @@
+"""
+Abre el Explorador de Windows en una ruta y hace click en las coordenadas
+que le indiques.
+
+Instalar antes:  pip install pyautogui
+"""
+import os
+import time
+import pyautogui
+
+# Mover el mouse a la esquina superior izquierda detiene el script (seguridad)
+pyautogui.FAILSAFE = True
+
+RUTA = r"C:\Users\TU_USUARIO\Documents"   # <-- cambia esta ruta
+
+
+def mostrar_posicion_mouse(segundos=10):
+    """Ayuda para encontrar las coordenadas: muestra la posicion del mouse."""
+    print(f"Mueve el mouse al sitio donde quieres el click ({segundos} s)...")
+    fin = time.time() + segundos
+    while time.time() < fin:
+        x, y = pyautogui.position()
+        print(f"\rX={x}  Y={y}   ", end="", flush=True)
+        time.sleep(0.1)
+    print()
+
+
+def main():
+    # 1. Abrir el explorador en la ruta
+    os.startfile(RUTA)
+    time.sleep(2)  # esperar a que cargue la ventana
+
+    # 2. (Opcional) ver coordenadas en vivo
+    if input("Quieres ver la posicion del mouse primero? (s/n): ").lower() == "s":
+        mostrar_posicion_mouse()
+
+    # 3. Pedir coordenadas
+    x = int(input("Coordenada X: "))
+    y = int(input("Coordenada Y: "))
+
+    # 4. Mover y hacer click
+    pyautogui.moveTo(x, y, duration=0.5)
+    pyautogui.click()
+    print(f"Click realizado en ({x}, {y})")
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
 def consolidar_estado(filas, hoy_str):
     """Guarda en el Excel maestro una fila por proceso y dia con el status."""
     hoy_d = datetime.datetime.strptime(hoy_str, "%d/%m/%Y").date()
