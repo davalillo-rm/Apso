@@ -1,4 +1,106 @@
 
+Sub SubirCarteraVivaMA()
+
+    Dim ws As Worksheet
+    Dim cn As Object
+    Dim v As Variant
+    Dim FechaProceso As Date
+    Dim FechaInt As String
+    Dim FechaDate As String
+    Dim Sql As String
+    Dim FilasBorradas As Long
+    Dim FilasInsertadas As Long
+    Dim EnTransaccion As Boolean
+
+    On Error GoTo ErrHandler
+
+    Set ws = ActiveSheet
+
+    ' Lectura de la fecha en C2
+    v = ws.Range("C2").Value
+
+    If VarType(v) = vbDate Then
+        FechaProceso = v
+    ElseIf VarType(v) = vbString And Len(Trim(v)) = 10 Then
+        FechaProceso = DateSerial(CInt(Mid(v, 7, 4)), CInt(Mid(v, 4, 2)), CInt(Left(v, 2)))
+    Else
+        MsgBox "C2 no contiene una fecha válida", vbExclamation
+        Exit Sub
+    End If
+
+    FechaInt = Format(FechaProceso, "yyyymmdd")
+    FechaDate = Format(FechaProceso, "yyyy-mm-dd")
+
+    Set cn = CreateObject("ADODB.Connection")
+    cn.Provider = "sqloledb"
+    cn.Open "Server=PEPGVIPR1DS9672.PER.BNS\SQL1,275;" & _
+            "Database=SBP_RGTRABAJO;" & _
+            "Trusted_Connection=yes"
+
+    cn.BeginTrans
+    EnTransaccion = True
+
+    ' 1. Borra la fecha para evitar duplicados
+    cn.Execute "DELETE FROM RMERCADO.MA_CARTERA_VIVA " & _
+               "WHERE FECHA = " & FechaInt, FilasBorradas
+
+    ' 2. Inserta la cartera viva de la fecha
+    Sql = "INSERT INTO SBP_RGTRABAJO.RMERCADO.MA_CARTERA_VIVA (" & vbCrLf
+    Sql = Sql & "FECHA, TIPO_INSTRUMENTO, NUMERO_K, NUMERO_TL, MONEDA, MONTO, " & vbCrLf
+    Sql = Sql & "INTERESES_DEVENGADOS, INTERESES_TOTALES, CAPITAL_INTERESES, INTERESES_DIARIOS, " & vbCrLf
+    Sql = Sql & "SPREAD, FIXED_RATE, CLIENT_MARGIN, CLIENT_RATE, INDEXATION, DEAL_TYPE, " & vbCrLf
+    Sql = Sql & "CALC_METHOD, FRECUENCIA_PAGO, AMORTIZACION, BASIS, ROLL_CONVENTION, PURPOSE, " & vbCrLf
+    Sql = Sql & "FLOATING_RATE, FECHA_CONTRATACION, HORA, FECHA_VALOR, FECHA_VENCIMIENTO, " & vbCrLf
+    Sql = Sql & "PLAZO, DIAS_TRANSCURRIDOS, CODIGO_BT, CLIENTE, CARTERA, PORTAFOLIO, " & vbCrLf
+    Sql = Sql & "TRADER, BROKER, COMMENTS, INTEPROC, TASA_TRANSFERENCIA" & vbCrLf
+    Sql = Sql & ") " & vbCrLf
+    Sql = Sql & "SELECT " & vbCrLf
+    Sql = Sql & "CONVERT(INT, CONVERT(VARCHAR(8), [Fecha], 112)) AS FECHA, " & vbCrLf
+    Sql = Sql & "[Tipo Instrumento], [Numero K+], [Numero TL], [Moneda], [Monto], " & vbCrLf
+    Sql = Sql & "[Intereses Devengados], [Intereses Totales], [Capital + Intereses], [Intereses Diarios], " & vbCrLf
+    Sql = Sql & "[Spread], [Fixed Rate], [Client Margin], [Client Rate], [Indexation], [Deal Type], " & vbCrLf
+    Sql = Sql & "[Calc Method], [Frecuencia de pago], [Amortizacion], [Basis], [Roll Convention], [Purpose], " & vbCrLf
+    Sql = Sql & "[Floating Rate], [Fecha Contratacion], [Hora], [Fecha Valor], [Fecha de Vencimiento], " & vbCrLf
+    Sql = Sql & "[Plazo], [Dias Transcurridos], [Codigo BT], [Cliente], [Cartera], [Portafolio], " & vbCrLf
+    Sql = Sql & "[Trader], [Broker], [Comments], [INTEPROC], [Tasa Transferencia] " & vbCrLf
+    Sql = Sql & "FROM SBP_RGTRABAJO.DBO.RM_CARTERA_VIVA " & vbCrLf
+    Sql = Sql & "WHERE [Fecha] = '" & FechaDate & "'"
+
+    cn.Execute Sql, FilasInsertadas
+
+    cn.CommitTrans
+    EnTransaccion = False
+    cn.Close
+    Set cn = Nothing
+
+    MsgBox "Cartera Viva " & FechaInt & " cargada" & vbCrLf & _
+           "Filas borradas: " & FilasBorradas & vbCrLf & _
+           "Filas insertadas: " & FilasInsertadas, vbInformation
+    Exit Sub
+
+ErrHandler:
+    If EnTransaccion Then cn.RollbackTrans
+    If Not cn Is Nothing Then
+        If cn.State = 1 Then cn.Close
+    End If
+    MsgBox "Error: " & Err.Description, vbCritical
+
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Sub SubirBalanceASQL()
 
     Dim ws As Worksheet
