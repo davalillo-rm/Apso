@@ -1,3 +1,94 @@
+
+Sub SubirBalanceASQL()
+
+    Dim ws As Worksheet
+    Dim cn As Object
+    Dim FechaProceso As Date
+    Dim FechaInt As String
+    Dim Sql As String
+    Dim FilasBorradas As Long
+    Dim FilasInsertadas As Long
+    Dim EnTransaccion As Boolean
+
+    On Error GoTo ErrHandler
+
+    Set ws = ActiveSheet
+
+    If Not IsDate(ws.Range("C2").Value) Then
+        MsgBox "C2 no contiene una fecha válida", vbExclamation
+        Exit Sub
+    End If
+
+    FechaProceso = CDate(ws.Range("C2").Value)
+    FechaInt = Format(FechaProceso, "yyyymmdd")
+
+    Set cn = CreateObject("ADODB.Connection")
+    cn.Provider = "sqloledb"
+    cn.Open "Server=PEPGVIPR1DS9672.PER.BNS\SQL1,275;" & _
+            "Database=SBP_RGTRABAJO;" & _
+            "Trusted_Connection=yes"
+
+    cn.BeginTrans
+    EnTransaccion = True
+
+    ' 1. Borra la fecha para evitar duplicados
+    cn.Execute "DELETE FROM RMERCADO.MA_BALANCE " & _
+               "WHERE FECHA = " & FechaInt, FilasBorradas
+
+    ' 2. Inserta el balance de la fecha
+    Sql = "INSERT INTO SBP_RGTRABAJO.RMERCADO.MA_BALANCE (" & vbCrLf & _
+          "    FECHA, CUENTA_MONEDA, CUENTA, MONEDA, DESCRIPCION," & vbCrLf & _
+          "    SALDO_INICIAL, CARGO, ABONO, SALDO_FINAL," & vbCrLf & _
+          "    SALDO_PROMEDIO_MES, EMPRESA" & vbCrLf & _
+          ") " & vbCrLf & _
+          "SELECT " & vbCrLf & _
+          "    CONVERT(INT, CONVERT(VARCHAR(8), Fecha, 112)) AS FECHA," & vbCrLf & _
+          "    [Cuenta Moneda]       AS CUENTA_MONEDA," & vbCrLf & _
+          "    [Cuenta]              AS CUENTA," & vbCrLf & _
+          "    [Moneda]              AS MONEDA," & vbCrLf & _
+          "    [Descripción]         AS DESCRIPCION," & vbCrLf & _
+          "    [Saldo Inicial]       AS SALDO_INICIAL," & vbCrLf & _
+          "    [Cargo]               AS CARGO," & vbCrLf & _
+          "    [Abono]               AS ABONO," & vbCrLf & _
+          "    [Saldo Final]         AS SALDO_FINAL," & vbCrLf & _
+          "    [Saldo Promedio Mes]  AS SALDO_PROMEDIO_MES," & vbCrLf & _
+          "    [Empresa]             AS EMPRESA " & vbCrLf & _
+          "FROM SBP_RGTRABAJO.DBO.RM_BALANCE_HISTORICO " & vbCrLf & _
+          "WHERE CONVERT(VARCHAR(8), Fecha, 112) = '" & FechaInt & "'"
+
+    cn.Execute Sql, FilasInsertadas
+
+    cn.CommitTrans
+    EnTransaccion = False
+    cn.Close
+    Set cn = Nothing
+
+    MsgBox "Balance " & FechaInt & " cargado" & vbCrLf & _
+           "Filas borradas: " & FilasBorradas & vbCrLf & _
+           "Filas insertadas: " & FilasInsertadas, vbInformation
+    Exit Sub
+
+ErrHandler:
+    If EnTransaccion Then cn.RollbackTrans
+    If Not cn Is Nothing Then
+        If cn.State = 1 Then cn.Close
+    End If
+    MsgBox "Error: " & Err.Description, vbCritical
+
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
 """
 Abre el Explorador de Windows en una ruta y hace click en las coordenadas
 que le indiques.
