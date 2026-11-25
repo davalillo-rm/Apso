@@ -1,3 +1,101 @@
+Sub SubirRTKMA()
+
+    Dim ws As Worksheet
+    Dim cn As Object
+    Dim v As Variant
+    Dim FechaProceso As Date
+    Dim FechaInt As String
+    Dim FechaDate As String
+    Dim Sql As String
+    Dim FilasBorradas As Long
+    Dim FilasInsertadas As Long
+    Dim EnTransaccion As Boolean
+
+    On Error GoTo ErrHandler
+
+    Set ws = ActiveSheet
+
+    ' Lectura de la fecha en C2
+    v = ws.Range("C2").Value
+
+    If VarType(v) = vbDate Then
+        FechaProceso = v
+    ElseIf VarType(v) = vbString And Len(Trim(v)) = 10 Then
+        FechaProceso = DateSerial(CInt(Mid(v, 7, 4)), CInt(Mid(v, 4, 2)), CInt(Left(v, 2)))
+    Else
+        MsgBox "C2 no contiene una fecha válida", vbExclamation
+        Exit Sub
+    End If
+
+    FechaInt = Format(FechaProceso, "yyyymmdd")
+    FechaDate = Format(FechaProceso, "yyyy-mm-dd")
+
+    Set cn = CreateObject("ADODB.Connection")
+    cn.Provider = "sqloledb"
+    cn.Open "Server=PEPGVIPR1DS9672.PER.BNS\SQL1,275;" & _
+            "Database=SBP_RGTRABAJO;" & _
+            "Trusted_Connection=yes"
+
+    cn.BeginTrans
+    EnTransaccion = True
+
+    ' 1. Borra la fecha para evitar duplicados
+    cn.Execute "DELETE FROM RMERCADO.MA_RKT " & _
+               "WHERE FECHA = " & FechaInt, FilasBorradas
+
+    ' 2. Inserta el RTK de la fecha
+    Sql = "INSERT INTO SBP_RGTRABAJO.RMERCADO.MA_RKT (" & vbCrLf
+    Sql = Sql & "FECHA, PORTFOLIO, SHORTNAME, SECURITYNAME, ISINCODE, CURRENCY, " & vbCrLf
+    Sql = Sql & "INSTRUMENTTYPE, ISSUEDATE, MATDATE, OPENED, ADJFACTOR, PRICE, " & vbCrLf
+    Sql = Sql & "CLEANPRICE, QUANTITY, NOMINAL, ORIGNOMINAL, CPNRATE, ACCRINT, " & vbCrLf
+    Sql = Sql & "CPNCUMUL, COSTOFCARRY, DISCTMARGIN, YIELDMAT, MODDUR, DUR, " & vbCrLf
+    Sql = Sql & "CNVX, CNVXVALUE, BPV, BPV_K, MARKETVALUE, REALIZEDCUR, " & vbCrLf
+    Sql = Sql & "UNREALIZEDCUR, PLCURRENCY, PLCLEANPRICE, CURRENTCALL, CURRENTPUT, " & vbCrLf
+    Sql = Sql & "PL, PLREPORT, AVGPRICE, AVGYIELD, SPREAD, MTM, BONDSID" & vbCrLf
+    Sql = Sql & ") " & vbCrLf
+    Sql = Sql & "SELECT " & vbCrLf
+    Sql = Sql & "CONVERT(INT, CONVERT(VARCHAR(8), Fecha, 112)) AS FECHA, " & vbCrLf
+    Sql = Sql & "Portfolio, ShortName, SecurityName, ISINCode, Currency, " & vbCrLf
+    Sql = Sql & "InstrumentType, IssueDate, MatDate, Opened, AdjFactor, Price, " & vbCrLf
+    Sql = Sql & "CleanPrice, Quantity, Nominal, OrigNominal, CpnRate, AccrInt, " & vbCrLf
+    Sql = Sql & "CpnCumul, CostofCarry, DisctMargin, YieldMat, ModDur, Dur, " & vbCrLf
+    Sql = Sql & "Cnvx, CnvxValue, Bpv, Bpv_K, MarketValue, RealizedCur, " & vbCrLf
+    Sql = Sql & "UnrealizedCur, PLCurrency, PLCleanPrice, CurrentCall, CurrentPut, " & vbCrLf
+    Sql = Sql & "PL, PLReport, AvgPrice, AvgYield, Spread, MTM, BondsId " & vbCrLf
+    Sql = Sql & "FROM SBP_RGTRABAJO.DBO.RM_RKTHISTORICO " & vbCrLf
+    Sql = Sql & "WHERE Fecha = '" & FechaDate & "'"
+
+    cn.Execute Sql, FilasInsertadas
+
+    cn.CommitTrans
+    EnTransaccion = False
+    cn.Close
+    Set cn = Nothing
+
+    MsgBox "RTK " & FechaInt & " cargado" & vbCrLf & _
+           "Filas borradas: " & FilasBorradas & vbCrLf & _
+           "Filas insertadas: " & FilasInsertadas, vbInformation
+    Exit Sub
+
+ErrHandler:
+    If EnTransaccion Then cn.RollbackTrans
+    If Not cn Is Nothing Then
+        If cn.State = 1 Then cn.Close
+    End If
+    MsgBox "Error: " & Err.Description, vbCritical
+
+End Sub
+
+
+
+
+
+
+
+
+
+
+
 
 Sub SubirCarteraVivaMA()
 
