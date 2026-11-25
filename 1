@@ -1,3 +1,91 @@
+Sub SubirFondeoMayoristaMA()
+
+    Dim ws As Worksheet
+    Dim cn As Object
+    Dim v As Variant
+    Dim FechaProceso As Date
+    Dim FechaInt As String
+    Dim Cols As String
+    Dim Sql As String
+    Dim FilasBorradas As Long
+    Dim FilasInsertadas As Long
+    Dim EnTransaccion As Boolean
+
+    On Error GoTo ErrHandler
+
+    Set ws = ActiveSheet
+
+    ' Lectura de la fecha en C2
+    v = ws.Range("C2").Value
+
+    If VarType(v) = vbDate Then
+        FechaProceso = v
+    ElseIf VarType(v) = vbString And Len(Trim(v)) = 10 Then
+        FechaProceso = DateSerial(CInt(Mid(v, 7, 4)), CInt(Mid(v, 4, 2)), CInt(Left(v, 2)))
+    Else
+        MsgBox "C2 no contiene una fecha válida", vbExclamation
+        Exit Sub
+    End If
+
+    FechaInt = Format(FechaProceso, "yyyymmdd")
+
+    ' Lista de columnas (igual en INSERT y SELECT)
+    Cols = "FECHA, MONEDA, RUBRO, CUENTA_UNICA, CUENTA_BT, OPERACION, SUB_OPERACION, " & _
+           "MODULO, ACREEDOR, FSD, TRANSAC, FEC_CONT, FEC_VCTO, SDO_OPER, SDO_NO_OPER, " & _
+           "SDO_AHORRO, SDO_PLAZO, SDO_INTERESES, SEGMENTO"
+
+    Set cn = CreateObject("ADODB.Connection")
+    cn.Provider = "sqloledb"
+    cn.Open "Server=PEPGVIPR1DS9672.PER.BNS\SQL1,275;" & _
+            "Database=SBP_RGTRABAJO;" & _
+            "Trusted_Connection=yes"
+
+    cn.BeginTrans
+    EnTransaccion = True
+
+    ' 1. Borra la fecha para evitar duplicados
+    cn.Execute "DELETE FROM RMERCADO.MA_FONDEO_MAYORISTA " & _
+               "WHERE FECHA = " & FechaInt, FilasBorradas
+
+    ' 2. Inserta el fondeo mayorista de la fecha
+    Sql = "INSERT INTO SBP_RGTRABAJO.RMERCADO.MA_FONDEO_MAYORISTA (" & vbCrLf
+    Sql = Sql & Cols & vbCrLf
+    Sql = Sql & ") " & vbCrLf
+    Sql = Sql & "SELECT " & vbCrLf
+    Sql = Sql & Cols & vbCrLf
+    Sql = Sql & "FROM SBP_RGTRABAJO.DBO.FONDEO_MAYORISTA " & vbCrLf
+    Sql = Sql & "WHERE FECHA = " & FechaInt
+
+    cn.Execute Sql, FilasInsertadas
+
+    cn.CommitTrans
+    EnTransaccion = False
+    cn.Close
+    Set cn = Nothing
+
+    MsgBox "Fondeo Mayorista " & FechaInt & " cargado" & vbCrLf & _
+           "Filas borradas: " & FilasBorradas & vbCrLf & _
+           "Filas insertadas: " & FilasInsertadas, vbInformation
+    Exit Sub
+
+ErrHandler:
+    If EnTransaccion Then cn.RollbackTrans
+    If Not cn Is Nothing Then
+        If cn.State = 1 Then cn.Close
+    End If
+    MsgBox "Error: " & Err.Description, vbCritical
+
+End Sub
+
+
+
+
+
+
+
+
+
+
 Sub SubirRTKMA()
 
     Dim ws As Worksheet
